@@ -7,8 +7,8 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Segoe UI', system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
-  #scene { width: 100%; height: 100%; display: block; }
-
+  #scene { width: 100%; height: 100%; display: block; cursor: grab; }
+  #scene.dragging { cursor: grabbing; }
   /* ---- HUD ---- */
   #hud {
     position: absolute; top: 0; left: 0; right: 0;
@@ -37,13 +37,15 @@
   #soundBtn { background: rgba(77,255,180,0.2); border-color: rgba(77,255,180,0.4); }
   #soundBtn:hover { background: rgba(77,255,180,0.35); }
   #soundBtn.muted { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); color: #888; }
+  #physicsBtn { background: rgba(255,180,77,0.2); border-color: rgba(255,180,77,0.4); }
+  #physicsBtn:hover { background: rgba(255,180,77,0.35); }
+  #physicsBtn.active { background: rgba(255,180,77,0.5); border-color: rgba(255,180,77,0.8); color: #fff; }
   @media (pointer: coarse) {
     button { padding: 12px 20px; font-size: 15px; }
     input[type=range] { width: 180px; }
     .ctl label { font-size: 15px; }
     #title { font-size: 22px; }
   }
-
   /* ---- Tooltip ---- */
   #tooltip {
     position: absolute; display: none; pointer-events: none; z-index: 20;
@@ -54,7 +56,6 @@
   #tooltip h3 { color: #ffd54a; font-size: 15px; margin-bottom: 4px; }
   #tooltip .row { display: flex; justify-content: space-between; gap: 12px; }
   #tooltip .row b { color: #90a4ae; font-weight: 500; }
-
   /* ---- Help ---- */
   #help {
     position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
@@ -63,7 +64,13 @@
     pointer-events: none; z-index: 10; white-space: nowrap;
   }
   #help b { color: #fff; }
+  @media (max-width: 900px){ #help { font-size: 10px; padding: 6px 10px; } }
   @media (max-width: 700px){ #help { display:none; } }
+  #physicsHint {
+    position: absolute; top: 70px; left: 50%; transform: translateX(-50%);
+    background: rgba(255,180,77,0.15); color: #ffcc88; border: 1px solid rgba(255,180,77,0.4);
+    border-radius: 8px; padding: 6px 14px; font-size: 12px; z-index: 10; display: none; pointer-events: none;
+  }
 </style>
 </head>
 <body>
@@ -78,22 +85,22 @@
       <span id="speedVal">1×</span>
     </div>
     <button id="resetBtn" title="Reset camera & time">↺ Reset</button>
-    <button id="soundBtn" title="Toggle space ambience">🔊 Sound</button>
+    <button id="soundBtn" title="Toggle space ambience">🔇 Sound</button>
+    <button id="physicsBtn" title="Toggle physics/crash mode">⚛ Physics OFF</button>
   </div>
 </div>
 
 <div id="tooltip"></div>
+<div id="physicsHint">⚛ Physics ON — drag planets to move them! They will crash on collision 💥</div>
 <div id="help">
-  <b>Drag</b> to orbit · <b>Scroll</b> to zoom · <b>WASD / Arrows</b> move · <b>Q/E</b> up/down · <b>+ / −</b> zoom · <b>R</b> reset
+  <b>Drag</b> to orbit · <b>Scroll</b> to zoom · <b>WASD / Arrows</b> move · <b>Q/E</b> up/down · <b>+ / −</b> zoom · <b>R</b> reset · <b>Click</b> planet to fly · <b>Physics</b> to drag & crash
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script>
 /* ============================================================
-   SOLAR SYSTEM EXPLORER
-   Real physics: actual orbital periods (days) & relative sizes.
-   Distances are compressed (power-law) so outer planets are visible.
+   SOLAR SYSTEM EXPLORER — enhanced
    ============================================================ */
 
 const canvas = document.getElementById('scene');
@@ -137,31 +144,29 @@ scene.add(ambient);
   scene.add(new THREE.Points(geo, mat));
 })();
 
-/* ---------- Data (real values) ---------- */
-// period in days, distance in AU, radius relative to Earth
+/* ---------- Data ---------- */
 const PLANETS = [
   { name:'Mercury', color:0x9c9c9c, period:87.97,  dist:0.39,  radius:0.38,  info:'Smallest planet, closest to the Sun. A year here is just 88 days!' },
   { name:'Venus',   color:0xe8c07a, period:224.7,  dist:0.72,  radius:0.95,  info:'Hottest planet — thick CO₂ atmosphere traps heat. Spins backwards!' },
   { name:'Earth',   color:0x4a90d9, period:365.25, dist:1.0,   radius:1.0,   info:'Our home. The only known place with life. Has 1 moon.' },
-  { name:'Mars',    color:0xd96a4a, period:686.98, dist:1.52,  radius:0.53,  info:'The Red Planet — iron oxide dust. Home to the tallest volcano, Olympus Mons.' },
-  { name:'Jupiter', color:0xd8b48a, period:4332.6, dist:5.2,   radius:11.2,  info:'Biggest planet — more than 2× all others combined. Great Red Spot storm.' },
-  { name:'Saturn',  color:0xe6d9a8, period:10759,  dist:9.58,  radius:9.45,  info:'Famous for its beautiful rings of ice and rock. Least dense planet.' },
-  { name:'Uranus',  color:0x9ad6e0, period:30688,  dist:19.2,  radius:4.0,   info:'An ice giant that rolls on its side — tipped over 98°!' },
-  { name:'Neptune', color:0x4a6ad9, period:60182,  dist:30.05, radius:3.88,  info:'Farthest planet. Supersonic winds over 2,000 km/h. Deep blue.' },
+  { name:'Mars',    color:0xd96a4a, period:686.98, dist:1.52,  radius:0.53,  info:'The Red Planet — iron oxide dust. Home to Olympus Mons.' },
+  { name:'Jupiter', color:0xd8b48a, period:4332.6, dist:5.2,   radius:11.2,  info:'Biggest planet — more than 2× all others combined.' },
+  { name:'Saturn',  color:0xe6d9a8, period:10759,  dist:9.58,  radius:9.45,  info:'Famous for its beautiful rings of ice and rock.' },
+  { name:'Uranus',  color:0x9ad6e0, period:30688,  dist:19.2,  radius:4.0,   info:'An ice giant that rolls on its side — tipped 98°!' },
+  { name:'Neptune', color:0x4a6ad9, period:60182,  dist:30.05, radius:3.88,  info:'Farthest planet. Supersonic winds over 2,000 km/h.' },
 ];
 
-// Compress distances & sizes so everything is visible (power-law scaling)
 const DIST_SCALE = 10, DIST_POW = 0.6;
 const SIZE_SCALE = 0.5, SIZE_POW = 0.5;
 const distOf = au => DIST_SCALE * Math.pow(au, DIST_POW);
 const sizeOf = rel => SIZE_SCALE * Math.pow(rel, SIZE_POW);
 
 /* ---------- Sun ---------- */
-const sunGeo = new THREE.SphereGeometry(sizeOf(109), 48, 48);
+const SUN_RADIUS = sizeOf(109);
+const sunGeo = new THREE.SphereGeometry(SUN_RADIUS, 48, 48);
 const sunMat = new THREE.MeshBasicMaterial({ color:0xffd54a });
 const sun = new THREE.Mesh(sunGeo, sunMat);
 scene.add(sun);
-// glow sprite
 const glowTex = (function(){
   const c = document.createElement('canvas'); c.width=c.height=128;
   const g = c.getContext('2d');
@@ -176,8 +181,74 @@ const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map:glowTex, blending:T
 glow.scale.set(30,30,1);
 scene.add(glow);
 
+// Sun corona shader
+let coronaMesh;
+(function makeCorona(){
+  const geo = new THREE.SphereGeometry(SUN_RADIUS*1.25, 64, 64);
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { time: { value: 0 }, baseColor: { value: new THREE.Color(0xff8c1a) } },
+    vertexShader: `varying vec3 vNormal; varying vec3 vPos; void main(){ vNormal = normalize(normalMatrix * normal); vPos = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+    fragmentShader: `
+      uniform float time;
+      uniform vec3 baseColor;
+      varying vec3 vNormal;
+      varying vec3 vPos;
+      void main(){
+        float intensity = pow(0.65 - dot(vNormal, vec3(0.0,0.0,1.0)), 2.0);
+        float flicker = 0.85 + 0.15 * sin(time*2.3 + length(vPos)*0.1);
+        float pulse = 0.9 + 0.1 * sin(time*0.9);
+        vec3 col = baseColor * flicker * pulse;
+        float alpha = intensity * 0.55;
+        gl_FragColor = vec4(col, alpha);
+      }`,
+    side: THREE.BackSide,
+    blending: THREE.AdditiveBlending,
+    transparent: true,
+    depthWrite: false
+  });
+  coronaMesh = new THREE.Mesh(geo, mat);
+  scene.add(coronaMesh);
+})();
+let coronaMat2;
+(function makeCorona2(){
+  const geo = new THREE.SphereGeometry(SUN_RADIUS*1.55, 32, 32);
+  const mat = new THREE.MeshBasicMaterial({ color:0xff6a00, transparent:true, opacity:0.08, side:THREE.BackSide, blending:THREE.AdditiveBlending, depthWrite:false });
+  const m = new THREE.Mesh(geo, mat);
+  coronaMat2 = mat;
+  scene.add(m);
+  // store for pulsing
+  m.userData.isCorona2 = true;
+})();
+const coronaSprites = [];
+(function makeCoronaSprites(){
+  for(let i=0;i<2;i++){
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map:glowTex, color:0xff8800, blending:THREE.AdditiveBlending, transparent:true, opacity:0.15, depthWrite:false }));
+    s.scale.set(40+i*14,40+i*14,1);
+    s.position.set(0,0,0);
+    scene.add(s);
+    coronaSprites.push(s);
+  }
+})();
+
+// Flares
+const flares = [];
+function spawnFlare(){
+  if(Math.random() < 0.5) return;
+  const theta = Math.random()*Math.PI*2, phi = Math.acos(2*Math.random()-1);
+  const r = SUN_RADIUS*0.98;
+  const start = new THREE.Vector3(r*Math.sin(phi)*Math.cos(theta), r*Math.cos(phi), r*Math.sin(phi)*Math.sin(theta));
+  const dir = start.clone().normalize();
+  const spriteMat = new THREE.SpriteMaterial({ map:glowTex, color:0xffffaa, transparent:true, opacity:0.9, blending:THREE.AdditiveBlending, depthWrite:false });
+  const sp = new THREE.Sprite(spriteMat);
+  sp.position.copy(start);
+  sp.scale.set(2,2,1);
+  scene.add(sp);
+  flares.push({ sprite: sp, pos: start.clone(), vel: dir.clone().multiplyScalar(8 + Math.random()*10), life:0, maxLife: 1.2 + Math.random()*0.8 });
+}
+setInterval(spawnFlare, 900);
+
 /* ---------- Build planets ---------- */
-const bodies = [];   // { mesh, period, angle, dist, name, info, color, isMoon }
+const bodies = [];
 const orbitLines = [];
 
 function makePlanet(p){
@@ -188,10 +259,10 @@ function makePlanet(p){
   const d = distOf(p.dist);
   const angle = Math.random()*Math.PI*2;
   mesh.position.set(Math.cos(angle)*d, 0, Math.sin(angle)*d);
+  mesh.userData.radius = sizeOf(p.radius);
   scene.add(mesh);
-  bodies.push({ mesh, period:p.period, angle, dist:d, name:p.name, info:p.info, color:p.color, isMoon:false });
-
-  // orbit line
+  const body = { mesh, period:p.period, angle, dist:d, name:p.name, info:p.info, color:p.color, isMoon:false, radius:sizeOf(p.radius), mass: Math.pow(sizeOf(p.radius),3)*8+0.5, velocity:new THREE.Vector3(), isPhysics:false, exploded:false, orig:{dist:d, angle} };
+  bodies.push(body);
   const pts = [];
   for(let i=0;i<=128;i++){ const a=i/128*Math.PI*2; pts.push(new THREE.Vector3(Math.cos(a)*d,0,Math.sin(a)*d)); }
   const line = new THREE.Line(
@@ -199,8 +270,6 @@ function makePlanet(p){
     new THREE.LineBasicMaterial({ color:0xffffff, transparent:true, opacity:0.12 })
   );
   scene.add(line); orbitLines.push(line);
-
-  // Saturn rings
   if(p.name==='Saturn'){
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(sizeOf(p.radius)*1.3, sizeOf(p.radius)*2.2, 64),
@@ -209,30 +278,112 @@ function makePlanet(p){
     ring.rotation.x = Math.PI/2.4;
     mesh.add(ring);
   }
+  return body;
 }
-
 PLANETS.forEach(makePlanet);
 
-/* ---------- Earth's Moon ---------- */
-const moonMesh = new THREE.Mesh(
-  new THREE.SphereGeometry(sizeOf(0.27), 24, 24),
-  new THREE.MeshStandardMaterial({ color:0xbbbbbb, roughness:1 })
-);
-const earth = bodies.find(b=>b.name==='Earth');
-const MOON_DIST = sizeOf(1.0)*2.6;   // orbit radius around Earth
-const moon = { mesh:moonMesh, period:27.3, angle:Math.random()*Math.PI*2, dist:MOON_DIST, name:'Moon', info:'Earth\'s only natural satellite. It causes our ocean tides and stabilizes Earth\'s tilt.', color:0xbbbbbb, isMoon:true };
-earth.mesh.add(moonMesh);
-bodies.push(moon);
+// Moons data
+const MOON_DEFS = {
+  'Earth': [
+    { name:'Moon', radius:0.27, dist:2.6, period:27.3, color:0xbbbbbb, info:"Earth's Moon — causes tides and stabilizes tilt." }
+  ],
+  'Mars': [
+    { name:'Phobos', radius:0.08, dist:1.4, period:0.32, color:0x9e8a7a, info:'Tiny moon of Mars, skims just 6,000 km above surface.' },
+    { name:'Deimos', radius:0.06, dist:2.2, period:1.26, color:0xb0a090, info:'Smaller Mars moon, takes 30 hours to orbit.' }
+  ],
+  'Jupiter': [
+    { name:'Io', radius:0.29, dist:1.25, period:1.77, color:0xe8c96a, info:'Most volcanically active world — sulfur volcanoes!' },
+    { name:'Europa', radius:0.24, dist:1.65, period:3.55, color:0xcde6ff, info:'Icy ocean moon — may harbor life beneath ice.' },
+    { name:'Ganymede', radius:0.41, dist:2.1, period:7.15, color:0xa99e93, info:'Largest moon in solar system, bigger than Mercury.' },
+    { name:'Callisto', radius:0.38, dist:2.55, period:16.69, color:0x6b5d4f, info:'Ancient cratered ice ball, 4 billion years old.' }
+  ],
+  'Saturn': [
+    { name:'Titan', radius:0.40, dist:2.0, period:15.95, color:0xd9a86a, info:'Thick atmosphere, methane lakes — Earth-like!' },
+    { name:'Enceladus', radius:0.10, dist:1.25, period:1.37, color:0xeef6ff, info:'Shoots geysers of water into space.' },
+    { name:'Rhea', radius:0.12, dist:1.65, period:4.52, color:0xc0c0c0, info:'Icy moon with faint rings of its own?' }
+  ],
+  'Uranus': [
+    { name:'Miranda', radius:0.07, dist:1.15, period:1.41, color:0xaaaaaa, info:'Patchwork terrain — looks like Frankenstein moon.' },
+    { name:'Ariel', radius:0.09, dist:1.45, period:2.52, color:0xddd8cc, info:'Brightest Uranian moon, with deep canyons.' },
+    { name:'Titania', radius:0.12, dist:1.85, period:8.71, color:0x9a8a7a, info:'Largest Uranus moon, with huge fault scarps.' }
+  ],
+  'Neptune': [
+    { name:'Triton', radius:0.21, dist:1.55, period:-5.88, color:0xd080a0, info:'Retrograde moon — orbits backwards! Geysers of nitrogen.' },
+    { name:'Proteus', radius:0.08, dist:1.15, period:1.12, color:0x555555, info:'Dark, irregular captured asteroid.' }
+  ]
+};
+
+function addMoons(){
+  for(const [planetName, moons] of Object.entries(MOON_DEFS)){
+    const parent = bodies.find(b=>b.name===planetName);
+    if(!parent) continue;
+    // remove Earth placeholder if we already handle via defs (we haven't created Earth moon yet beyond manual; remove manual)
+    moons.forEach(m=>{
+      // skip if Earth Moon already created manually — we removed manual, so create fresh
+      if(planetName==='Earth' && bodies.some(b=>b.name==='Moon')) return;
+      const mesh = new THREE.Mesh(
+        new THREE.SphereGeometry(sizeOf(m.radius), 20, 20),
+        new THREE.MeshStandardMaterial({ color:m.color, roughness:0.9 })
+      );
+      mesh.userData.radius = sizeOf(m.radius);
+      const md = parent.radius * m.dist + sizeOf(m.radius)*0.5;
+      // use parent radius scaling
+      const orbitDist = parent.radius * m.dist + sizeOf(m.radius) + 0.3;
+      // Actually use formula: parent.radius*2.5 etc, simplify:
+      const dist = parent.radius * (2.2 + Math.random()*0.1) + m.dist*0.4; // tweak for visuals
+      // Better: use m.dist directly as multiplier of parent radius
+      const finalDist = parent.radius * m.dist * 1.1;
+      const angle = Math.random()*Math.PI*2;
+      const period = Math.abs(m.period);
+      const retro = m.period < 0;
+      mesh.position.set(Math.cos(angle)*finalDist, 0, Math.sin(angle)*finalDist);
+      parent.mesh.add(mesh);
+      const info = m.info;
+      bodies.push({ mesh, period, angle, dist:finalDist, name:m.name, info, color:m.color, isMoon:true, parent, radius:sizeOf(m.radius), retro, velocity:new THREE.Vector3(), isPhysics:false, exploded:false });
+      // moon orbit line around parent (local)
+      const pts=[]; for(let i=0;i<=64;i++){ const a=i/64*Math.PI*2; pts.push(new THREE.Vector3(Math.cos(a)*finalDist,0,Math.sin(a)*finalDist)); }
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({color:m.color, transparent:true, opacity:0.07}));
+      parent.mesh.add(line);
+    });
+  }
+}
+// Handle Earth special: if MOON_DEFS Earth already, use it. If not, ensure Moon exists — we included it, so just call.
+addMoons();
+
+/* ---------- Asteroid Belt ---------- */
+let asteroidPoints = null;
+let asteroidData = [];
+(function makeAsteroidBelt(){
+  const count = 1200;
+  const geo = new THREE.BufferGeometry();
+  const positions = new Float32Array(count*3);
+  const colors = new Float32Array(count*3);
+  const baseColor = new THREE.Color(0x8a7e6a);
+  for(let i=0;i<count;i++){
+    const a = Math.random()*Math.PI*2;
+    const r = distOf(2.2) + Math.random()*(distOf(3.3)-distOf(2.2));
+    const y = (Math.random()-0.5)*1.2;
+    const x = Math.cos(a)*r;
+    const z = Math.sin(a)*r;
+    positions[i*3]=x; positions[i*3+1]=y; positions[i*3+2]=z;
+    const c = baseColor.clone().multiplyScalar(0.7 + Math.random()*0.6);
+    colors[i*3]=c.r; colors[i*3+1]=c.g; colors[i*3+2]=c.b;
+    asteroidData.push({ dist:r, angle:a, y, speed: (2*Math.PI)/(900+Math.random()*1200) });
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(positions,3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors,3));
+  const mat = new THREE.PointsMaterial({ size:0.22, vertexColors:true, transparent:true, opacity:0.9, sizeAttenuation:true });
+  asteroidPoints = new THREE.Points(geo, mat);
+  scene.add(asteroidPoints);
+})();
 
 /* ---------- Time ---------- */
-let simDays = 0;          // simulated days elapsed
-let speed = 1;            // days per real second
-const BASE_SPEED = 0.5;   // multiplier so slider feels good
-
+let simDays = 0;
+let speed = 1;
+const BASE_SPEED = 0.5;
 const speedSlider = document.getElementById('speed');
 const speedVal = document.getElementById('speedVal');
 speedSlider.addEventListener('input', ()=>{
-  // exponential mapping: 0..100 -> 0..60 days/sec
   const v = speedSlider.value/100;
   speed = Math.pow(60, v);
   speedVal.textContent = (speed<1 ? speed.toFixed(2) : Math.round(speed)) + '×';
@@ -270,6 +421,40 @@ function resetView(){
   controls.update();
   simDays = 0;
   speedSlider.value = 20; speedSlider.dispatchEvent(new Event('input'));
+  // restore exploded bodies
+  bodies.forEach(b=>{
+    if(b.exploded){
+      b.exploded=false;
+      b.mesh.visible=true;
+      b.mesh.scale.set(1,1,1);
+      // reset position
+      if(b.isMoon){
+        b.angle = Math.random()*Math.PI*2;
+        b.mesh.position.set(Math.cos(b.angle)*b.dist,0,Math.sin(b.angle)*b.dist);
+      } else {
+        // keep dist but random angle, or orig
+        b.dist = b.orig.dist;
+        b.angle = Math.random()*Math.PI*2;
+        b.mesh.position.set(Math.cos(b.angle)*b.dist,0,Math.sin(b.angle)*b.dist);
+        b.velocity.set(0,0,0);
+        b.isPhysics = physicsEnabled;
+        if(physicsEnabled){
+          const vMag = Math.sqrt(MU / b.dist);
+          b.velocity.set(-Math.sin(b.angle)*vMag,0,Math.cos(b.angle)*vMag);
+        }
+      }
+    } else if(!b.isMoon){
+      b.velocity.set(0,0,0);
+      if(physicsEnabled){
+        const vMag = Math.sqrt(MU / b.dist);
+        b.velocity.set(-Math.sin(b.angle)*vMag,0,Math.cos(b.angle)*vMag);
+      }
+    }
+  });
+  // clear explosions
+  explosions.forEach(e=> scene.remove(e.points));
+  explosions.length=0;
+  cancelFly();
 }
 document.getElementById('resetBtn').addEventListener('click', resetView);
 document.getElementById('soundBtn').addEventListener('click', () => {
@@ -277,7 +462,37 @@ document.getElementById('soundBtn').addEventListener('click', () => {
   toggleSound();
 });
 
-/* ---------- Audio (Space Soundscape) ---------- */
+/* ---------- Physics toggle ---------- */
+let physicsEnabled = false;
+const MU = 320; // gravitational parameter for sun
+const physicsBtn = document.getElementById('physicsBtn');
+const physicsHint = document.getElementById('physicsHint');
+physicsBtn.addEventListener('click', ()=>{
+  physicsEnabled = !physicsEnabled;
+  physicsBtn.textContent = physicsEnabled ? '⚛ Physics ON' : '⚛ Physics OFF';
+  physicsBtn.classList.toggle('active', physicsEnabled);
+  physicsHint.style.display = physicsEnabled ? 'block' : 'none';
+  if(physicsEnabled){
+    setTimeout(()=> physicsHint.style.display='none', 3500);
+    // convert to physics
+    bodies.forEach(b=>{
+      if(!b.isMoon && !b.exploded){
+        b.isPhysics = true;
+        const vMag = Math.sqrt(MU / b.dist);
+        b.velocity.set(-Math.sin(b.angle)*vMag, 0, Math.cos(b.angle)*vMag);
+      }
+    });
+  } else {
+    bodies.forEach(b=>{
+      if(!b.isMoon){
+        b.isPhysics = false;
+        b.velocity.set(0,0,0);
+      }
+    });
+  }
+});
+
+/* ---------- Audio ---------- */
 let audioCtx = null;
 let masterGain = null;
 let soundEnabled = false;
@@ -288,118 +503,76 @@ let humGain = null;
 let lfoOsc = null;
 let lfoGain = null;
 let filter = null;
-
 function initAudio() {
   if (audioCtx) return;
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   masterGain = audioCtx.createGain();
-  masterGain.gain.value = 0.15;
+  masterGain.gain.value = 0;
   masterGain.connect(audioCtx.destination);
-
   filter = audioCtx.createBiquadFilter();
-  filter.type = 'bandpass';
-  filter.frequency.value = 120;
-  filter.Q.value = 2;
+  filter.type = 'bandpass'; filter.frequency.value = 120; filter.Q.value = 2;
   filter.connect(masterGain);
-
-  // Low hum
-  humOsc = audioCtx.createOscillator();
-  humOsc.type = 'sine';
-  humOsc.frequency.value = 32;
-  humGain = audioCtx.createGain();
-  humGain.gain.value = 0.02;
-  humOsc.connect(humGain);
-  humGain.connect(filter);
-  humOsc.start();
-
-  // LFO for subtle modulation
-  lfoOsc = audioCtx.createOscillator();
-  lfoOsc.type = 'sine';
-  lfoOsc.frequency.value = 0.05;
-  lfoGain = audioCtx.createGain();
-  lfoGain.gain.value = 8;
-  lfoOsc.connect(lfoGain);
-  lfoGain.connect(humOsc.frequency);
-  lfoOsc.start();
-
-  // Filtered noise for "space wind"
-  const bufferSize = audioCtx.sampleRate * 2;
-  const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  humOsc = audioCtx.createOscillator(); humOsc.type='sine'; humOsc.frequency.value=32;
+  humGain = audioCtx.createGain(); humGain.gain.value=0.02;
+  humOsc.connect(humGain); humGain.connect(filter); humOsc.start();
+  lfoOsc = audioCtx.createOscillator(); lfoOsc.type='sine'; lfoOsc.frequency.value=0.05;
+  lfoGain = audioCtx.createGain(); lfoGain.gain.value=8;
+  lfoOsc.connect(lfoGain); lfoGain.connect(humOsc.frequency); lfoOsc.start();
+  const bufferSize = audioCtx.sampleRate*2;
+  const noiseBuffer = audioCtx.createBuffer(1,bufferSize,audioCtx.sampleRate);
   const data = noiseBuffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) {
-    data[i] = Math.random() * 2 - 1;
-  }
-  noiseSource = audioCtx.createBufferSource();
-  noiseSource.buffer = noiseBuffer;
-  noiseSource.loop = true;
-  noiseGain = audioCtx.createGain();
-  noiseGain.gain.value = 0.008;
-  const noiseFilter = audioCtx.createBiquadFilter();
-  noiseFilter.type = 'bandpass';
-  noiseFilter.frequency.value = 400;
-  noiseFilter.Q.value = 0.5;
-  noiseSource.connect(noiseGain);
-  noiseGain.connect(noiseFilter);
-  noiseFilter.connect(masterGain);
-  noiseSource.start();
-
-  // Occasional "cosmic ray" pings
+  for(let i=0;i<bufferSize;i++) data[i]=Math.random()*2-1;
+  noiseSource = audioCtx.createBufferSource(); noiseSource.buffer=noiseBuffer; noiseSource.loop=true;
+  noiseGain = audioCtx.createGain(); noiseGain.gain.value=0.008;
+  const noiseFilter = audioCtx.createBiquadFilter(); noiseFilter.type='bandpass'; noiseFilter.frequency.value=400; noiseFilter.Q.value=0.5;
+  noiseSource.connect(noiseGain); noiseGain.connect(noiseFilter); noiseFilter.connect(masterGain); noiseSource.start();
   schedulePings();
 }
-
-function schedulePings() {
-  if (!audioCtx || !soundEnabled) return;
-  const delay = 3 + Math.random() * 12;
-  setTimeout(() => {
-    if (!soundEnabled) return;
-    playPing();
-    schedulePings();
-  }, delay * 1000);
+function schedulePings(){
+  if(!audioCtx || !soundEnabled) return;
+  const delay=3+Math.random()*12;
+  setTimeout(()=>{ if(!soundEnabled) return; playPing(); schedulePings(); }, delay*1000);
 }
-
-function playPing() {
-  if (!audioCtx) return;
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  const pingFilter = audioCtx.createBiquadFilter();
-  pingFilter.type = 'bandpass';
-  pingFilter.frequency.value = 800 + Math.random() * 1200;
-  pingFilter.Q.value = 10;
-  osc.type = 'sine';
-  osc.frequency.value = pingFilter.frequency.value;
-  osc.connect(gain);
-  gain.connect(pingFilter);
-  pingFilter.connect(masterGain);
-  const now = audioCtx.currentTime;
-  gain.gain.setValueAtTime(0, now);
-  gain.gain.linearRampToValueAtTime(0.03, now + 0.02);
-  gain.gain.exponentialRampToValueAtTime(0.0001, now + 2.5);
-  osc.start(now);
-  osc.stop(now + 3);
+function playPing(){
+  if(!audioCtx) return;
+  const osc=audioCtx.createOscillator(), gain=audioCtx.createGain(), pf=audioCtx.createBiquadFilter();
+  pf.type='bandpass'; pf.frequency.value=800+Math.random()*1200; pf.Q.value=10;
+  osc.type='sine'; osc.frequency.value=pf.frequency.value;
+  osc.connect(gain); gain.connect(pf); pf.connect(masterGain);
+  const now=audioCtx.currentTime;
+  gain.gain.setValueAtTime(0,now); gain.gain.linearRampToValueAtTime(0.03,now+0.02); gain.gain.exponentialRampToValueAtTime(0.0001,now+2.5);
+  osc.start(now); osc.stop(now+3);
 }
-
-function toggleSound() {
-  if (!audioCtx) {
-    initAudio();
-    soundEnabled = true;
-  } else if (soundEnabled) {
-    masterGain.gain.value = 0;
-    soundEnabled = false;
-  } else {
-    masterGain.gain.value = 0.15;
-    soundEnabled = true;
-    schedulePings();
-  }
+function playCrashSound(intensity){
+  if(!audioCtx || !soundEnabled) return;
+  const now=audioCtx.currentTime;
+  const osc = audioCtx.createOscillator(); const gain=audioCtx.createGain(); const f=audioCtx.createBiquadFilter();
+  osc.type='sawtooth'; osc.frequency.setValueAtTime(120+intensity*400, now); osc.frequency.exponentialRampToValueAtTime(30, now+0.6);
+  f.type='lowpass'; f.frequency.value=1200;
+  gain.gain.setValueAtTime(0.35*intensity, now); gain.gain.exponentialRampToValueAtTime(0.001, now+0.9);
+  osc.connect(f); f.connect(gain); gain.connect(masterGain);
+  osc.start(now); osc.stop(now+1);
+  // noise burst
+  const bufferSize = Math.floor(audioCtx.sampleRate*0.3);
+  const buf = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const d = buf.getChannelData(0); for(let i=0;i<bufferSize;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/bufferSize,2);
+  const src = audioCtx.createBufferSource(); src.buffer=buf;
+  const g2 = audioCtx.createGain(); g2.gain.setValueAtTime(0.25*intensity, now); g2.gain.exponentialRampToValueAtTime(0.001, now+0.5);
+  src.connect(g2); g2.connect(masterGain); src.start(now);
+}
+function toggleSound(){
+  if(!audioCtx){ initAudio(); soundEnabled=true; masterGain.gain.value=0.15; }
+  else if(soundEnabled){ masterGain.gain.value=0; soundEnabled=false; }
+  else { masterGain.gain.value=0.15; soundEnabled=true; schedulePings(); if(audioCtx.state==='suspended') audioCtx.resume(); }
   updateSoundButton();
 }
-
-function updateSoundButton() {
-  const btn = document.getElementById('soundBtn');
+function updateSoundButton(){
+  const btn=document.getElementById('soundBtn');
   btn.textContent = soundEnabled ? '🔊 Sound' : '🔇 Sound';
   btn.classList.toggle('muted', !soundEnabled);
 }
 
-/* ---------- Tooltip (mouseover labels) ---------- */
+/* ---------- Tooltip & Raycasting ---------- */
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 const tooltip = document.getElementById('tooltip');
@@ -413,78 +586,303 @@ function onMove(e){
 window.addEventListener('mousemove', onMove);
 window.addEventListener('touchmove', e=>{ if(e.touches[0]) onMove(e.touches[0]); }, {passive:true});
 
-function showTapTooltip(target) {
-  if (tapTooltipTimeout) clearTimeout(tapTooltipTimeout);
+function showTapTooltip(target, isHover) {
+  if(tapTooltipTimeout) clearTimeout(tapTooltipTimeout);
   const periodDays = target.period;
   const years = (periodDays/365.25).toFixed(2);
   tooltip.innerHTML =
     `<h3>${target.name}</h3>` +
     `<div class="row"><span><b>Orbit period</b></span><span>${periodDays.toFixed(1)} days (${years} yr)</span></div>` +
-    (target.isMoon ? '' : `<div class="row"><span><b>Distance from Sun</b></span><span>${(target.dist/DIST_SCALE).toFixed(2)} AU</span></div>`) +
-    `<div style="margin-top:6px;color:#cfd8dc">${target.info}</div>`;
+    (target.isMoon ? `<div class="row"><span><b>Parent</b></span><span>${target.parent?target.parent.name:'Sun'}</span></div>` : `<div class="row"><span><b>Distance</b></span><span>${(target.dist/DIST_SCALE).toFixed(2)} AU</span></div>`) +
+    `<div style="margin-top:6px;color:#cfd8dc">${target.info}</div>` +
+    (!target.isMoon ? `<div style="margin-top:6px;color:#ffd54a;font-size:11px;">Click to fly · ${physicsEnabled?'Drag to move':''}</div>` : '');
   tooltip.style.display='block';
-  tooltip.style.left = (mouse.x*0.5+0.5)*window.innerWidth + 16 + 'px';
-  tooltip.style.top  = (-mouse.y*0.5+0.5)*window.innerHeight - 20 + 'px';
-  tapTooltipTimeout = setTimeout(() => {
-    if (hovered !== target) tooltip.style.display='none';
-  }, 3000);
+  // keep inside viewport
+  let lx = (mouse.x*0.5+0.5)*window.innerWidth + 16;
+  let ly = (-mouse.y*0.5+0.5)*window.innerHeight - 20;
+  if(lx + 260 > window.innerWidth) lx = window.innerWidth - 270;
+  if(ly + 140 > window.innerHeight) ly = window.innerHeight - 150;
+  tooltip.style.left = lx + 'px';
+  tooltip.style.top  = ly + 'px';
+  if(!isHover){
+    tapTooltipTimeout = setTimeout(()=>{ if(hovered!==target) tooltip.style.display='none'; }, 3200);
+  }
 }
-
+function getBodyFromHit(hitObject){
+  let obj = hitObject;
+  while(obj && !bodies.find(b=>b.mesh===obj)) obj = obj.parent;
+  return bodies.find(b=>b.mesh===obj);
+}
 function onTap(e) {
-  const clientX = e.clientX || (e.touches && e.touches[0].clientX);
-  const clientY = e.clientY || (e.touches && e.touches[0].clientY);
-  if (!clientX || !clientY) return;
+  const clientX = e.clientX || (e.touches && e.touches[0] && e.touches[0].clientX);
+  const clientY = e.clientY || (e.touches && e.touches[0] && e.touches[0].clientY);
+  if (clientX==null) return;
   mouse.x = (clientX/window.innerWidth)*2-1;
   mouse.y = -(clientY/window.innerHeight)*2+1;
   raycaster.setFromCamera(mouse, camera);
-  const meshes = bodies.map(b=>b.mesh);
+  const meshes = bodies.filter(b=>!b.exploded).map(b=>b.mesh);
   const hits = raycaster.intersectObjects(meshes, true);
   if (hits.length) {
-    let obj = hits[0].object;
-    while(obj && !bodies.find(b=>b.mesh===obj)) obj = obj.parent;
-    const target = bodies.find(b=>b.mesh===obj);
+    const target = getBodyFromHit(hits[0].object);
     if (target) {
-      showTapTooltip(target);
+      if(target.exploded) return;
+      showTapTooltip(target, false);
       hovered = target;
+      // fly to planet on click (not while dragging)
+      if(!dragDidMove && !target.isMoon) flyToBody(target);
+      else if(target.isMoon && target.parent) flyToBody(target.parent);
     }
   }
 }
-window.addEventListener('click', onTap);
-window.addEventListener('touchend', (e) => {
-  if (e.changedTouches[0] && Date.now() - (e.timeStamp || Date.now()) < 500) {
-    onTap(e.changedTouches[0]);
-  }
+
+// Fly-to animation
+let flyAnim = null;
+function flyToBody(body){
+  if(flyAnim) return;
+  const worldPos = new THREE.Vector3();
+  body.mesh.getWorldPosition(worldPos);
+  const targetPos = worldPos.clone();
+  const bodyRad = body.radius;
+  const distWanted = Math.max(bodyRad*6 + 6, 8);
+  // direction from target to camera
+  const dir = camera.position.clone().sub(controls.target).normalize();
+  if(dir.lengthSq()<0.001) dir.set(0,0.8,1).normalize();
+  const endPos = targetPos.clone().add(dir.multiplyScalar(distWanted)).add(new THREE.Vector3(0, distWanted*0.22, 0));
+  flyAnim = {
+    t:0, duration:1.5,
+    startPos: camera.position.clone(),
+    endPos,
+    startTarget: controls.target.clone(),
+    endTarget: targetPos.clone()
+  };
+  controls.enabled = false;
+}
+function cancelFly(){
+  flyAnim=null;
+  controls.enabled = !draggedBody;
+}
+function updateFly(dt){
+  if(!flyAnim) return;
+  flyAnim.t += dt / flyAnim.duration;
+  let p = Math.min(flyAnim.t,1);
+  // easeInOutCubic
+  p = p<0.5 ? 4*p*p*p : 1 - Math.pow(-2*p+2,3)/2;
+  camera.position.lerpVectors(flyAnim.startPos, flyAnim.endPos, p);
+  controls.target.lerpVectors(flyAnim.startTarget, flyAnim.endTarget, p);
+  controls.update();
+  if(flyAnim.t>=1){ flyAnim=null; controls.enabled = !draggedBody; }
+}
+
+let flyClickHandler = (e)=>{
+  // distinguish drag vs click: if we were dragging, ignore click fly
+  if(dragDidMove) return;
+  onTap(e);
+};
+window.addEventListener('click', flyClickHandler);
+window.addEventListener('touchend', (e)=>{
+  if(e.changedTouches[0] && !dragDidMove) onTap(e.changedTouches[0]);
 }, {passive:true});
 
 function updateTooltip(){
   if (window.matchMedia('(pointer: coarse)').matches) return;
+  if(draggedBody || flyAnim) return;
   raycaster.setFromCamera(mouse, camera);
-  const meshes = bodies.map(b=>b.mesh);
+  const meshes = bodies.filter(b=>!b.exploded).map(b=>b.mesh);
   const hits = raycaster.intersectObjects(meshes, true);
   let target = null;
-  if(hits.length){
-    let obj = hits[0].object;
-    while(obj && !bodies.find(b=>b.mesh===obj)) obj = obj.parent;
-    target = bodies.find(b=>b.mesh===obj);
-  }
+  if(hits.length) target = getBodyFromHit(hits[0].object);
   if(target !== hovered){
     hovered = target;
-    if(target){
-      const periodDays = target.period;
-      const years = (periodDays/365.25).toFixed(2);
-      tooltip.innerHTML =
-        `<h3>${target.name}</h3>` +
-        `<div class="row"><span><b>Orbit period</b></span><span>${periodDays.toFixed(1)} days (${years} yr)</span></div>` +
-        (target.isMoon ? '' : `<div class="row"><span><b>Distance from Sun</b></span><span>${(target.dist/DIST_SCALE).toFixed(2)} AU</span></div>`) +
-        `<div style="margin-top:6px;color:#cfd8dc">${target.info}</div>`;
-      tooltip.style.display='block';
+    if(target && !target.exploded){
+      showTapTooltip(target, true);
     } else {
       tooltip.style.display='none';
+      if(tapTooltipTimeout){ clearTimeout(tapTooltipTimeout); tapTooltipTimeout=null; }
     }
   }
-  if(hovered){
-    tooltip.style.left = (mouse.x*0.5+0.5)*window.innerWidth + 16 + 'px';
-    tooltip.style.top  = (-mouse.y*0.5+0.5)*window.innerHeight - 20 + 'px';
+  if(hovered && hovered.mesh.visible){
+    const wp = new THREE.Vector3(); hovered.mesh.getWorldPosition(wp);
+    // project to screen for better follow when moving
+    wp.project(camera);
+    let lx = (wp.x*0.5+0.5)*window.innerWidth + 16;
+    let ly = (-wp.y*0.5+0.5)*window.innerHeight - 20;
+    if(lx + 270 > window.innerWidth) lx = (mouse.x*0.5+0.5)*window.innerWidth - 276;
+    tooltip.style.left = lx+'px';
+    tooltip.style.top = ly+'px';
+  }
+}
+
+/* ---------- Drag planets (physics) ---------- */
+let draggedBody = null;
+let dragPlane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
+let dragOffset = new THREE.Vector3();
+let dragDidMove = false;
+let dragStartPos = new THREE.Vector3();
+
+canvas.addEventListener('pointerdown', (e)=>{
+  if(!physicsEnabled) return;
+  mouse.x = (e.clientX/window.innerWidth)*2-1;
+  mouse.y = -(e.clientY/window.innerHeight)*2+1;
+  raycaster.setFromCamera(mouse, camera);
+  const candidates = bodies.filter(b=>!b.isMoon && !b.exploded).map(b=>b.mesh);
+  const hits = raycaster.intersectObjects(candidates, false);
+  if(hits.length){
+    const body = bodies.find(b=>b.mesh===hits[0].object);
+    if(body){
+      draggedBody = body;
+      dragDidMove = false;
+      dragStartPos.copy(body.mesh.position);
+      controls.enabled = false;
+      canvas.classList.add('dragging');
+      // compute offset
+      const intersect = new THREE.Vector3();
+      raycaster.ray.intersectPlane(dragPlane, intersect);
+      dragOffset.copy(intersect).sub(body.mesh.position);
+      body.isPhysics = true;
+      body.velocity.set(0,0,0);
+      if(flyAnim) cancelFly();
+      e.preventDefault();
+    }
+  }
+});
+canvas.addEventListener('pointermove', (e)=>{
+  mouse.x = (e.clientX/window.innerWidth)*2-1;
+  mouse.y = -(e.clientY/window.innerHeight)*2+1;
+  if(draggedBody){
+    const intersect = new THREE.Vector3();
+    raycaster.setFromCamera(mouse, camera);
+    if(raycaster.ray.intersectPlane(dragPlane, intersect)){
+      const newPos = intersect.clone().sub(dragOffset);
+      // clamp radius to avoid sun center overlap (keep outside sun)
+      const r = Math.sqrt(newPos.x*newPos.x + newPos.z*newPos.z);
+      if(r < SUN_RADIUS + draggedBody.radius + 1){
+        const ang = Math.atan2(newPos.z, newPos.x);
+        const nr = SUN_RADIUS + draggedBody.radius + 1.2;
+        newPos.x = Math.cos(ang)*nr;
+        newPos.z = Math.sin(ang)*nr;
+      }
+      if(!dragDidMove && newPos.distanceTo(dragStartPos)>0.15) dragDidMove = true;
+      draggedBody.mesh.position.copy(newPos);
+      draggedBody.dist = Math.sqrt(newPos.x*newPos.x + newPos.z*newPos.z);
+      draggedBody.angle = Math.atan2(newPos.z, newPos.x);
+      // y stays 0
+      draggedBody.mesh.position.y = 0;
+    }
+  }
+  onMove(e);
+});
+function endDrag(e){
+  if(draggedBody){
+    if(dragDidMove){
+      const r = draggedBody.dist;
+      const vMag = Math.sqrt(MU / Math.max(r, 2));
+      draggedBody.velocity.set(-Math.sin(draggedBody.angle)*vMag, 0, Math.cos(draggedBody.angle)*vMag);
+      // prevent the click fly for this release
+      setTimeout(()=> dragDidMove=false, 250);
+    }
+    draggedBody = null;
+    canvas.classList.remove('dragging');
+    if(!flyAnim) controls.enabled = true;
+  } else {
+    dragDidMove = false;
+  }
+}
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', endDrag);
+canvas.addEventListener('pointerleave', endDrag);
+
+/* ---------- Explosions ---------- */
+const explosions = [];
+function createExplosion(pos, color, intensity){
+  const count = 80 + Math.floor(intensity*60);
+  const geo = new THREE.BufferGeometry();
+  const positions = new Float32Array(count*3);
+  const vels = [];
+  const cols = new Float32Array(count*3);
+  const col = new THREE.Color(color);
+  for(let i=0;i<count;i++){
+    positions[i*3]=pos.x; positions[i*3+1]=pos.y; positions[i*3+2]=pos.z;
+    const dir = new THREE.Vector3((Math.random()-0.5),(Math.random()-0.5),(Math.random()-0.5)).normalize();
+    dir.multiplyScalar(4 + Math.random()*18*intensity);
+    dir.y += (Math.random()-0.5)*4;
+    vels.push(dir);
+    const c = col.clone().multiplyScalar(0.7+Math.random()*0.6);
+    // add yellow/white hot core for subset
+    if(i< count*0.3) c.lerp(new THREE.Color(0xffffff), 0.5);
+    cols[i*3]=c.r; cols[i*3+1]=c.g; cols[i*3+2]=c.b;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(positions,3));
+  geo.setAttribute('color', new THREE.BufferAttribute(cols,3));
+  const mat = new THREE.PointsMaterial({ size: 0.45, vertexColors:true, transparent:true, opacity:1, sizeAttenuation:true, blending:THREE.AdditiveBlending, depthWrite:false });
+  const points = new THREE.Points(geo, mat);
+  scene.add(points);
+  explosions.push({ points, velocities: vels, age:0, maxAge:1.6+intensity*0.7, mat });
+  // flash
+  const flash = new THREE.PointLight(col, 4*intensity, 60);
+  flash.position.copy(pos);
+  scene.add(flash);
+  setTimeout(()=> scene.remove(flash), 300);
+  playCrashSound(intensity);
+}
+
+function updateExplosions(dt){
+  for(let i=explosions.length-1;i>=0;i--){
+    const ex = explosions[i];
+    ex.age += dt;
+    const t = ex.age / ex.maxAge;
+    if(t>=1){
+      scene.remove(ex.points);
+      explosions.splice(i,1);
+      continue;
+    }
+    const pos = ex.points.geometry.attributes.position;
+    for(let j=0;j<ex.velocities.length;j++){
+      ex.velocities[j].y -= 1.2*dt; // slight gravity down
+      pos.array[j*3] += ex.velocities[j].x * dt;
+      pos.array[j*3+1] += ex.velocities[j].y * dt;
+      pos.array[j*3+2] += ex.velocities[j].z * dt;
+      ex.velocities[j].multiplyScalar(0.995);
+    }
+    pos.needsUpdate = true;
+    ex.mat.opacity = 1 - t;
+    ex.mat.size = 0.45 * (1 + t*0.6);
+  }
+}
+
+function checkCollisions(){
+  // sun collisions
+  for(const b of bodies){
+    if(b.exploded || b.isMoon) continue;
+    const p = b.mesh.position; // for planets, world=local (scene child)
+    const distToSun = Math.sqrt(p.x*p.x + p.y*p.y + p.z*p.z);
+    if(distToSun < SUN_RADIUS + b.radius + 0.2){
+      const wp = p.clone();
+      b.exploded = true; b.mesh.visible = false;
+      createExplosion(wp, b.color, 1.4);
+    }
+  }
+  // planet-planet collisions (only physics or dragged bodies need physics check; check all non-moon)
+  const actives = bodies.filter(b=>!b.isMoon && !b.exploded);
+  for(let i=0;i<actives.length;i++){
+    for(let j=i+1;j<actives.length;j++){
+      const a = actives[i], c = actives[j];
+      if(a.exploded||c.exploded) continue;
+      // both must be physics or one physics for crash? allow any
+      const pa = a.mesh.position, pc = c.mesh.position;
+      const dx = pa.x-pc.x, dy = pa.y-pc.y, dz = pa.z-pc.z;
+      const d = Math.sqrt(dx*dx+dy*dy+dz*dz);
+      const minD = a.radius + c.radius + 0.15;
+      if(d < minD){
+        const mid = pa.clone().add(pc).multiplyScalar(0.5);
+        const intensity = Math.min(1.5, (a.radius + c.radius)/2);
+        a.exploded = true; a.mesh.visible=false;
+        c.exploded = true; c.mesh.visible=false;
+        // merge color
+        const mix = (a.color + c.color)/2; // not accurate, use a.color
+        createExplosion(mid, a.color, intensity);
+        // if high speed, conserve momentum - not needed after explosion
+      }
+    }
   }
 }
 
@@ -494,23 +892,112 @@ function animate(now){
   requestAnimationFrame(animate);
   const dt = Math.min((now-last)/1000, 0.1); last = now;
 
-  // advance simulation
-  simDays += speed*BASE_SPEED*dt;
-  for(const b of bodies){
-    b.angle += (2*Math.PI/b.period) * (speed*BASE_SPEED*dt);
-    if(b.isMoon){
-      // moon orbits Earth (which is at earth.mesh position)
-      b.mesh.position.set(Math.cos(b.angle)*b.dist, 0, Math.sin(b.angle)*b.dist);
-    } else {
-      b.mesh.position.set(Math.cos(b.angle)*b.dist, 0, Math.sin(b.angle)*b.dist);
+  const tSec = now*0.001;
+  // sun rotation
+  sun.rotation.y += dt*0.05;
+  // corona pulse
+  if(coronaMesh) coronaMesh.material.uniforms.time.value = tSec;
+  if(coronaMat2){ coronaMat2.opacity = 0.08 + Math.sin(tSec*0.9)*0.03; }
+  coronaSprites.forEach((s,i)=>{ s.material.opacity = 0.12 + Math.sin(tSec*1.1+i)*0.06; const sc = 40+i*14 + Math.sin(tSec*0.7+i)*3; s.scale.set(sc,sc,1); });
+  glow.scale.set(30+Math.sin(tSec*1.3)*2, 30+Math.sin(tSec*1.3)*2,1);
+
+  // flares update
+  for(let i=flares.length-1;i>=0;i--){
+    const f = flares[i];
+    f.life += dt;
+    f.pos.add(f.vel.clone().multiplyScalar(dt));
+    f.sprite.position.copy(f.pos);
+    const prog = f.life / f.maxLife;
+    f.sprite.material.opacity = 1-prog;
+    f.sprite.scale.set(2+prog*6,2+prog*6,1);
+    f.vel.multiplyScalar(0.992);
+    if(f.life >= f.maxLife){ scene.remove(f.sprite); flares.splice(i,1); }
+  }
+
+  // asteroid belt rotation
+  if(asteroidPoints){
+    const pos = asteroidPoints.geometry.attributes.position;
+    for(let i=0;i<asteroidData.length;i++){
+      const ad = asteroidData[i];
+      ad.angle += ad.speed * speed * BASE_SPEED * dt * 0.6;
+      // also adjust for physics? keep simple
+      pos.array[i*3] = Math.cos(ad.angle)*ad.dist;
+      pos.array[i*3+2] = Math.sin(ad.angle)*ad.dist;
+      // y stays
+    }
+    pos.needsUpdate = true;
+  }
+
+  if(draggedBody){
+    // while dragging, skip physics for that body already handled
+  }
+
+  if(physicsEnabled){
+    // physics update for planets
+    for(const b of bodies){
+      if(b.isMoon){
+        // moons orbit parent locally
+        const dir = b.retro ? -1 : 1;
+        b.angle += dir * (2*Math.PI/b.period) * (speed*BASE_SPEED*dt);
+        b.mesh.position.set(Math.cos(b.angle)*b.dist, 0, Math.sin(b.angle)*b.dist);
+        continue;
+      }
+      if(b.exploded) continue;
+      if(b === draggedBody) continue;
+      if(!b.isPhysics) continue;
+      // gravity towards sun
+      const p = b.mesh.position;
+      const r = Math.sqrt(p.x*p.x + p.z*p.z + p.y*p.y);
+      if(r>0.1){
+        const accelMag = MU / (r*r);
+        const ax = -p.x/r * accelMag;
+        const az = -p.z/r * accelMag;
+        const ay = -p.y/r * accelMag;
+        b.velocity.x += ax * dt;
+        b.velocity.y += ay * dt;
+        b.velocity.z += az * dt;
+      }
+      p.x += b.velocity.x * dt;
+      p.y += b.velocity.y * dt;
+      p.z += b.velocity.z * dt;
+      // keep y ~0 damped
+      b.velocity.y *= 0.98;
+      p.y *= 0.99;
+      // update dist/angle for orbit lines & tooltip
+      b.dist = Math.sqrt(p.x*p.x + p.z*p.z);
+      b.angle = Math.atan2(p.z, p.x);
+    }
+    checkCollisions();
+  } else {
+    // classic Kepler orbits for planets, moons still orbit parents
+    simDays += speed*BASE_SPEED*dt;
+    for(const b of bodies){
+      if(b.exploded) continue;
+      if(b.isMoon){
+        const dir = b.retro ? -1 : 1;
+        b.angle += dir * (2*Math.PI/b.period) * (speed*BASE_SPEED*dt);
+        b.mesh.position.set(Math.cos(b.angle)*b.dist, 0, Math.sin(b.angle)*b.dist);
+      } else {
+        if(b === draggedBody) continue;
+        b.angle += (2*Math.PI/b.period) * (speed*BASE_SPEED*dt);
+        b.mesh.position.set(Math.cos(b.angle)*b.dist, 0, Math.sin(b.angle)*b.dist);
+      }
     }
   }
-  // slow self-rotation
-  sun.rotation.y += dt*0.05;
-  for(const b of bodies) if(!b.isMoon) b.mesh.rotation.y += dt*0.1;
 
-  moveCamera(dt);
-  controls.update();
+  // self rotation
+  for(const b of bodies) if(!b.isMoon && !b.exploded) b.mesh.rotation.y += dt*0.1;
+
+  updateExplosions(dt);
+
+  if(!physicsEnabled){
+    // fly still works in non-physics
+  }
+  updateFly(dt);
+  if(!flyAnim) {
+    moveCamera(dt);
+    controls.update();
+  }
   updateTooltip();
   renderer.render(scene, camera);
 }
