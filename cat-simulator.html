@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Cat Simulator</title>
+<style>
+body { background: #f0e68c; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+canvas { background: #fff7e6; border: 5px solid #8b4513; }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas" width="800" height="600"></canvas>
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let score = 0;
+let cat = { x: 400, y: 300, size: 40, speed: 5 };
+let targets = [];
+let furniture = [];
+
+// Create furniture (couches)
+for (let i = 0; i < 3; i++) {
+furniture.push({
+x: Math.random() * (canvas.width - 50) + 25,
+y: Math.random() * (canvas.height - 50) + 25,
+width: 50,
+height: 50
+});
+}
+
+// Create initial targets
+for (let i = 0; i < 5; i++) {
+targets.push({
+x: Math.random() * canvas.width,
+y: Math.random() * canvas.height,
+size: 15,
+type: Math.random() > 0.5 ? 'string' : 'mouse'
+});
+}
+
+document.addEventListener('keydown', (e) => {
+const key = e.key.toLowerCase();
+if (key === 'arrowleft') cat.x -= cat.speed;
+if (key === 'arrowright') cat.x += cat.speed;
+if (key === 'arrowup') cat.y -= cat.speed;
+if (key === 'arrowdown') cat.y += cat.speed;
+});
+
+function drawCat() {
+ctx.fillStyle = '#8b4513';
+ctx.beginPath();
+ctx.arc(cat.x, cat.y, cat.size, 0, Math.PI*2);
+ctx.fill();
+ctx.fillStyle = '#000';
+ctx.font = ${cat.size}px serif;
+ctx.fillText(':cat:', cat.x - 8, cat.y + 10);
+}
+
+function drawTargets() {
+targets.forEach((t, i) => {
+ctx.fillStyle = t.type === 'string' ? '#ff69b4' : '#228B22';
+ctx.beginPath();
+ctx.arc(t.x, t.y, t.size, 0, Math.PI*2);
+ctx.fill();
+});
+}
+
+function drawFurniture() {
+furniture.forEach(f => {
+ctx.fillStyle = '#8b4513';
+ctx.fillRect(f.x, f.y, f.width, f.height);
+});
+}
+
+function updateTargets() {
+targets.forEach((t, i) => {
+// Simple movement pattern
+t.x += (Math.random() - 0.5) * 2;
+t.y += (Math.random() - 0.5) * 2;
+
+// Check collision with cat
+if (Math.hypot(cat.x - t.x, cat.y - t.y) < cat.size + t.size) {
+score += 10;
+targets.splice(i, 1);
+// Add new target
+targets.push({
+x: Math.random() * canvas.width,
+y: Math.random() * canvas.height,
+size: 15,
+type: Math.random() > 0.5 ? 'string' : 'mouse'
+});
+}
+});
+}
+
+function checkScratch() {
+furniture.forEach(f => {
+if (Math.hypot(cat.x - f.x, cat.y - f.y) < cat.size + 25) {
+score += 5;
+// Create new furniture at same position
+furniture.push({
+x: f.x,
+y: f.y,
+width: 50,
+height: 50
+});
+}
+});
+}
+
+function gameLoop() {
+ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+// Draw game elements
+drawCat();
+drawTargets();
+drawFurniture();
+
+// Update game state
+updateTargets();
+checkScratch();
+
+// Draw score
+ctx.fillStyle =...[3:17 PM]@David:  '#000';
+ctx.font = '20px serif';
+ctx.fillText(Score: ${score}, 10, 30);
+
+requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+</body>
+</html>

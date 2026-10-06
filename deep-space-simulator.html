@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deep Space — a tiny universe simulator</title>
+<style>
+  html, body { margin:0; padding:0; height:100%; background:#02030a; overflow:hidden;
+    font-family:'SF Mono', ui-monospace, Menlo, Consolas, monospace; color:#cfe6ff; }
+  #game { position:fixed; inset:0; display:block; }
+  .panel { position:fixed; background:rgba(6,12,28,.55); border:1px solid rgba(120,180,255,.25);
+    border-radius:10px; padding:10px 14px; backdrop-filter:blur(6px); font-size:12px;
+    line-height:1.6; user-select:none; }
+  #hud { top:16px; left:16px; min-width:230px; }
+  #hud .lbl { color:#7fa8d8; }
+  #hud .big { color:#8fd0ff; }
+  #title { top:16px; left:50%; transform:translateX(-50%); text-align:center; opacity:.75;
+    letter-spacing:.35em; font-size:11px; padding:8px 18px; }
+  #shieldbox { top:16px; right:16px; width:220px; }
+  .bar { height:8px; border-radius:4px; background:rgba(255,255,255,.08); overflow:hidden; margin-top:4px; }
+  .bar > div { height:100%; border-radius:4px; }
+  #shieldfill { background:linear-gradient(90deg,#39d98a,#8ff0c0); width:100%; }
+  #warpbox { bottom:16px; left:16px; width:220px; }
+  #warpfill { background:linear-gradient(90deg,#7b5cff,#b39bff); width:0%; }
+  #minimap { position:fixed; bottom:16px; right:16px; border:1px solid rgba(120,180,255,.25);
+    border-radius:10px; background:rgba(6,12,28,.6); }
+  #help { bottom:16px; left:50%; transform:translateX(-50%); opacity:.8; font-size:11px; white-space:nowrap; }
+  kbd { background:rgba(255,255,255,.12); border-radius:4px; padding:1px 6px; border:1px solid rgba(255,255,255,.2); }
+  #dead { position:fixed; inset:0; display:none; align-items:center; justify-content:center;
+    flex-direction:column; background:rgba(24,0,10,.6); font-size:14px; text-align:center;
+    backdrop-filter:blur(3px); }
+  #dead h1 { color:#ff7b8a; font-size:34px; margin:0 0 10px; letter-spacing:.2em; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div class="panel" id="title">DEEP SPACE</div>
+
+<div class="panel" id="hud">
+  <div><span class="lbl">VELOCITY</span> <span class="big" id="hSpeed">0</span> <span class="lbl">u/s</span></div>
+  <div><span class="lbl">POSITION</span> <span id="hPos">0.0k , 0.0k</span></div>
+  <div><span class="lbl">NEAREST</span> <span id="hNear">—</span></div>
+  <div><span class="lbl">DISCOVERED</span> <span id="hFound">0 planets</span></div>
+</div>
+
+<div class="panel" id="shieldbox">SHIELD<div class="bar"><div id="shieldfill"></div></div></div>
+<div class="panel" id="warpbox">WARP DRIVE<div class="bar"><div id="warpfill"></div></div></div>
+<canvas id="minimap" width="180" height="180"></canvas>
+<div class="panel" id="help"><kbd>W</kbd> thrust&nbsp; <kbd>S</kbd> brake&nbsp; <kbd>A</kbd><kbd>D</kbd> turn&nbsp; <kbd>Shift</kbd> warp&nbsp; <kbd>M</kbd> mute&nbsp; <kbd>R</kbd> respawn</div>
+
+<div id="dead"><h1>SHIP DESTROYED</h1><div>The void reclaims another dreamer.<br><br>Press <kbd>R</kbd> to respawn</div></div>
+
+<script>
+"use strict";
+const TAU = Math.PI * 2;
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp = (a, b, t) => a + (b - a) * t;
+const mod = (v, m) => ((v % m) + m) % m;
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function hash2(x, y, s) {
+  let h = (s | 0) ^ Math.imul(x | 0, 0x27d4eb3d) ^ Math.imul(y | 0, 0x165667b1);
+  h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
+  h ^= h >>> 13;
+  return (h ^ (h >>> 15)) >>> 0;
+}
+function hexA(hex, a) {
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+// ---------------- canvas ----------------
+const cv = document.getElementById('game');
+const ctx = cv.getContext('2d');
+const mm = document.getElementById('minimap');
+const mmc = mm.getContext('2d');
+let W = 0, H = 0, DPR = Math.min(2, window.devicePixelRatio || 1);
+function resize() {
+  W = innerWidth; H = innerHeight;
+  cv.width = W * DPR; cv.height = H * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+addEventListener('resize', resize);
+resize();
+
+// ---------------- starfield (3 parallax layers, screen-space wrap) ----------------
+const starLayers = [
+  { n: 170, f: 0.15, s: 0.9, stars: [] },
+  { n: 110, f: 0.4,  s: 1.4, stars: [] },
+  { n: 70,  f: 0.8,  s: 2.1, stars: [] },
+];
+{
+  const rnd = mulberry32(20261005);
+  for (const L of starLayers) {
+    for (let i = 0; i < L.n; i++)
+      L.stars.push({ x: rnd(), y: rnd(), b: 0.3 + rnd() * 0.7, tw: rnd() * TAU });
+  }
+}
+
+// ---------------- deterministic world (grid cells) ----------------
+const CELL = 2600;
+const planetPalettes = [
+  ['#ff9a5a', '#7a2d12'], ['#6ec3ff', '#123a6b'], ['#c8ff8f', '#3f6b1e'],
+  ['#ff6ea8', '#6b1240'], ['#b39bff', '#33206b'], ['#ffe08a', '#8a5a12'],
+  ['#8affd4', '#126b55'], ['#ff8a5a', '#6b2412'], ['#a0a6b8', '#3a3f52'],
+];
+const syl = ["Vo","Ke","Ta","Za","Mo","Il","Xa","Qu","Ny","Be","Co","Dr","Es","Fi","Ga","He","Ir","Ju","Ly","My","No","Op","Py","Ra","Se","Th","Um","Ve","We","Yd","Ze","An","Ax","Br","Cy","Da","El","Go","Hi"];
+const suf = ["", " Prime", " IV", " II", " III", " Minor", " Major", " b", " Prime", " IX", " VI", " Minor"];
+function makeName(rnd) {
+  const n = 1 + (rnd() * 2 | 0);
+  let s = "";
+  for (let i = 0; i < n; i++) s += syl[rnd() * syl.length | 0];
+  return s + suf[rnd() * suf.length | 0];
+}
+
+const cellCache = new Map();
+function getCell(cx, cy) {
+  const key = cx + "," + cy;
+  let c = cellCache.get(key);
+  if (c) return c;
+  const rnd = mulberry32(hash2(cx, cy, 0x9e3779b9));
+  c = { cx, cy, planets: [], rocks: [], nebula: null };
+
+  // nebula in ~45% of cells
+  if (rnd() < 0.45) {
+    const h1 = rnd() * 360;
+    c.nebula = {
+      x: cx * CELL + (0.15 + 0.7 * rnd()) * CELL,
+      y: cy * CELL + (0.15 + 0.7 * rnd()) * CELL,
+      r: (0.5 + rnd() * 0.6) * CELL * 1.4,
+      hue: h1, hue2: (h1 + 60 + rnd() * 140) % 360,
+      a: 0.05 + rnd() * 0.07,
+    };
+  }
+  // 0-2 planets per cell
+  const np = rnd() < 0.5 ? 1 : (rnd() < 0.7 ? 2 : 0);
+  for (let i = 0; i < np; i++) {
+    const r = 50 + rnd() * rnd() * 150;
+    c.planets.push({
+      x: cx * CELL + (0.1 + 0.8 * rnd()) * CELL,
+      y: cy * CELL + (0.1 + 0.8 * rnd()) * CELL,
+      r,
+      pal: planetPalettes[(rnd() * planetPalettes.length) | 0],
+      ring: rnd() < 0.3, ringTilt: rnd() * TAU, ringK: 1.6 + rnd() * 0.9,
+      bands: 2 + (rnd() * 3 | 0),
+      name: makeName(rnd),
+      discovered: false,
+    });
+  }
+  // asteroid field in ~30% of cells
+  if (rnd() < 0.32) {
+    const ax = cx * CELL + (0.2 + 0.6 * rnd()) * CELL;
+    const ay = cy * CELL + (0.2 + 0.6 * rnd()) * CELL;
+    const ar = 250 + rnd() * 700;
+    const n = 24 + (rnd() * 40 | 0);
+    for (let i = 0; i < n; i++) {
+      const a = rnd() * TAU, d = Math.sqrt(rnd()) * ar;
+      c.rocks.push({
+        x: ax + Math.cos(a) * d,
+        y: ay + Math.sin(a) * d * 0.7,
+        r: 2 + rnd() * rnd() * 9,
+        rot: rnd() * TAU, rs: (rnd() - 0.5) * 1.2,
+        lastHit: -99,
+      });
+    }
+  }
+  cellCache.set(key, c);
+  if (cellCache.size > 400) cellCache.delete(cellCache.keys().next().value);
+  return c;
+}
+function cellsIn(minX, minY, maxX, maxY) {
+  const out = [];
+  const x0 = Math.floor(minX / CELL), x1 = Math.floor(maxX / CELL);
+  const y0 = Math.floor(minY / CELL), y1 = Math.floor(maxY / CELL);
+  for (let cx = x0; cx <= x1; cx++)
+    for (let cy = y0; cy <= y1; cy++)
+      out.push(getCell(cx, cy));
+  return out;
+}
+
+// ---------------- ship / camera / state ----------------
+const ship = { x: 0, y: 0, vx: 0, vy: 0, a: -Math.PI / 2, shield: 100, dead: false, lastHit: -99 };
+const cam = { x: 0, y: 0 };
+let zoom = 1, warp = 0, discoveredCount = 0, nearest = null, nearestD = 1e9;
+const keys = {};
+let muted = false;
+
+addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'KeyM') muted = !muted;
+  if (e.code === 'KeyR') respawn();
+  if (e.code.startsWith('Arrow')) e.preventDefault();
+  initAudio();
+});
+addEventListener('keyup', e => keys[e.code] = false);
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+addEventListener('pointerdown', initAudio);
+
+function respawn() {
+  ship.shield = 100; ship.dead = false;
+  ship.vx = 0; ship.vy = 0; warp = 0;
+  document.getElementById('dead').style.display = 'none';
+}
+
+// ---------------- audio (WebAudio, created on first gesture) ----------------
+let AC = null, master = null, engineGain = null, engineOsc = null, engineOsc2 = null, warpGain = null, warpBP = null;
+function initAudio() {
+  if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
+  const Ctor = window.AudioContext || window.webkitAudioContext;
+  if (!Ctor) return;
+  try { AC = new Ctor(); } catch (e) { return; }
+  master = AC.createGain(); master.gain.value = 0.5; master.connect(AC.destination);
+
+  engineGain = AC.createGain(); engineGain.gain.value = 0; engineGain.connect(master);
+  const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 260; lp.connect(engineGain);
+  engineOsc = AC.createOscillator(); engineOsc.type = 'sawtooth'; engineOsc.frequency.value = 52; engineOsc.connect(lp); engineOsc.start();
+  engineOsc2 = AC.createOscillator(); engineOsc2.type = 'square'; engineOsc2.frequency.value = 26.5;
+  const g2 = AC.createGain(); g2.gain.value = 0.5; engineOsc2.connect(g2); g2.connect(lp); engineOsc2.start();
+
+  const len = (AC.sampleRate * 1.2) | 0;
+  const buf = AC.createBuffer(1, len, AC.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  const src = AC.createBufferSource(); src.buffer = buf; src.loop = true;
+  warpBP = AC.createBiquadFilter(); warpBP.type = 'bandpass'; warpBP.frequency.value = 700; warpBP.Q.value = 0.7;
+  warpGain = AC.createGain(); warpGain.gain.value = 0;
+  src.connect(warpBP); warpBP.connect(warpGain); warpGain.connect(master); src.start();
+}
+function sfx(freq, dur, type, vol, slide) {
+  if (!AC || muted) return;
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = type || 'square';
+  o.frequency.setValueAtTime(freq, AC.currentTime);
+  if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), AC.currentTime + dur);
+  g.gain.setValueAtTime(vol, AC.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, AC.currentTime + dur);
+  o.connect(g); g.connect(master);
+  o.start(); o.stop(AC.currentTime + dur);
+}
+function audioUpdate(thr) {
+  if (!AC) return;
+  const now = AC.currentTime;
+  engineGain.gain.setTargetAtTime(muted ? 0 : 0.1 + thr * 0.22 + warp * 0.18, now, 0.06);
+  engineOsc.frequency.setTargetAtTime(48 + thr * 30 + warp * 70, now, 0.1);
+  warpGain.gain.setTargetAtTime(muted ? 0 : warp * 0.4, now, 0.08);
+  warpBP.frequency.setTargetAtTime(500 + warp * 2200, now, 0.1);
+}
+
+// ---------------- update ----------------
+function update(dt, t, cells) {
+  // warp
+  const wantWarp = keys['ShiftLeft'] || keys['ShiftRight'];
+  warp = clamp(warp + (wantWarp ? dt / 1.2 : -dt / 0.7), 0, 1);
+
+  // rotation (warp makes the ship rigid)
+  const turn = 2.6 * (1 - warp * 0.5);
+  if (keys['KeyA'] || keys['ArrowLeft']) ship.a -= turn * dt;
+  if (keys['KeyD'] || keys['ArrowRight']) ship.a += turn * dt;
+
+  // thrust
+  const thr = keys['KeyW'] || keys['ArrowUp'];
+  const brk = keys['KeyS'] || keys['ArrowDown'];
+  const acc = 220 * (1 + warp * 3);
+  if (thr) { ship.vx += Math.cos(ship.a) * acc * dt; ship.vy += Math.sin(ship.a) * acc * dt; }
+  if (brk) { ship.vx -= Math.cos(ship.a) * acc * 0.6 * dt; ship.vy -= Math.sin(ship.a) * acc * 0.6 * dt; }
+
+  // friction + speed cap
+  const fr = Math.exp(-dt / (1.2 + warp * 6));
+  ship.vx *= fr; ship.vy *= fr;
+  const maxV = 260 * (1 + warp * 9);
+  const sp = Math.hypot(ship.vx, ship.vy);
+  if (sp > maxV) { ship.vx *= maxV / sp; ship.vy *= maxV / sp; }
+  ship.x += ship.vx * dt;
+  ship.y += ship.vy * dt;
+
+  // camera + zoom
+  const k = 1 - Math.exp(-dt * 5);
+  cam.x = lerp(cam.x, ship.x, k);
+  cam.y = lerp(cam.y, ship.y, k);
+  zoom = lerp(zoom, 1 + warp * 0.35, 1 - Math.exp(-dt * 2));
+
+  // shield regen
+  if (t - ship.lastHit > 4 && ship.shield < 100) ship.shield = Math.min(100, ship.shield + 6 * dt);
+
+  // collisions + discovery
+  nearest = null; nearestD = 1e9;
+  for (const c of cells) {
+    for (const p of c.planets) {
+      const dx = ship.x - p.x, dy = ship.y - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d < nearestD) { nearestD = d; nearest = p; }
+      if (d < p.r + 14) {
+        const nx = dx / (d || 1), ny = dy / (d || 1);
+        ship.x = p.x + nx * (p.r + 14);
+        ship.y = p.y + ny * (p.r + 14);
+        const dot = ship.vx * nx + ship.vy * ny;
+        if (dot < 0) { ship.vx -= 1.6 * dot * nx; ship.vy -= 1.6 * dot * ny; }
+        hit(25, t);
+      } else if (d < p.r * 1.8 && !p.discovered) {
+        p.discovered = true;
+        discoveredCount++;
+        sfx(660, 0.12, 'sine', 0.3);
+        setTimeout(() => sfx(990, 0.18, 'sine', 0.3), 110);
+      }
+    }
+    for (const r of c.rocks) {
+      const dx = ship.x - r.x, dy = ship.y - r.y;
+      const d = Math.hypot(dx, dy);
+      if (d < r.r + 12 && t - r.lastHit > 0.3) {
+        r.lastHit = t;
+        const nx = dx / (d || 1), ny = dy / (d || 1);
+        ship.vx += nx * 120;
+        ship.vy += ny * 120;
+        hit(6, t);
+      }
+    }
+  }
+
+  audioUpdate((thr ? 1 : 0) + (brk ? 0.5 : 0));
+}
+function hit(dmg, t) {
+  if (ship.dead) return;
+  if (t - ship.lastHit < 0.15) return;
+  ship.lastHit = t;
+  ship.shield -= dmg;
+  sfx(110, 0.2, 'square', 0.45, -60);
+  if (ship.shield <= 0) {
+    ship.shield = 0;
+    ship.dead = true;
+    sfx(70, 0.8, 'sawtooth', 0.5, -40);
+    document.getElementById('dead').style.display = 'flex';
+  }
+}
+
+// ---------------- render ----------------
+function render(t, cells) {
+  ctx.fillStyle = '#020308';
+  ctx.fillRect(0, 0, W, H);
+
+  // stars (screen-space parallax wrap)
+  for (const L of starLayers) {
+    for (const s of L.stars) {
+      const px = mod(s.x * W - cam.x * L.f, W);
+      const py = mod(s.y * H - cam.y * L.f, H);
+      const tw = 0.6 + 0.4 * Math.sin(t * 2 + s.tw);
+      ctx.globalAlpha = s.b * tw * (1 - warp * 0.25);
+      ctx.fillStyle = '#cfe4ff';
+      ctx.fillRect(px, py, L.s * (1 + warp * 0.5), L.s);
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  // world space
+  ctx.save();
+  ctx.translate(W / 2, H / 2);
+  ctx.scale(zoom, zoom);
+  ctx.translate(-cam.x, -cam.y);
+
+  const hw = W / 2 / zoom + 400, hh = H / 2 / zoom + 400;
+
+  // nebulae
+  ctx.globalCompositeOperation = 'lighter';
+  for (const c of cells) {
+    const n = c.nebula;
+    if (!n) continue;
+    if (Math.abs(n.x - cam.x) > n.r + hw) continue;
+    if (Math.abs(n.y - cam.y) > n.r + hh) continue;
+    const g = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.r);
+    g.addColorStop(0, `hsla(${n.hue},80%,60%,${n.a})`);
+    g.addColorStop(0.5, `hsla(${n.hue2},80%,45%,${n.a * 0.6})`);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, TAU); ctx.fill();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+
+  // asteroids
+  for (const c of cells) {
+    for (const r of c.rocks) {
+      if (Math.abs(r.x - cam.x) > hw || Math.abs(r.y - cam.y) > hh) continue;
+      ctx.save();
+      ctx.translate(r.x, r.y);
+      ctx.rotate(r.rot + t * r.rs);
+      ctx.fillStyle = '#8a8fa3';
+      ctx.beginPath();
+      ctx.moveTo(r.r, 0); ctx.lineTo(0, r.r * 0.8); ctx.lineTo(-r.r, 0); ctx.lineTo(0, -r.r * 0.8);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // planets
+  ctx.font = '11px ui-monospace, monospace';
+  ctx.textAlign = 'center';
+  for (const c of cells) {
+    for (const p of c.planets) {
+      const dx = p.x - cam.x, dy = p.y - cam.y;
+      if (Math.abs(dx) > hw + p.r + 400 || Math.abs(dy) > hh + p.r + 400) continue;
+      const d = Math.hypot(dx, dy);
+
+      const ringHalf = (a0, a1) => {
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.ringTilt);
+        ctx.scale(1, 0.32);
+        ctx.strokeStyle = hexA('#cdd8ff', 0.45);
+        ctx.lineWidth = p.r * 0.28;
+        ctx.beginPath(); ctx.arc(0, 0, p.r * p.ringK, a0, a1); ctx.stroke();
+        ctx.restore();
+      };
+      if (p.ring) ringHalf(Math.PI, TAU); // far side
+
+      // atmosphere glow
+      const glow = ctx.createRadialGradient(p.x, p.y, p.r * 0.9, p.x, p.y, p.r * 1.5);
+      glow.addColorStop(0, hexA(p.pal[0], 0.3));
+      glow.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 1.5, 0, TAU); ctx.fill();
+
+      // body
+      const g = ctx.createRadialGradient(p.x - p.r * 0.35, p.y - p.r * 0.35, p.r * 0.1, p.x, p.y, p.r);
+      g.addColorStop(0, p.pal[0]);
+      g.addColorStop(1, p.pal[1]);
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU); ctx.fill();
+
+      // bands
+      if (p.r > 60) {
+        ctx.save();
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU); ctx.clip();
+        for (let i = 0; i < p.bands; i++) {
+          const by = -p.r + (i + 0.5) * (2 * p.r / (p.bands + 1));
+          ctx.fillStyle = `rgba(0,0,0,${0.1 + 0.05 * (i % 2)})`;
+          ctx.fillRect(p.x - p.r, p.y + by - p.r * 0.08, p.r * 2, p.r * 0.16);
+        }
+        ctx.restore();
+      }
+      if (p.ring) ringHalf(0, Math.PI); // near side
+
+      // label when close
+      if (d < 2600 / zoom) {
+        ctx.fillStyle = p.discovered ? 'rgba(190,230,255,.9)' : 'rgba(190,230,255,.55)';
+        ctx.fillText(p.name, p.x, p.y - p.r - 14);
+        ctx.fillStyle = 'rgba(150,190,230,.5)';
+        ctx.fillText((d / 1000).toFixed(1) + 'k u', p.x, p.y - p.r - 3);
+      }
+    }
+  }
+
+  // ship
+  if (!ship.dead) {
+    ctx.save();
+    ctx.translate(ship.x, ship.y);
+    ctx.rotate(ship.a + Math.PI / 2);
+
+    const thr = keys['KeyW'] || keys['ArrowUp'];
+    if (thr) {
+      const fl = 10 + Math.sin(t * 40) * 3 + warp * 8;
+      ctx.fillStyle = 'rgba(255,150,50,.9)';
+      ctx.beginPath();
+      ctx.moveTo(-5, 10); ctx.lineTo(0, 10 + fl); ctx.lineTo(5, 10);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = 'rgba(255,220,120,.9)';
+      ctx.beginPath();
+      ctx.moveTo(-2.5, 10); ctx.lineTo(0, 10 + fl * 0.55); ctx.lineTo(2.5, 10);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.fillStyle = '#dfe8ff';
+    ctx.beginPath();
+    ctx.moveTo(0, -16); ctx.lineTo(10, 10); ctx.lineTo(0, 5); ctx.lineTo(-10, 10);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#3b6ea8';
+    ctx.beginPath();
+    ctx.arc(0, -2, 3.4, 0, TAU); ctx.fill();
+    ctx.restore();
+
+    // shield bubble flash
+    const sh = 1 - (t - ship.lastHit) / 0.5;
+    if (sh > 0) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = hexA('#6ec3ff', sh * 0.8);
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(ship.x, ship.y, 20, 0, TAU); ctx.stroke();
+      ctx.globalCompositeOperation = 'source-over';
+    }
+  }
+  ctx.restore();
+
+  // warp streaks (screen space)
+  if (warp > 0.03) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const cx = W / 2, cy = H / 2, R = Math.hypot(W, H);
+    const n = 20 + (warp * 70 | 0);
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * TAU;
+      const r0 = Math.pow(Math.random(), 1.6) * R * 0.7 + R * 0.05;
+      const len = (60 + r0 * 0.9) * warp;
+      ctx.strokeStyle = `rgba(${(170 + warp * 60) | 0},${(190 + warp * 40) | 0},255,${0.1 + warp * 0.35})`;
+      ctx.lineWidth = 1 + Math.random() * 1.5;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0);
+      ctx.lineTo(cx + Math.cos(a) * (r0 + len), cy + Math.sin(a) * (r0 + len));
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+// ---------------- minimap ----------------
+function drawMinimap() {
+  const S = 180, C = S / 2, range = 9000, sc = C / range;
+  mmc.clearRect(0, 0, S, S);
+  const mmx = wx => (wx - ship.x) * sc + C;
+  const mmy = wy => (wy - ship.y) * sc + C;
+
+  const cells = cellsIn(ship.x - range, ship.y - range, ship.x + range, ship.y + range);
+  for (const c of cells) {
+    for (const p of c.planets) {
+      const x = mmx(p.x), y = mmy(p.y);
+      if (x < 2 || x > S - 2 || y < 2 || y > S - 2) continue;
+      mmc.fillStyle = p.discovered ? p.pal[0] : hexA(p.pal[0], 0.5);
+      const r = Math.max(1.6, p.r * sc);
+      mmc.beginPath(); mmc.arc(x, y, r, 0, TAU); mmc.fill();
+    }
+    for (const r of c.rocks) {
+      const x = mmx(r.x), y = mmy(r.y);
+      if (x < 1 || x > S - 1 || y < 1 || y > S - 1) continue;
+      mmc.fillStyle = 'rgba(150,155,180,.45)';
+      mmc.fillRect(x, y, 1.3, 1.3);
+    }
+  }
+  // range ring
+  mmc.strokeStyle = 'rgba(120,180,255,.2)';
+  mmc.beginPath(); mmc.arc(C, C, C - 3, 0, TAU); mmc.stroke();
+  // ship
+  mmc.save();
+  mmc.translate(C, C);
+  mmc.rotate(ship.a + Math.PI / 2);
+  mmc.fillStyle = '#ffffff';
+  mmc.beginPath();
+  mmc.moveTo(0, -5); mmc.lineTo(3.5, 4); mmc.lineTo(0, 2); mmc.lineTo(-3.5, 4);
+  mmc.closePath(); mmc.fill();
+  mmc.restore();
+}
+
+// ---------------- HUD ----------------
+const hSpeed = document.getElementById('hSpeed');
+const hPos = document.getElementById('hPos');
+const hNear = document.getElementById('hNear');
+const hFound = document.getElementById('hFound');
+const shieldfill = document.getElementById('shieldfill');
+const warpfill = document.getElementById('warpfill');
+let lastHud = 0;
+function updateHUD(now) {
+  shieldfill.style.width = ship.shield + '%';
+  shieldfill.style.background = ship.shield < 30
+    ? 'linear-gradient(90deg,#ff5a5a,#ff9d9d)'
+    : 'linear-gradient(90deg,#39d98a,#8ff0c0)';
+  warpfill.style.width = (warp * 100).toFixed(0) + '%';
+  if (now - lastHud < 120) return;
+  lastHud = now;
+  const sp = Math.hypot(ship.vx, ship.vy);
+  hSpeed.textContent = sp.toFixed(0) + (warp > 0.05 ? '  ×' + (1 + warp * 9).toFixed(1) + ' warp' : '');
+  hPos.textContent = (ship.x / 1000).toFixed(1) + 'k , ' + (ship.y / 1000).toFixed(1) + 'k';
+  hNear.textContent = nearest ? nearest.name + ' — ' + (nearestD / 1000).toFixed(1) + 'k' : '—';
+  hFound.textContent = discoveredCount + ' planets';
+}
+
+// ---------------- main loop ----------------
+let last = performance.now();
+function frame(now) {
+  const t = now / 1000;
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  if (!ship.dead) {
+    const hw = W / 2 / zoom, hh = H / 2 / zoom;
+    const cells = cellsIn(cam.x - hw - 2600, cam.y - hh - 2600, cam.x + hw + 2600, cam.y + hh + 2600);
+    update(dt, t, cells);
+    render(t, cells);
+  } else {
+    render(t, []);
+  }
+  drawMinimap();
+  updateHUD(now);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
