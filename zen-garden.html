@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Zen Garden &mdash; a breathing room</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #070b16; }
+  #garden { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; touch-action: none; }
+  #hint { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
+    font-family: Georgia, "Times New Roman", serif; font-size: 13px; letter-spacing: 0.12em;
+    color: rgba(226,232,248,0.66); pointer-events: none; z-index: 5;
+    transition: opacity 2.5s ease; text-shadow: 0 1px 8px rgba(0,0,0,0.6); white-space: nowrap; }
+  #soundBtn { position: fixed; top: 14px; right: 14px; z-index: 6; cursor: pointer;
+    font-family: Georgia, serif; font-size: 13px; letter-spacing: 0.1em;
+    color: rgba(230,235,250,0.85); background: rgba(20,26,44,0.45);
+    border: 1px solid rgba(230,235,250,0.25); border-radius: 999px; padding: 6px 14px; }
+  #soundBtn:hover { background: rgba(40,50,80,0.55); }
+  #veil { position: fixed; inset: 0; z-index: 10; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: rgba(7,11,22,0.55); transition: opacity 1.4s ease; }
+  #veil.hidden { opacity: 0; pointer-events: none; }
+  #veil h1 { font-family: Georgia, serif; font-weight: 400; font-size: 64px; margin: 0;
+    color: #e8ecf8; letter-spacing: 0.5em; text-indent: 0.5em; }
+  #veil p.sub { font-family: Georgia, serif; letter-spacing: 0.4em; text-indent: 0.4em;
+    color: rgba(220,228,248,0.7); margin-top: 10px; font-size: 15px; text-transform: lowercase; }
+  #veil p.note { margin-top: 26px; font-family: Georgia, serif; letter-spacing: 0.08em;
+    color: rgba(220,228,248,0.45); font-size: 12px; }
+  #veil p.tap { margin-top: 34px; font-family: Georgia, serif; letter-spacing: 0.25em;
+    color: rgba(220,228,248,0.55); font-size: 13px; animation: breathe 3.2s ease-in-out infinite; }
+  @keyframes breathe { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.9; } }
+</style>
+</head>
+<body>
+<canvas id="garden"></canvas>
+<div id="hint">drag the sand to rake &nbsp;&middot;&nbsp; touch the water for ripples &nbsp;&middot;&nbsp; click the lantern to ring the bell &nbsp;&middot;&nbsp; [M] mute</div>
+<button id="soundBtn" type="button">&#9835; sound on</button>
+<div id="veil">
+  <h1>&#x5192;&#x9662;</h1>
+  <p class="sub">zen garden</p>
+  <p class="note">all sound is synthesized live &mdash; no samples, no recordings</p>
+  <p class="tap">tap to step in</p>
+</div>
+<script>
+// zen-core.mjs
+// Pure simulation logic for the zen garden.
+// Deliberately free of DOM / browser APIs, so the very same file can run
+// under deno (headless tests) and be inlined into the HTML build.
+
+const TAU = Math.PI * 2;
+
+function clamp(v, lo, hi) {
+  return v < lo ? lo : (v > hi ? hi : v);
+}
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+// Deterministic LCG so tests (and anyone who asks) get a reproducible garden.
+function makeRng(seed) {
+  var s = (seed >>> 0) || 1;
+  return function rng() {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+
+function randRange(rng, lo, hi) {
+  return lo + (hi - lo) * rng();
+}
+function pickOne(rng, arr) {
+  return arr[Math.floor(rng() * arr.length) % arr.length];
+}
+
+// A major-pentatonic draw - every result sounds pleasant.
+var PENTATONIC_SEMIS = [0, 2, 4, 7, 9];
+function chimeNote(rng, baseHz) {
+  rng = rng || Math.random;
+  var oct = rng() < 0.25 ? 1 : 0;
+  var semi = PENTATONIC_SEMIS[Math.floor(rng() * PENTATONIC_SEMIS.length)] + 12 * oct;
+  return (baseHz || 523.25) * Math.pow(2, semi / 12);
+}
+
+var TRAIL_LIFE = 16; // seconds a rake groove stays visible before re-raking
+
+// ---------------------------------------------------------------- koi ----
+class Koi {
+  constructor(rng, pond) {
+    this.pond = pond;
+    var a = randRange(rng, 0, TAU);
+    var r = Math.sqrt(rng());
+    this.x = pond.cx + Math.cos(a) * pond.rx * r * 0.8;
+    this.y = pond.cy + Math.sin(a) * pond.ry * r * 0.8;
+    this.vx = randRange(rng, -0.02, 0.02);
+    this.vy = randRange(rng, -0.02, 0.02);
+    this.size = randRange(rng, 0.016, 0.030);
+    this.phase = randRange(rng, 0, TAU);
+    this.wanderTheta = randRange(rng, 0, TAU);
+    this.speed0 = randRange(rng, 0.015, 0.035);
+    this.head = 0;
+    this.hue = pickOne(rng, [16, 32, 46, 210]); // orange / cream / gold / blue
+    this.light = randRange(rng, 52, 70);
+  }
+
+  step(dt, world) {
+    var rng = world.rng;
+    // slow random-walk steering
+    this.wanderTheta += randRange(rng, -1.6, 1.6) * dt;
+    var desiredX = Math.cos(this.wanderTheta) * this.speed0;
+    var desiredY = Math.sin(this.wanderTheta) * this.speed0 * 0.6;
+
+    // startled by young ripples (they dart away)
+    for (var i = 0; i < world.ripples.length; i++) {
+      var rip = world.ripples[i];
+      if (rip.age > 1.2) continue;
+      var dx = this.x - rip.x, dy = this.y - rip.y;
+      var rr = rip.maxR + 0.03;
+      var d2 = dx * dx + dy * dy;
+      if (d2 < rr * rr && d2 > 1e-8) {
+        var d = Math.sqrt(d2);
+        var strength = (1 - rip.age / 1.2) * (1 - d / rr);
+        if (strength > 0) {
+          var accel = strength * 0.55 * dt;
+          this.vx += (dx / d) * accel;
+          this.vy += (dy / d) * accel;
+        }
+      }
+    }
+
+    // stay inside the pond (unit-ellipse metric)
+    var p = this.pond;
+    var ex = (this.x - p.cx) / p.rx;
+    var ey = (this.y - p.cy) / p.ry;
+    if (ex * ex + ey * ey > 0.82) {
+      this.vx += (-ex * 0.45 - this.vx) * dt * 3;
+      this.vy += (-ey * 0.45 - this.vy) * dt * 3;
+    }
+    // relax toward cruising speed
+    this.vx += (desiredX - this.vx) * dt * 0.8;
+    this.vy += (desiredY - this.vy) * dt * 0.8;
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+    // hard backstop
+    ex = (this.x - p.cx) / p.rx;
+    ey = (this.y - p.cy) / p.ry;
+    var e2 = ex * ex + ey * ey;
+    if (e2 > 1) {
+      var k = 1 / Math.sqrt(e2);
+      this.x = p.cx + ex * p.rx * k;
+      this.y = p.cy + ey * p.ry * k;
+    }
+    // smooth heading
+    var target = Math.atan2(this.vy, this.vx);
+    var diff = target - this.head;
+    while (diff > Math.PI) diff -= TAU;
+    while (diff < -Math.PI) diff += TAU;
+    this.head += diff * Math.min(1, dt * 5);
+  }
+}
+
+// --------------------------------------------------------------- world ----
+class ZenWorld {
+  constructor(opts) {
+    opts = opts || {};
+    this.rng = opts.rng || Math.random;
+    this.pond = { cx: 0.5, cy: 0.70, rx: 0.30, ry: 0.15 };
+    this.horizonY = 0.42;
+    this.koi = [];
+    this.ripples = [];
+    this.petals = [];
+    this.mist = [];
+    this.trails = [];
+    this.activeTrail = null;
+    this.time = 0;
+    var i;
+    var nKoi = opts.koi != null ? opts.koi : 7;
+    for (i = 0; i < nKoi; i++) this.koi.push(new Koi(this.rng, this.pond));
+    var nPetals = opts.petals != null ? opts.petals : 34;
+    for (i = 0; i < nPetals; i++) this.petals.push(this._newPetal(true));
+    var nMist = opts.mist != null ? opts.mist : 5;
+    for (i = 0; i < nMist; i++) this.mist.push(this._newMist());
+  }
+
+  _newPetal(anywhere) {
+    var r = this.rng;
+    return {
+      x: randRange(r, -0.05, 1.05),
+      y: anywhere ? randRange(r, -0.1, 1.1) : -0.05 - randRange(r, 0, 0.2),
+      fall: randRange(r, 0.035, 0.07),
+      swayAmp: randRange(r, 0.01, 0.035),
+      swayFreq: randRange(r, 0.4, 1.1),
+      phase: randRange(r, 0, TAU),
+      size: randRange(r, 0.006, 0.013),
+      rot: randRange(r, 0, TAU),
+      vrot: randRange(r, -1.5, 1.5),
+      drift: randRange(r, -0.012, 0.018)
+    };
+  }
+
+  _newMist() {
+    var r = this.rng;
+    return {
+      x: randRange(r, -0.2, 1.2),
+      y: randRange(r, 0.42, 0.62),
+      r: randRange(r, 0.18, 0.38),
+      vx: randRange(r, 0.004, 0.011) * (r() < 0.5 ? -1 : 1),
+      alpha: randRange(r, 0.04, 0.09),
+      phase: randRange(r, 0, TAU)
+    };
+  }
+
+  inPond(x, y) {
+    var p = this.pond;
+    var dx = (x - p.cx) / p.rx, dy = (y - p.cy) / p.ry;
+    return dx * dx + dy * dy <= 1;
+  }
+  inSand(x, y) {
+    return y > this.horizonY && !this.inPond(x, y);
+  }
+
+  addRipple(x, y) {
+    this.ripples.push({
+      x: x, y: y, age: 0,
+      speed: randRange(this.rng, 0.10, 0.16),
+      maxR: randRange(this.rng, 0.06, 0.13)
+    });
+    if (this.ripples.length > 24) this.ripples.shift();
+  }
+
+  startRake(x, y) {
+    if (!this.inSand(x, y)) return;
+    this.activeTrail = { points: [{ x: x, y: y }], age: 0 };
+  }
+  rakeTo(x, y) {
+    var t = this.activeTrail;
+    if (!t || !this.inSand(x, y)) return;
+    var pts = t.points;
+    var lp = pts[pts.length - 1];
+    var dx = x - lp.x, dy = y - lp.y;
+    if (dx * dx + dy * dy < 4e-5) return;
+    pts.push({ x: x, y: y });
+    if (pts.length > 400) pts.shift();
+  }
+  endRake() {
+    var t = this.activeTrail;
+    this.activeTrail = null;
+    if (!t) return;
+    if (t.points.length > 2) {
+      this.trails.push(t);
+      if (this.trails.length > 10) this.trails.shift();
+    }
+  }
+
+  step(dt) {
+    this.time += dt;
+    var i;
+    for (i = 0; i < this.koi.length; i++) this.koi[i].step(dt, this);
+    for (i = this.ripples.length - 1; i >= 0; i--) {
+      var rp = this.ripples[i];
+      rp.age += dt;
+      if (rp.age >= rp.maxR / rp.speed) this.ripples.splice(i, 1);
+    }
+    for (i = 0; i < this.petals.length; i++) {
+      var pt = this.petals[i];
+      pt.phase += dt * pt.swayFreq;
+      pt.y += pt.fall * dt;
+      pt.x += (pt.drift + Math.cos(pt.phase) * pt.swayAmp) * dt;
+      pt.rot += pt.vrot * dt;
+      if (pt.y > 1.08 || pt.x < -0.15 || pt.x > 1.15) {
+        this.petals[i] = this._newPetal(false);
+      }
+    }
+    for (i = 0; i < this.mist.length; i++) {
+      var m = this.mist[i];
+      m.x += m.vx * dt;
+      if (m.x > 1.25) m.x = -0.25;
+      else if (m.x < -0.25) m.x = 1.25;
+    }
+    for (i = this.trails.length - 1; i >= 0; i--) {
+      this.trails[i].age += dt;
+      if (this.trails[i].age > TRAIL_LIFE) this.trails.splice(i, 1);
+    }
+    if (this.activeTrail) this.activeTrail.age += dt;
+  }
+
+  // worst-case ellipse metric across all koi (<= 1 means all inside pond)
+  koiContainment() {
+    var p = this.pond, worst = 0;
+    for (var i = 0; i < this.koi.length; i++) {
+      var k = this.koi[i];
+      var e = Math.pow((k.x - p.cx) / p.rx, 2) + Math.pow((k.y - p.cy) / p.ry, 2);
+      if (e > worst) worst = e;
+    }
+    return worst;
+  }
+
+  stats() {
+    return {
+      time: this.time, koi: this.koi.length, ripples: this.ripples.length,
+      petals: this.petals.length, mist: this.mist.length,
+      trails: this.trails.length, activeTrail: !!this.activeTrail
+    };
+  }
+}
+
+// zen-audio.mjs
+// Procedural ambient sound engine built on the Web Audio API.
+// Everything is synthesized live (filtered noise, LFOs, oscillators) -
+// no samples, no audio files. Browser-only by design; every window /
+// AudioContext reference is guarded so the file also loads (inert)
+// under deno for headless tests.
+
+function hasAudio() {
+  return typeof window !== 'undefined' &&
+    (typeof AudioContext !== 'undefined' || typeof webkitAudioContext !== 'undefined');
+}
+
+// Major pentatonic offsets - every draw sounds pleasant.
+var PENTA_SEMIS = [0, 2, 4, 7, 9];
+function pickChimeFreq(rng, baseHz) {
+  rng = rng || Math.random;
+  var oct = rng() < 0.22 ? 1 : 0;
+  var semi = PENTA_SEMIS[Math.floor(rng() * PENTA_SEMIS.length)] + 12 * oct;
+  var freq = (baseHz || 523.25) * Math.pow(2, semi / 12);
+  return Math.min(freq, 1600);
+}
+
+class AudioEngine {
+  constructor(opts) {
+    opts = opts || {};
+    var AC = window.AudioContext || window.webkitAudioContext;
+    this.ctx = new AC();
+    this.muted = false;
+    this.noteFn = opts.noteFn || function () { return pickChimeFreq(Math.random, 523.25); };
+
+    this.master = this.ctx.createGain();
+    this.master.gain.value = 0.85;
+    this.master.connect(this.ctx.destination);
+
+    // shared looped noise buffer (white + a brownish low shelf)
+    this.noiseBuf = this._noiseBuffer(3);
+
+    // --- wind: lowpassed noise with a slow swell LFO on the cutoff ---
+    var wind = this.ctx.createBufferSource();
+    wind.buffer = this.noiseBuf; wind.loop = true;
+    var windF = this.ctx.createBiquadFilter();
+    windF.type = 'lowpass'; windF.frequency.value = 300; windF.Q.value = 0.5;
+    var windG = this.ctx.createGain(); windG.gain.value = 0.14;
+    wind.connect(windF); windF.connect(windG); windG.connect(this.master);
+    var windLfo = this.ctx.createOscillator(); windLfo.frequency.value = 0.06;
+    var windLfoG = this.ctx.createGain(); windLfoG.gain.value = 150;
+    windLfo.connect(windLfoG); windLfoG.connect(windF.frequency);
+    wind.start(); windLfo.start();
+
+    // --- water: bandpassed noise, gentle lapping ---
+    var water = this.ctx.createBufferSource();
+    water.buffer = this.noiseBuf; water.loop = true;
+    var waterF = this.ctx.createBiquadFilter();
+    waterF.type = 'bandpass'; waterF.frequency.value = 850; waterF.Q.value = 0.6;
+    var waterG = this.ctx.createGain(); waterG.gain.value = 0.05;
+    water.connect(waterF); waterF.connect(waterG); waterG.connect(this.master);
+    var waterLfo = this.ctx.createOscillator(); waterLfo.frequency.value = 0.11;
+    var waterLfoG = this.ctx.createGain(); waterLfoG.gain.value = 0.028;
+    waterLfo.connect(waterLfoG); waterLfoG.connect(waterG.gain);
+    water.start(); waterLfo.start();
+
+    // --- ambient wind-chimes on a random schedule ---
+    this._chimeTimer = null;
+    this._scheduleChimes();
+  }
+
+  _noiseBuffer(seconds) {
+    var rate = this.ctx.sampleRate;
+    var len = Math.max(1, Math.floor(rate * seconds));
+    var buf = this.ctx.createBuffer(1, len, rate);
+    var data = buf.getChannelData(0);
+    var brown = 0;
+    for (var i = 0; i < len; i++) {
+      var white = Math.random() * 2 - 1;
+      brown = (brown + 0.02 * white) / 1.02;
+      data[i] = white * 0.55 + brown * 2.4;
+    }
+    return buf;
+  }
+
+  resume() { if (this.ctx.state !== 'running') this.ctx.resume(); }
+  suspend() { this.ctx.suspend(); }
+  isMuted() { return this.muted; }
+
+  setMuted(m) {
+    this.muted = m;
+    var t = this.ctx.currentTime;
+    this.master.gain.cancelScheduledValues(t);
+    this.master.gain.setTargetAtTime(m ? 0 : 0.85, t, 0.12);
+  }
+
+  // one wind-chime strike: fundamental + inharmonic partial, exponential decay
+  chime(freq, vel) {
+    if (this.muted) return;
+    var t = this.ctx.currentTime;
+    vel = vel == null ? 0.11 : vel;
+    var g1 = this.ctx.createGain();
+    g1.gain.setValueAtTime(0.0001, t);
+    g1.gain.exponentialRampToValueAtTime(vel, t + 0.025);
+    g1.gain.exponentialRampToValueAtTime(0.0001, t + 3.8);
+    var o1 = this.ctx.createOscillator();
+    o1.type = 'sine'; o1.frequency.value = freq;
+    o1.connect(g1); g1.connect(this.master);
+    var g2 = this.ctx.createGain();
+    g2.gain.setValueAtTime(0.0001, t);
+    g2.gain.exponentialRampToValueAtTime(vel * 0.35, t + 0.02);
+    g2.gain.exponentialRampToValueAtTime(0.0001, t + 1.3);
+    var o2 = this.ctx.createOscillator();
+    o2.type = 'sine'; o2.frequency.value = freq * 2.76;
+    o2.connect(g2); g2.connect(this.master);
+    o1.start(t); o1.stop(t + 4.2);
+    o2.start(t); o2.stop(t + 1.6);
+  }
+
+  // low, warm temple-bell strike (the lantern)
+  bell() {
+    if (this.muted) return;
+    var t = this.ctx.currentTime;
+    var base = 196; // G3
+    var partials = [ [1, 0.20, 5.5], [2.0, 0.10, 3.5], [2.76, 0.06, 2.2], [5.4, 0.03, 1.0] ];
+    for (var i = 0; i < partials.length; i++) {
+      var p = partials[i];
+      var g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(p[1], t + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + p[2]);
+      var o = this.ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = base * p[0];
+      o.connect(g); g.connect(this.master);
+      o.start(t); o.stop(t + p[2] + 0.3);
+    }
+  }
+
+  // small plop for ripples
+  plop() {
+    if (this.muted) return;
+    var t = this.ctx.currentTime;
+    var o = this.ctx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(300, t);
+    o.frequency.exponentialRampToValueAtTime(90, t + 0.22);
+    var g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.14, t + 0.015);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+    o.connect(g); g.connect(this.master);
+    o.start(t); o.stop(t + 0.35);
+  }
+
+  // soft grainy tick for raking
+  rake() {
+    if (this.muted) return;
+    var t = this.ctx.currentTime;
+    var src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuf;
+    src.playbackRate.value = 1.4 + Math.random() * 0.8;
+    var f = this.ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.value = 2400 + Math.random() * 1200;
+    f.Q.value = 1.2;
+    var g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.05, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+    src.connect(f); f.connect(g); g.connect(this.master);
+    src.start(t, Math.random() * 2, 0.2);
+    src.stop(t + 0.2);
+  }
+
+  _scheduleChimes() {
+    var self = this;
+    if (this._chimeTimer) clearTimeout(this._chimeTimer);
+    var delay = 7000 + Math.random() * 11000;
+    this._chimeTimer = setTimeout(function () {
+      var notes = 1 + Math.floor(Math.random() * 3);
+      for (var i = 0; i < notes; i++) {
+        (function (n) {
+          setTimeout(function () { self.chime(self.noteFn(), 0.07 + Math.random() * 0.06); }, n * (500 + Math.random() * 500));
+        })(i);
+      }
+      self._scheduleChimes();
+    }, delay);
+  }
+}
+
+(function () {
+  'use strict';
+
+  // ---------- canvas ----------
+  var canvas = document.getElementById('garden');
+  var ctx = canvas.getContext('2d');
+  var W = 0, H = 0, DPR = 1;
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 1.5);
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = Math.max(1, Math.round(W * DPR));
+    canvas.height = Math.max(1, Math.round(H * DPR));
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ---------- world + audio ----------
+  var rng = makeRng((Date.now() % 1000000) + 7);
+  var world = new ZenWorld({ rng: rng, koi: 7, petals: 34, mist: 5 });
+  var engine = null;
+
+  // ---------- palette: slow dusk <-> night breathing (4 min cycle) ----------
+  var PAL = {
+    dusk: {
+      skyTop: [30, 40, 78], skyMid: [70, 74, 120], horizon: [255, 186, 128],
+      hillFar: [44, 56, 92], hillNear: [32, 42, 74],
+      sand: [235, 222, 192], sandDeep: [208, 192, 158], sandLine: [186, 168, 132],
+      pond: [24, 62, 84], pondEdge: [44, 92, 112]
+    },
+    night: {
+      skyTop: [9, 13, 32], skyMid: [20, 26, 56], horizon: [86, 104, 156],
+      hillFar: [16, 22, 44], hillNear: [11, 16, 34],
+      sand: [122, 128, 152], sandDeep: [98, 104, 130], sandLine: [84, 90, 116],
+      pond: [8, 24, 42], pondEdge: [18, 46, 66]
+    }
+  };
+  function mixPal(t) {
+    var out = {};
+    for (var k in PAL.dusk) {
+      var a = PAL.dusk[k], b = PAL.night[k];
+      out[k] = [ a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t ];
+    }
+    return out;
+  }
+  function rgb(c) { return 'rgb(' + (c[0] | 0) + ',' + (c[1] | 0) + ',' + (c[2] | 0) + ')'; }
+  function rgba(c, a) { return 'rgba(' + (c[0] | 0) + ',' + (c[1] | 0) + ',' + (c[2] | 0) + ',' + a + ')'; }
+
+  // ---------- fixed scenery layout (normalized coords) ----------
+  var LAYOUT = {
+    horizon: 0.42,
+    rocks: [
+      { x: 0.275, y: 0.565, r: 0.052, tone: 0 },
+      { x: 0.352, y: 0.528, r: 0.030, tone: 1 },
+      { x: 0.735, y: 0.520, r: 0.038, tone: 0 },
+      { x: 0.668, y: 0.855, r: 0.030, tone: 1 }
+    ],
+    lantern: { x: 0.845, y: 0.585 }
+  };
+  var bellRings = [];
+
+  var stars = [];
+  for (var si = 0; si < 90; si++) {
+    stars.push({ x: Math.random(), y: Math.random() * 0.36, s: 0.4 + Math.random() * 1.1,
+                 ph: Math.random() * TAU, sp: 0.3 + Math.random() * 1.2 });
+  }
+
+  // ---------- pointer state ----------
+  var pointer = { x: 0.5, y: 0.5, down: false, overLantern: false };
+  var lastRakeSfx = 0, lastRippleSfx = 0;
+
+  function toNorm(e) {
+    return { x: e.clientX / Math.max(1, W), y: e.clientY / Math.max(1, H) };
+  }
+  function lanternHit(nx, ny) {
+    var dx = nx - LAYOUT.lantern.x, dy = ny - LAYOUT.lantern.y;
+    return dx * dx + dy * dy < 0.0016;
+  }
+
+  canvas.addEventListener('pointerdown', function (e) {
+    var p = toNorm(e);
+    pointer.down = true;
+    if (lanternHit(p.x, p.y)) { ringBell(); return; }
+    if (world.inPond(p.x, p.y)) {
+      world.addRipple(p.x, p.y);
+      var now = performance.now();
+      if (now - lastRippleSfx > 120) { lastRippleSfx = now; if (engine) engine.plop(); }
+      return;
+    }
+    if (world.inSand(p.x, p.y)) {
+      world.startRake(p.x, p.y);
+      var n2 = performance.now();
+      if (n2 - lastRakeSfx > 80) { lastRakeSfx = n2; if (engine) engine.rake(); }
+    }
+  });
+  canvas.addEventListener('pointermove', function (e) {
+    var p = toNorm(e);
+    pointer.x = p.x; pointer.y = p.y;
+    pointer.overLantern = lanternHit(p.x, p.y);
+    canvas.style.cursor = pointer.overLantern ? 'pointer' : 'crosshair';
+    if (pointer.down && world.activeTrail) {
+      world.rakeTo(p.x, p.y);
+      var now = performance.now();
+      if (now - lastRakeSfx > 90) { lastRakeSfx = now; if (engine) engine.rake(); }
+    }
+  });
+  window.addEventListener('pointerup', function () { pointer.down = false; world.endRake(); });
+  window.addEventListener('blur', function () { pointer.down = false; world.endRake(); });
+
+  function ringBell() {
+    bellRings.push({ t0: performance.now() / 1000 });
+    if (bellRings.length > 6) bellRings.shift();
+    if (engine) {
+      engine.bell();
+      setTimeout(function () { if (engine) engine.chime(chimeNote(Math.random, 659.25), 0.06); }, 350);
+    }
+  }
+
+  window.addEventListener('keydown', function (e) {
+    var k = e.key.toLowerCase();
+    if (k === 'm') toggleMute();
+    else if (k === 'b' || k === ' ') ringBell();
+  });
+
+  // ---------- sound toggle + entry veil ----------
+  var soundBtn = document.getElementById('soundBtn');
+  function setMuteLabel() {
+    if (engine) soundBtn.innerHTML = engine.muted ? '&#9834; sound off' : '&#9835; sound on';
+  }
+  function toggleMute() {
+    if (!engine) return;
+    engine.setMuted(!engine.isMuted());
+    setMuteLabel();
+  }
+  soundBtn.addEventListener('click', toggleMute);
+
+  var veil = document.getElementById('veil');
+  var entered = false;
+  function enter() {
+    if (entered) return;
+    entered = true;
+    veil.classList.add('hidden');
+    setTimeout(function () { if (veil.parentNode) veil.parentNode.removeChild(veil); }, 1600);
+    try {
+      engine = new AudioEngine();
+      engine.resume();
+    } catch (err) { console.warn('audio unavailable:', err); }
+    var hintEl = document.getElementById('hint');
+    setTimeout(function () { hintEl.style.opacity = '0'; }, 9000);
+  }
+  veil.addEventListener('pointerdown', enter);
+  document.addEventListener('keydown', function (e) { if (!entered) enter(); });
+
+  // pause audio when the tab is hidden
+  document.addEventListener('visibilitychange', function () {
+    if (!engine) return;
+    if (document.hidden) engine.suspend(); else engine.resume();
+  });
+
+  // ---------- drawing ----------
+  function drawSky(t, pal, nightT) {
+    var horizon = LAYOUT.horizon * H;
+    var g = ctx.createLinearGradient(0, 0, 0, horizon);
+    g.addColorStop(0, rgb(pal.skyTop));
+    g.addColorStop(0.6, rgb(pal.skyMid));
+    g.addColorStop(1, rgb(pal.horizon));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, horizon + 2);
+    ctx.fillStyle = 'rgba(255,255,255,1)';
+    for (var i = 0; i < stars.length; i++) {
+      var st = stars[i];
+      var a = (0.12 + 0.7 * nightT) * (0.55 + 0.45 * Math.sin(t * st.sp + st.ph));
+      if (a <= 0.03) continue;
+      ctx.globalAlpha = a * 0.8;
+      ctx.fillRect(st.x * W, st.y * H, st.s, st.s);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawMoon(t, nightT) {
+    var mx = W * 0.72 + Math.sin(t * 0.02) * W * 0.01;
+    var my = H * 0.14 + Math.sin(t * 0.013 + 2) * H * 0.008;
+    var r = Math.min(W, H) * 0.028;
+    var halo = ctx.createRadialGradient(mx, my, r * 0.4, mx, my, r * 6);
+    halo.addColorStop(0, 'rgba(250,244,224,' + (0.22 + 0.28 * nightT) + ')');
+    halo.addColorStop(1, 'rgba(250,244,224,0)');
+    ctx.fillStyle = halo;
+    ctx.fillRect(mx - r * 6, my - r * 6, r * 12, r * 12);
+    ctx.fillStyle = 'rgba(252,247,231,0.96)';
+    ctx.beginPath(); ctx.arc(mx, my, r, 0, TAU); ctx.fill();
+    ctx.fillStyle = 'rgba(210,200,180,0.25)';
+    ctx.beginPath(); ctx.arc(mx - r * 0.25, my + r * 0.15, r * 0.28, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(mx + r * 0.3, my - r * 0.28, r * 0.18, 0, TAU); ctx.fill();
+  }
+
+  function hillPath(baseY, amp, f1, f2, phase) {
+    ctx.beginPath();
+    ctx.moveTo(0, H);
+    var step = Math.max(6, W / 90);
+    for (var x = 0; x <= W + step; x += step) {
+      var nx = x / W;
+      var y = baseY + Math.sin(nx * f1 + phase) * amp + Math.sin(nx * f2 + phase * 1.7) * amp * 0.45;
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(W, H);
+    ctx.closePath();
+  }
+  function drawHills(pal) {
+    var horizon = LAYOUT.horizon * H;
+    ctx.fillStyle = rgb(pal.hillFar);
+    hillPath(horizon - H * 0.06, H * 0.03, 4.2, 9.1, 0.8); ctx.fill();
+    ctx.fillStyle = rgb(pal.hillNear);
+    hillPath(horizon - H * 0.012, H * 0.02, 5.3, 11.7, 2.2); ctx.fill();
+  }
+
+  function drawSand(pal) {
+    var horizon = LAYOUT.horizon * H;
+    var g = ctx.createLinearGradient(0, horizon, 0, H);
+    g.addColorStop(0, rgb(pal.sand));
+    g.addColorStop(1, rgb(pal.sandDeep));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, horizon, W, H - horizon);
+
+    // raked baseline: gentle undulating lines
+    ctx.strokeStyle = rgba(pal.sandLine, 0.5);
+    ctx.lineWidth = 1.2;
+    var spacing = Math.max(11, H * 0.026);
+    var wave = H * 0.008;
+    var step = Math.max(10, W / 80);
+    for (var y = horizon + spacing * 0.6; y < H; y += spacing) {
+      ctx.beginPath();
+      for (var x = 0; x <= W + step; x += step) {
+        var yy = y + Math.sin(x / W * 6.1 + y * 0.05 + 1.3) * wave;
+        if (x === 0) ctx.moveTo(x, yy); else ctx.lineTo(x, yy);
+      }
+      ctx.stroke();
+    }
+
+    // user rake trails: dark groove + light edge, slowly re-raked away
+    var trails = world.trails.slice();
+    if (world.activeTrail) trails.push(world.activeTrail);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (var i = 0; i < trails.length; i++) {
+      var tr = trails[i];
+      var a = clamp(1 - tr.age / TRAIL_LIFE, 0, 1);
+      if (a <= 0.01 || tr.points.length < 2) continue;
+      var pts = tr.points;
+      ctx.strokeStyle = rgba([255, 244, 214], 0.5 * a);
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x * W, pts[0].y * H + 3.5);
+      for (var j = 1; j < pts.length; j++) ctx.lineTo(pts[j].x * W, pts[j].y * H + 3.5);
+      ctx.stroke();
+      ctx.strokeStyle = rgba([70, 60, 46], 0.75 * a);
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x * W, pts[0].y * H);
+      for (j = 1; j < pts.length; j++) {
+        var midX = (pts[j - 1].x + pts[j].x) / 2 * W;
+        var midY = (pts[j - 1].y + pts[j].y) / 2 * H;
+        ctx.quadraticCurveTo(pts[j - 1].x * W, pts[j - 1].y * H, midX, midY);
+      }
+      ctx.lineTo(pts[pts.length - 1].x * W, pts[pts.length - 1].y * H);
+      ctx.stroke();
+    }
+  }
+
+  function drawPond(t, pal, nightT) {
+    var p = world.pond;
+    var cx = p.cx * W, cy = p.cy * H, rx = p.rx * W, ry = p.ry * H;
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, TAU);
+    var g = ctx.createRadialGradient(cx, cy - ry * 0.3, ry * 0.2, cx, cy, rx * 1.05);
+    g.addColorStop(0, rgb(pal.pondEdge));
+    g.addColorStop(1, rgb(pal.pond));
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.strokeStyle = rgba(pal.sand, 0.35);
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, TAU);
+    ctx.clip();
+
+    // moon reflection shimmer
+    var mx = W * 0.72, my = cy - ry * 0.25;
+    var rg = ctx.createRadialGradient(mx, my, 2, mx, my, rx * 0.5);
+    rg.addColorStop(0, 'rgba(240,236,214,' + (0.08 + 0.12 * nightT) + ')');
+    rg.addColorStop(1, 'rgba(240,236,214,0)');
+    ctx.fillStyle = rg;
+    ctx.fillRect(cx - rx, cy - ry, rx * 2, ry * 2);
+
+    // drifting shimmer streaks
+    for (var s = 0; s < 5; s++) {
+      var sy = cy - ry * 0.5 + s * ry * 0.25 + Math.sin(t * 0.4 + s * 1.9) * ry * 0.08;
+      var sw = rx * (0.5 + 0.3 * Math.sin(t * 0.23 + s * 2.6));
+      var sx = cx + Math.sin(t * 0.17 + s * 1.3) * rx * 0.5;
+      ctx.fillStyle = 'rgba(220,235,250,' + (0.05 + 0.04 * Math.sin(t * 0.5 + s)) + ')';
+      ctx.beginPath();
+      ctx.ellipse(sx, sy, Math.max(4, sw), 1.6, 0, 0, TAU);
+      ctx.fill();
+    }
+
+    // koi (underwater: squashed + dimmed)
+    for (var i = 0; i < world.koi.length; i++) {
+      var k = world.koi[i];
+      var kx = k.x * W, ky = k.y * H;
+      var len = k.size * W * 1.9;
+      var wag = Math.sin(t * 5.5 + k.phase) * 0.35;
+      ctx.save();
+      ctx.translate(kx, ky);
+      ctx.rotate(k.head);
+      ctx.scale(1, 0.62);
+      ctx.globalAlpha = 0.92;
+      ctx.fillStyle = 'hsla(' + k.hue + ',85%,' + (k.light + 6) + '%,0.9)';
+      ctx.beginPath();
+      ctx.moveTo(-len * 0.35, 0);
+      ctx.lineTo(-len * 0.75, -len * 0.22 + wag * len * 0.3);
+      ctx.lineTo(-len * 0.72, wag * len * 0.42);
+      ctx.lineTo(-len * 0.75, len * 0.22 + wag * len * 0.3);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = 'hsla(' + k.hue + ',88%,' + k.light + '%,0.95)';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, len * 0.42, len * 0.16, 0, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,250,240,0.55)';
+      ctx.beginPath();
+      ctx.ellipse(len * 0.08, 0, len * 0.18, len * 0.10, 0, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // ripples on top
+    for (i = 0; i < world.ripples.length; i++) {
+      var rp = world.ripples[i];
+      var pr = rp.age * rp.speed;
+      var lifeT = pr / rp.maxR;
+      var a = clamp(1 - lifeT, 0, 1) * 0.5;
+      if (a <= 0.01) continue;
+      ctx.strokeStyle = 'rgba(235,245,255,' + a + ')';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.ellipse(rp.x * W, rp.y * H, pr * W, pr * W * 0.38, 0, 0, TAU);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(235,245,255,' + (a * 0.6) + ')';
+      ctx.beginPath();
+      ctx.ellipse(rp.x * W, rp.y * H, pr * W * 0.62, pr * W * 0.23, 0, 0, TAU);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+    ctx.restore();
+  }
+
+  function drawRocks() {
+    for (var i = 0; i < LAYOUT.rocks.length; i++) {
+      var r = LAYOUT.rocks[i];
+      var rx2 = r.r * W * 1.15, ry2 = r.r * W * 0.72;
+      var x = r.x * W, y = r.y * H;
+      ctx.fillStyle = 'rgba(20,18,14,0.25)';
+      ctx.beginPath(); ctx.ellipse(x + rx2 * 0.08, y + ry2 * 0.55, rx2 * 1.05, ry2 * 0.4, 0, 0, TAU); ctx.fill();
+      var g = ctx.createLinearGradient(x, y - ry2, x, y + ry2);
+      var tone = r.tone === 0 ? 46 : 58;
+      g.addColorStop(0, 'hsla(220,12%,' + (tone + 14) + '%,1)');
+      g.addColorStop(1, 'hsla(220,10%,' + tone + '%,1)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.ellipse(x, y, rx2, ry2, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = 'hsla(96,24%,30%,0.5)';
+      ctx.beginPath(); ctx.ellipse(x - rx2 * 0.25, y - ry2 * 0.5, rx2 * 0.4, ry2 * 0.22, -0.3, 0, TAU); ctx.fill();
+    }
+  }
+
+  function drawLantern(t, nightT) {
+    var u = Math.min(W, H) / 390;
+    var x = LAYOUT.lantern.x * W, y = LAYOUT.lantern.y * H;
+    var hover = pointer.overLantern ? 1.05 : 1;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(hover, hover);
+    var glowA = 0.3 + 0.1 * Math.sin(t * 1.2) + 0.25 * nightT;
+    var gg = ctx.createRadialGradient(0, -26 * u, 2, 0, -26 * u, 60 * u);
+    gg.addColorStop(0, 'rgba(255,196,110,' + glowA + ')');
+    gg.addColorStop(1, 'rgba(255,196,110,0)');
+    ctx.fillStyle = gg;
+    ctx.fillRect(-70 * u, -96 * u, 140 * u, 140 * u);
+    ctx.fillStyle = 'rgba(20,18,14,0.3)';
+    ctx.beginPath(); ctx.ellipse(0, 2 * u, 26 * u, 7 * u, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = 'hsla(222,10%,30%,1)';
+    ctx.fillRect(-16 * u, -8 * u, 32 * u, 10 * u);
+    ctx.fillRect(-6 * u, -34 * u, 12 * u, 28 * u);
+    ctx.fillStyle = 'hsla(222,10%,34%,1)';
+    ctx.fillRect(-15 * u, -52 * u, 30 * u, 20 * u);
+    var wf = 0.8 + 0.12 * Math.sin(t * 1.7 + 1);
+    ctx.fillStyle = 'rgba(255,206,130,' + wf + ')';
+    ctx.fillRect(-11 * u, -48 * u, 22 * u, 12 * u);
+    ctx.strokeStyle = 'hsla(222,10%,34%,1)';
+    ctx.lineWidth = 1.4 * u;
+    ctx.beginPath();
+    ctx.moveTo(0, -48 * u); ctx.lineTo(0, -36 * u);
+    ctx.moveTo(-11 * u, -42 * u); ctx.lineTo(11 * u, -42 * u);
+    ctx.stroke();
+    ctx.fillStyle = 'hsla(222,10%,26%,1)';
+    ctx.beginPath();
+    ctx.moveTo(-22 * u, -52 * u);
+    ctx.lineTo(0, -64 * u);
+    ctx.lineTo(22 * u, -52 * u);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath(); ctx.arc(0, -66 * u, 2.6 * u, 0, TAU); ctx.fill();
+    ctx.restore();
+
+    for (var i = bellRings.length - 1; i >= 0; i--) {
+      var age = t - bellRings[i].t0;
+      if (age > 2.4 || age < 0) { if (age > 2.4) bellRings.splice(i, 1); continue; }
+      var a = (1 - age / 2.4) * 0.5;
+      ctx.strokeStyle = 'rgba(255,214,150,' + a + ')';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y - 46 * u, (8 + age * 90) * u, 0, TAU);
+      ctx.stroke();
+    }
+  }
+
+  function drawMist(t) {
+    for (var i = 0; i < world.mist.length; i++) {
+      var m = world.mist[i];
+      var a = m.alpha * (0.75 + 0.25 * Math.sin(t * 0.3 + m.phase));
+      var x = m.x * W, y = m.y * H, r = m.r * W;
+      var g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, 'rgba(214,224,244,' + a + ')');
+      g.addColorStop(1, 'rgba(214,224,244,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+  }
+
+  function drawPetals() {
+    for (var i = 0; i < world.petals.length; i++) {
+      var pt = world.petals[i];
+      var s = Math.max(1.5, pt.size * Math.min(W, H));
+      var a = 0.45 + 0.45 * (pt.size / 0.013);
+      ctx.save();
+      ctx.translate(pt.x * W, pt.y * H);
+      ctx.rotate(pt.rot);
+      ctx.fillStyle = 'hsla(335,72%,82%,' + a + ')';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, s, s * 0.55, 0, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = 'hsla(335,60%,68%,0.6)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-s, 0); ctx.lineTo(s, 0);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function drawVignette() {
+    var g = ctx.createRadialGradient(W / 2, H * 0.55, Math.min(W, H) * 0.35, W / 2, H * 0.55, Math.max(W, H) * 0.78);
+    g.addColorStop(0, 'rgba(4,7,16,0)');
+    g.addColorStop(1, 'rgba(4,7,16,0.5)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  function draw(t) {
+    var nightT = 0.5 + 0.5 * Math.sin(t * TAU / 240);
+    var pal = mixPal(nightT);
+    ctx.clearRect(0, 0, W, H);
+    drawSky(t, pal, nightT);
+    drawMoon(t, nightT);
+    drawHills(pal);
+    drawSand(pal);
+    drawPond(t, pal, nightT);
+    drawRocks();
+    drawLantern(t, nightT);
+    drawMist(t);
+    drawPetals();
+    drawVignette();
+  }
+
+  var lastNow = performance.now();
+  function frame(now) {
+    var dt = Math.min((now - lastNow) / 1000, 0.05);
+    lastNow = now;
+    world.step(dt);
+    draw(now / 1000);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
