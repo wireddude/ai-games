@@ -29,6 +29,22 @@ Build a fun, simple NES-inspired top-down adventure. It should remain one standa
     - Walls brightened; `v2-fixed` tag bottom-right confirms the build.
   - Next small task: playtest in a real browser (desktop + iPhone); confirm barriers/walls read clearly; tune gap width (currently 0.30) and hostile bullet visibility if still hard to dodge.
 
+## Geometry Dash — pits actually work + taller structures (player feedback)
+- Player: "I never fall in pits if I don't jump" and "even at the start it's too easy; need structures higher than 1 block."
+- **Bug fix (pits):** the ground collision clamped the player to ground level *even over pits*, so they walked on air. Now the ground clamp is skipped when the player's center is over a pit (`overPit()`), so you genuinely fall into pits and crash. Verified: player over a pit falls; on solid ground they still clamp; no-jump runner still dies.
+- **Taller structures:** walls now go up to **125px** (near the 150px jump limit) and spike-stairs climb to ~220px (climbed, not jumped over). Warmup is less trivial (doubles + a 75px wall + a pit early).
+- **Verification:** a proper *chained-jump* bot (jumps whenever "jumping now lands safely") clears **100%** — the earlier "lookahead" bot was flawed (only simulated one jump, so it died at the next hazard and false-reported the level as hard). `node --check` passes. No real-browser playtest run.
+- Next: browser-playtest; tune wall heights / jump feel if the tall walls feel unfair.
+
+## Geometry Dash — much harder level: pits, walls, bridges + higher speed
+- User: level was "way too easy" and "too simple… no fun other than a proof of concept"; wanted "more structures to jump over".
+- Rebuilt the level from ~35 sparse obstacles to **157** using a cursor-based builder with a real difficulty curve (warmup → ramp → mid → expert → finale), ~58,500px long (~80s run).
+- New structure types: **pits** (leap across; falling = crash — added pit-fall death + red hazard-edge rendering), **tall walls** (jump over), **spike-stairs** (climb), **spike-after-block** combos, and **platform bridges over pits**. Spike clusters now go up to **quads**.
+- Speed raised to 8 start, +0.0022/frame, **capped at 14** (it was uncapped and hit 17.9 — too frantic for the finale). Jump physics unchanged (−15 / 0.75, already proven fair).
+- Validation: `node --check` passes; headless physics sim using the exact game collision — a lookahead bot (searches the optimal wait-then-jump each frame) clears **100%**; a no-jump runner dies at the first spike; no obstacles past the finish line. Pit render reordered to hollow the ground last so gaps read cleanly. No real-browser playtest run.
+- Known: difficulty is verified by an optimal bot, not a human, so a casual player will die a lot (intended); the speed-14 finale is intense. The earlier "spike-on-top-of-block" combo was removed (too brutal/unfair) in favor of spike-after-block.
+- Next: browser-playtest on desktop + iPhone/iPad; tune finale speed/spacing if too brutal; consider a practice mode or speed cap slider.
+
 ## Geometry Dash — snappier jump + harder level (final)
 - User feedback: jump was "a bit too floaty" and the level "way too easy". Retuned jump to `JUMP_FORCE -15 / GRAVITY 0.75` (150px high, 40-frame airtime) — clearly snappier than the original 270px/60.
 - Chose 15/0.75 over the snappier 15/0.8 because a jump-window analysis showed 15/0.8 makes ground triples nearly impossible (5px safe window), while 15/0.75 keeps them hard but fair (23px window ≈ 4 frames). Singles stay easy (144px), doubles are challenging (83px).

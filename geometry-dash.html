@@ -332,8 +332,9 @@
         const JUMP_FORCE = -15;
         const GROUND_HEIGHT = 80;
         const PLAYER_SIZE = 35;
-        const SPEED_START = 6;
-        const SPEED_INCREMENT = 0.001;
+        const SPEED_START = 8;
+        const SPEED_INCREMENT = 0.0022;
+        const MAX_SPEED = 14;
 
         // Game state
         let gameRunning = false;
@@ -353,58 +354,110 @@
 
         // Obstacles array
         let obstacles = [];
+        let pits = [];
         let particles = [];
 
-        // Difficulty curve: easy warmup (0-6000) -> doubles (6000-11000) -> tight doubles +
-        // first triples (11000-16000) -> triples + platform (16000-21200). Total length 21200.
-        const levelData = [
-            // --- Easy intro (0-6000): learn the jump ---
-            { type: 'spike', x: 1800 },
-            { type: 'spike', x: 2800 },
-            { type: 'block', x: 3800, w: 50 },
-            { type: 'spike', x: 4800 },
-            { type: 'spike', x: 5500 },
-            { type: 'spike', x: 5560 },
-            // --- Medium (6000-11000): doubles ---
-            { type: 'block', x: 6400, w: 50 },
-            { type: 'spike', x: 7200 },
-            { type: 'spike', x: 7260 },
-            { type: 'spike', x: 8100 },
-            { type: 'spike', x: 8160 },
-            { type: 'block', x: 9000, w: 100 },
-            { type: 'spike', x: 9800 },
-            { type: 'spike', x: 9860 },
-            { type: 'spike', x: 10600 },
-            { type: 'spike', x: 10660 },
-            // --- Hard (11000-16000): tight doubles + first triples ---
-            { type: 'spike', x: 11500 },
-            { type: 'spike', x: 11560 },
-            { type: 'spike', x: 12400 },
-            { type: 'spike', x: 12460 },
-            { type: 'spike', x: 12520 },   // first TRIPLE
-            { type: 'block', x: 13300, w: 50 },
-            { type: 'spike', x: 14100 },
-            { type: 'spike', x: 14160 },
-            { type: 'spike', x: 15000 },
-            { type: 'spike', x: 15060 },
-            { type: 'spike', x: 15120 },   // TRIPLE
-            // --- Hardest (16000-21200): triples + platform ---
-            { type: 'spike', x: 16000 },
-            { type: 'spike', x: 16060 },
-            { type: 'spike', x: 16120 },   // TRIPLE
-            { type: 'block', x: 16900, w: 50 },
-            { type: 'spike', x: 17700 },
-            { type: 'spike', x: 17760 },
-            { type: 'spike', x: 17820 },   // TRIPLE
-            { type: 'platform', x: 18600, w: 300, y: -80 },
-            { type: 'spike', x: 18850, y: -80 },  // single on platform
-            { type: 'spike', x: 19600 },
-            { type: 'spike', x: 19660 },
-            { type: 'spike', x: 19720 },   // TRIPLE
-            { type: 'block', x: 20500, w: 200 },
-        ];
+// ---- Level builder: cursor-based so a dense layout stays readable ----
+        // Structures: spike(s), walls (blocks you jump over), pits (leap across),
+        // spike-stairs, spike-topped blocks, and platform bridges over pits.
+        const levelData = (function build(){
+            const A = [];
+            let x = 1700;                       // run-up before the first hazard
+            const spike  = (n=1) => { for(let i=0;i<n;i++) A.push({type:'spike', x:x + i*60}); x += n*60; };
+            const wall   = (h, w=50) => { A.push({type:'block', x:x, h, w}); x += w; };          // jump over
+            const pit    = (w) => { A.push({type:'pit', x:x, w}); x += w; };                       // leap across
+            const bridge = (w, y=-105) => { A.push({type:'pit', x:x, w}); A.push({type:'platform', x:x + (w-190)/2, w:190, y}); x += w; }; // platform over pit
+            const topped = (h, w=60) => { A.push({type:'block', x:x, h, w}); x += w + 130; A.push({type:'spike', x:x}); x += 60; }; // block, then a spike to hop after landing
+            const stairs = (steps, h=55, d=70) => { let yy=0; for(let i=0;i<steps;i++){ yy+=h; A.push({type:'block', x:x, h:yy, w:d}); x += d; } }; // ascending walls
+            const gap    = (g) => { x += g; };
 
-        const levelEnd = 21200;
+            // ---- WARMUP (learn: single, double, medium wall, short pit) ----
+            spike();            gap(780);
+            spike();            gap(720);
+            wall(60);           gap(780);      // first wall (taller than a spike)
+            spike(2);           gap(780);      // first double
+            pit(150);           gap(780);      // first pit (learn to leap)
+            wall(75);           gap(760);      // taller wall
+            spike(2);           gap(760);
+            spike();            gap(720);
+
+            // ---- RAMP (doubles, medium/tall walls, short pits, first triple) ----
+            spike(2);           gap(700);
+            wall(85);           gap(700);      // tall wall
+            spike(2);           gap(680);
+            pit(170);           gap(700);
+            spike(3);           gap(740);      // first triple
+            wall(95);           gap(680);      // taller
+            spike(2);           gap(680);
+            pit(180);           gap(700);
+            spike(3);           gap(720);
+            wall(105, 60);      gap(700);      // tall + wide
+
+            // ---- MID (triples, tall walls, bridges, stairs, spike-after-block) ----
+            spike(3);           gap(660);
+            wall(110, 65);      gap(660);      // TALL structure
+            bridge(240);        gap(700);
+            spike(3);           gap(640);
+            stairs(3);          gap(700);      // climb a 3-step tower
+            topped(60, 70);     gap(680);
+            spike(3);           gap(640);
+            pit(200);           gap(680);
+            wall(120, 70);      gap(660);      // very tall
+            spike(3);           gap(640);
+            bridge(260);        gap(680);
+            wall(110, 65);      gap(640);
+            spike(3);           gap(660);
+
+            // ---- HARD (quads, tallest walls, wide pits, tight combos) ----
+            spike(4);           gap(620);
+            wall(125, 75);      gap(620);      // tallest (near jump limit)
+            pit(220);           gap(640);
+            spike(4);           gap(600);
+            stairs(4);          gap(680);      // 4-step tower
+            spike(4);           gap(620);
+            bridge(280);        gap(640);
+            wall(120, 75);      gap(600);
+            spike(3);           gap(580);
+            pit(240);           gap(640);
+            spike(4);           gap(600);
+            wall(125, 80);      gap(620);
+            spike(4);           gap(620);
+
+            // ---- EXPERT (fast gauntlets, double pits, tall walls, tight platforming) ----
+            spike(4);           gap(540);
+            pit(200);           gap(180);      // double pit (landing strip between)
+            pit(200);           gap(580);
+            wall(120, 75);      gap(560);
+            spike(4);           gap(540);
+            bridge(300);        gap(560);
+            spike(3);           gap(520);
+            wall(125, 80);      gap(540);      // tallest, fast
+            spike(4);           gap(520);
+            pit(260);           gap(580);
+            spike(4);           gap(520);
+            wall(115, 75);      gap(540);
+            bridge(300);        gap(560);
+            spike(4);           gap(540);
+            wall(120, 80);      gap(540);
+
+            // ---- FINALE (rapid fire, tall walls, quads, then the home stretch) ----
+            spike(3);           gap(480);
+            wall(125, 75);      gap(480);
+            pit(220);           gap(500);
+            spike(4);           gap(500);
+            wall(120, 80);      gap(480);
+            spike(3);           gap(480);
+            bridge(280);        gap(520);
+            spike(4);           gap(500);
+            wall(125, 80);      gap(520);
+            spike(3);           gap(560);
+            // home stretch (clear run to the finish)
+            gap(900);
+
+            return A;
+        })();
+
+        const levelEnd = 58500;
 
         class Obstacle {
             constructor(data) {
@@ -512,8 +565,16 @@
             }
         }
 
+        // Is the player's center over a pit gap? (then there's no ground to stand on)
+        function overPit(px) {
+            const c = px + PLAYER_SIZE / 2;
+            for (const p of pits) if (c > p.x && c < p.x + p.w) return true;
+            return false;
+        }
+
         function initLevel() {
             obstacles = levelData.map(data => new Obstacle(data));
+            pits = levelData.filter(d => d.type === 'pit');
         }
 
         function jump() {
@@ -543,13 +604,20 @@
                 player.rotation += 0.15;
             }
 
-            // Ground collision
+            // Ground collision — only when there's solid ground under the player's
+            // center (i.e. NOT over a pit). Over a pit you fall through.
             const groundY = canvas.height - GROUND_HEIGHT - PLAYER_SIZE;
-            if (player.y >= groundY) {
+            if (player.y >= groundY && !overPit(player.x)) {
                 player.y = groundY;
                 player.vy = 0;
                 player.grounded = true;
                 player.rotation = 0;
+            }
+
+            // Fell into a pit -> crash
+            if (player.y > canvas.height + 60) {
+                gameOver();
+                return;
             }
 
             // Update player x (visual only, camera follows)
@@ -573,8 +641,8 @@
         function update() {
             if (!gameRunning) return;
 
-            // Update speed
-            speed += SPEED_INCREMENT;
+            // Update speed (capped)
+            speed = Math.min(MAX_SPEED, speed + SPEED_INCREMENT);
             camera.x += speed;
 
             updatePlayer();
@@ -702,6 +770,30 @@
             for (let i = patternOffset; i < canvas.width; i += 50) {
                 ctx.fillRect(i, canvas.height - GROUND_HEIGHT + 10, 30, 5);
                 ctx.fillRect(i + 10, canvas.height - GROUND_HEIGHT + 25, 30, 5);
+            }
+
+            // Cut out pits (gaps in the ground) + draw hazard edges — LAST, so they
+            // cleanly cover the ground line/pattern inside the gap.
+            for (const p of pits) {
+                const sx = p.x - camera.x;
+                if (sx + p.w < -50 || sx > canvas.width + 50) continue;
+                ctx.fillStyle = '#05050f';
+                ctx.fillRect(sx, canvas.height - GROUND_HEIGHT, p.w, GROUND_HEIGHT);
+                // hazard floor glow
+                ctx.fillStyle = 'rgba(255,0,102,0.30)';
+                ctx.fillRect(sx, canvas.height - 16, p.w, 16);
+                // glowing hazard edges
+                ctx.strokeStyle = '#ff0066';
+                ctx.lineWidth = 3;
+                ctx.shadowBlur = 12;
+                ctx.shadowColor = '#ff0066';
+                ctx.beginPath();
+                ctx.moveTo(sx, canvas.height - GROUND_HEIGHT);
+                ctx.lineTo(sx, canvas.height);
+                ctx.moveTo(sx + p.w, canvas.height - GROUND_HEIGHT);
+                ctx.lineTo(sx + p.w, canvas.height);
+                ctx.stroke();
+                ctx.shadowBlur = 0;
             }
         }
 
