@@ -42,6 +42,18 @@
     "modified": 1795063708
   },
   {
+    "name": "flight-simulator.html",
+    "title": "Sky Drift — 3D Flight Simulator",
+    "size": 63847,
+    "modified": 1795143473
+  },
+  {
+    "name": "flight-simulatorv2.html",
+    "title": "Skybound — Flight Simulator",
+    "size": 60134,
+    "modified": 1795204311
+  },
+  {
     "name": "galaga.html",
     "title": "GALAGA",
     "size": 47942,
@@ -50,14 +62,20 @@
   {
     "name": "geometry-dash.html",
     "title": "Geometry Dash Clone",
-    "size": 29043,
-    "modified": 1795128452
+    "size": 33830,
+    "modified": 1795195803
   },
   {
     "name": "global-warming.html",
     "title": "GLOBAL WARMING — Arcade",
     "size": 13877,
     "modified": 1795114604
+  },
+  {
+    "name": "gta7.html",
+    "title": "GTA 7 — 8-Bit Demake",
+    "size": 12574,
+    "modified": 1795137929
   },
   {
     "name": "pac-man.html",

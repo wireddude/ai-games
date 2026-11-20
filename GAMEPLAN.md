@@ -1,5 +1,11 @@
 # Zelda-style game: project handoff
 
+## Flight Simulator v2 — plane and environment color pass
+- Replaced the teal/cream aircraft in `flight-simulatorv2.html` with the red-and-white low-poly prop plane from `flight-simulator.html`, scaled to match v2's world; retained v2's camera and prop-animation hooks.
+- Restored a vivid blue sky gradient and richer green terrain/trees, plus clearer blue ocean colors based on the original simulator palette.
+- Validation: inline module JavaScript syntax check; no browser visual test run.
+- Next: browser-check the aircraft scale, colors, and chase/cockpit views.
+
 ## Goal and constraints
 Build a fun, simple NES-inspired top-down adventure. It should remain one standalone HTML file, work by opening it in a modern browser, and avoid external libraries/assets. Keep changes incremental and preserve existing playability.
 

@@ -50,7 +50,7 @@ body{user-select:none;-webkit-user-select:none}
 .horizon-wrap{width:106px;margin-bottom:2px;text-align:center}
 .horizon-title{margin-bottom:7px;color:#d9eaf0;font:750 8px ui-monospace,SFMono-Regular,monospace;letter-spacing:.13em}
 .horizon{width:86px;height:86px;margin:auto;position:relative;overflow:hidden;border:2px solid #ebf8fa;border-radius:50%;box-shadow:0 7px 22px #05182744,0 0 0 4px #0a22334d;background:#83cbe6}
-.horizon-sky{position:absolute;inset:-45%;background:linear-gradient(#62bde0 0 48%,#9ad9eb 48% 50%,#d4b879 50% 52%,#658552 52%);transform-origin:center;transition:transform .08s linear}
+.horizon-sky{position:absolute;inset:-45%;background:linear-gradient(#2f7fd0 0 48%,#8fc4ee 48% 50%,#e7d6a1 50% 52%,#3f8f43 52%);transform-origin:center;transition:transform .08s linear}
 .horizon-mark{position:absolute;left:13px;right:13px;top:50%;height:2px;background:#fff;box-shadow:0 0 4px #153348}
 .horizon-mark:before,.horizon-mark:after{content:"";position:absolute;top:-4px;width:13px;height:8px;border-top:2px solid #fff}
 .horizon-mark:before{left:-7px;border-left:2px solid #fff}.horizon-mark:after{right:-7px;border-right:2px solid #fff}
@@ -186,9 +186,15 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const lerp=(a,b,t)=>a+(b-a)*t;
 const smooth=(a,b,x)=>{const t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t)};
 const scene=new THREE.Scene();
-scene.background=new THREE.Color(0x9ad8ec);
-scene.fog=new THREE.Fog(0x9ad8ec,2100,6900);
+scene.background=new THREE.Color(0x2f7fd0);
+scene.fog=new THREE.Fog(0x9fcdf0,2700,7600);
 const camera=new THREE.PerspectiveCamera(66,innerWidth/innerHeight,.1,12000);
+const sky=new THREE.Mesh(new THREE.SphereGeometry(10000,32,16),new THREE.ShaderMaterial({
+  side:THREE.BackSide,depthWrite:false,
+  uniforms:{top:{value:new THREE.Color(0x2f7fd0)},mid:{value:new THREE.Color(0x8fc4ee)},bot:{value:new THREE.Color(0xdff0ff)}},
+  vertexShader:`varying vec3 vP;void main(){vP=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+  fragmentShader:`varying vec3 vP;uniform vec3 top;uniform vec3 mid;uniform vec3 bot;void main(){float h=normalize(vP).y;vec3 c=mix(mid,top,smoothstep(0.02,0.6,h));c=mix(bot,c,smoothstep(-0.12,0.12,h));gl_FragColor=vec4(c,1.0);}`
+}));sky.frustumCulled=false;scene.add(sky);
 const renderer=new THREE.WebGLRenderer({canvas:$("world"),antialias:true,alpha:false,powerPreference:"high-performance"});
 renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.65));
 renderer.setSize(innerWidth,innerHeight,false);
@@ -214,7 +220,7 @@ function terrainHeight(x,z){
 }
 function landFactor(x,z){return terrainHeight(x,z)>-4}
 function terrainColor(h){
-  const sand=new THREE.Color(0xc4b27d),low=new THREE.Color(0x78a868),mid=new THREE.Color(0x648f60),high=new THREE.Color(0x738578),snow=new THREE.Color(0xd3ddd5);
+  const sand=new THREE.Color(0xe7d6a1),low=new THREE.Color(0x5fb35a),mid=new THREE.Color(0x3f8f43),high=new THREE.Color(0x8a8178),snow=new THREE.Color(0xf3f7fb);
   if(h<2)return sand;
   if(h<45)return sand.lerp(low,smooth(2,45,h));
   if(h<150)return low.lerp(mid,smooth(45,150,h));
@@ -238,9 +244,9 @@ function makeTerrain(){
   const mesh=new THREE.Mesh(g,m);mesh.receiveShadow=false;scene.add(mesh);
 }
 makeTerrain();
-const ocean=new THREE.Mesh(new THREE.PlaneGeometry(16000,16000),new THREE.MeshStandardMaterial({color:0x408ca5,roughness:.38,metalness:.03,side:THREE.DoubleSide}));
+const ocean=new THREE.Mesh(new THREE.PlaneGeometry(16000,16000),new THREE.MeshStandardMaterial({color:0x2f8fc0,roughness:.38,metalness:.03,side:THREE.DoubleSide}));
 ocean.rotation.x=-Math.PI/2;ocean.position.y=-8.4;scene.add(ocean);
-const oceanHaze=new THREE.Mesh(new THREE.PlaneGeometry(16000,16000),new THREE.MeshBasicMaterial({color:0x6fb4c4,transparent:true,opacity:.11,side:THREE.DoubleSide,depthWrite:false}));
+const oceanHaze=new THREE.Mesh(new THREE.PlaneGeometry(16000,16000),new THREE.MeshBasicMaterial({color:0x37a7c4,transparent:true,opacity:.07,side:THREE.DoubleSide,depthWrite:false}));
 oceanHaze.rotation.x=-Math.PI/2;oceanHaze.position.y=-8.25;scene.add(oceanHaze);
 
 function addRiver(points,width){
@@ -327,10 +333,10 @@ const targetSpecs=[
 
 function addTrees(){
   const trunkGeo=new THREE.CylinderGeometry(2.2,3.2,18,5),leafGeo=new THREE.ConeGeometry(12,34,6,1);
-  const trunkMat=new THREE.MeshStandardMaterial({color:0x675039,roughness:1,flatShading:true});
-  const leafMat=new THREE.MeshStandardMaterial({color:0x567f4c,roughness:1,flatShading:true});
+  const trunkMat=new THREE.MeshStandardMaterial({color:0x6b4a2b,roughness:1,flatShading:true});
+  const leafMat=new THREE.MeshStandardMaterial({color:0x2f7d3a,roughness:1,flatShading:true});
   const trunks=new THREE.InstancedMesh(trunkGeo,trunkMat,1200),leaves=new THREE.InstancedMesh(leafGeo,leafMat,1200);
-  const dummy=new THREE.Object3D(),green=[0x4d7a50,0x668d55,0x75935c,0x426e50].map(c=>new THREE.Color(c));let n=0;
+  const dummy=new THREE.Object3D(),green=[0x2f7d3a,0x3d9142,0x4a9b45,0x287234].map(c=>new THREE.Color(c));let n=0;
   while(n<1200){
     const x=(rnd()-.5)*5600,z=(rnd()-.5)*6200;
     if(terrainHeight(x,z)<8)continue;
@@ -409,24 +415,22 @@ ringSpecs.forEach((p,i)=>{
 function buildPlane(){
   const root=new THREE.Group();scene.add(root);
   const body=new THREE.Group();root.add(body);
-  const cream=new THREE.MeshStandardMaterial({color:0xe8e2d3,roughness:.52,metalness:.04,flatShading:true});
-  const teal=new THREE.MeshStandardMaterial({color:0x1a7780,roughness:.42,metalness:.12,flatShading:true});
-  const glass=new THREE.MeshStandardMaterial({color:0x4e9fb1,roughness:.18,metalness:.22,transparent:true,opacity:.82});
-  const dark=new THREE.MeshStandardMaterial({color:0x223b45,roughness:.55,flatShading:true});
-  const fus=new THREE.Mesh(new THREE.CylinderGeometry(3.5,5.2,35,10,1),cream);fus.rotation.x=Math.PI/2;fus.position.z=1;body.add(fus);
-  const nose=new THREE.Mesh(new THREE.ConeGeometry(4.2,12,10),teal);nose.rotation.x=-Math.PI/2;nose.position.z=-22;body.add(nose);
-  const tailcone=new THREE.Mesh(new THREE.ConeGeometry(3.1,8,8),cream);tailcone.rotation.x=Math.PI/2;tailcone.position.z=21;body.add(tailcone);
-  const wing=new THREE.Mesh(new THREE.BoxGeometry(78,1.5,13),teal);wing.position.set(0,0,-1);body.add(wing);
-  const wingTop=new THREE.Mesh(new THREE.BoxGeometry(70,.45,9),cream);wingTop.position.set(0,.9,-1);body.add(wingTop);
-  for(const side of [-1,1]){const tip=new THREE.Mesh(new THREE.BoxGeometry(1.5,1.8,12),cream);tip.position.set(side*37,.1,-1);body.add(tip)}
-  const tail=new THREE.Mesh(new THREE.BoxGeometry(27,1.1,8),cream);tail.position.set(0,4,17);body.add(tail);
-  const fin=new THREE.Mesh(new THREE.BoxGeometry(1.4,10,10),teal);fin.position.set(0,7.4,17);body.add(fin);
-  const canopy=new THREE.Mesh(new THREE.SphereGeometry(6.7,12,8,0,Math.PI*2,0,Math.PI/2),glass);canopy.scale.set(1.1,1.25,1.85);canopy.position.set(0,4,-7);body.add(canopy);
-  const belly=new THREE.Mesh(new THREE.BoxGeometry(4,2,16),dark);belly.position.set(0,-4,6);body.add(belly);
+  const red=new THREE.MeshStandardMaterial({color:0xd83a2f,roughness:.5,metalness:.15,flatShading:true});
+  const white=new THREE.MeshStandardMaterial({color:0xf2f4f8,roughness:.6,metalness:.1,flatShading:true});
+  const dark=new THREE.MeshStandardMaterial({color:0x2a2f38,roughness:.5,metalness:.2,flatShading:true});
+  const glass=new THREE.MeshStandardMaterial({color:0x9fd8ff,roughness:.2,metalness:.3,transparent:true,opacity:.85});
+  const fus=new THREE.Mesh(new THREE.CylinderGeometry(5.5,8.5,45,8),red);fus.rotation.x=Math.PI/2;fus.position.z=2.5;body.add(fus);
+  const nose=new THREE.Mesh(new THREE.ConeGeometry(5.5,13,8),dark);nose.rotation.x=-Math.PI/2;nose.position.z=-23;body.add(nose);
+  const tailcone=new THREE.Mesh(new THREE.ConeGeometry(7.5,16,8),red);tailcone.rotation.x=Math.PI/2;tailcone.position.z=23;body.add(tailcone);
+  const wing=new THREE.Mesh(new THREE.BoxGeometry(80,2,17),white);wing.position.set(0,3,-2.5);body.add(wing);
+  const tipMat=new THREE.MeshStandardMaterial({color:0xd83a2f,roughness:.5,flatShading:true});
+  for(const side of [-1,1]){const tip=new THREE.Mesh(new THREE.BoxGeometry(7,2.5,17),tipMat);tip.position.set(side*41,3,-2.5);body.add(tip)}
+  const htail=new THREE.Mesh(new THREE.BoxGeometry(30,1.5,9),white);htail.position.set(0,2,23);body.add(htail);
+  const vtail=new THREE.Mesh(new THREE.BoxGeometry(1.5,13,9),white);vtail.position.set(0,8,23);body.add(vtail);
+  const cockpit=new THREE.Mesh(new THREE.SphereGeometry(5,10,8,0,Math.PI*2,0,Math.PI*.5),glass);cockpit.scale.set(1,.8,1.6);cockpit.position.set(0,5,-6);body.add(cockpit);
   const prop=new THREE.Group();prop.position.set(0,0,-30);body.add(prop);
-  const propHub=new THREE.Mesh(new THREE.SphereGeometry(2.3,8,6),cream);prop.add(propHub);
-  for(let i=0;i<3;i++){const blade=new THREE.Mesh(new THREE.BoxGeometry(2.2,18,1.5),dark);blade.position.y=10;blade.rotation.z=i*Math.PI*2/3;prop.add(blade)}
-  for(const side of [-1,1]){const lamp=new THREE.Mesh(new THREE.SphereGeometry(1.5,8,6),new THREE.MeshBasicMaterial({color:side===1?0xff675b:0x65f6c6}));lamp.position.set(side*38,0,-3);body.add(lamp)}
+  const blade=new THREE.Mesh(new THREE.BoxGeometry(1.75,26,1.25),dark),blade2=blade.clone();blade2.rotation.z=Math.PI/2;
+  const hub=new THREE.Mesh(new THREE.CylinderGeometry(2.5,2.5,4,8),dark);hub.rotation.x=Math.PI/2;prop.add(blade,blade2,hub);
   root.userData.body=body;root.userData.prop=prop;return root;
 }
 const plane=buildPlane();
@@ -749,7 +753,7 @@ function animate(now){
   const dt=Math.min(.04,(now-last)/1000||0);last=now;elapsed+=dt;frames++;
   updateFlight(dt);updateWeapons(dt);updateBombs(dt);updateEffects(dt);updatePopulation(elapsed);
   clouds.forEach(c=>{c.position.x+=dt*c.userData.drift;if(c.position.x>4000)c.position.x=-4000});
-  updateCamera(dt);updateHud();updateAudio();
+  updateCamera(dt);sky.position.copy(camera.position);updateHud();updateAudio();
   renderer.render(scene,camera);
   if(frames===4)setTimeout(()=>$("loading").classList.add("hidden"),220);
 }
