@@ -63,7 +63,7 @@ body{user-select:none;-webkit-user-select:none}
 .objective-note{margin-top:4px;color:#a6bbc7;font-size:10px}
 .range-score{display:flex;align-items:baseline;gap:7px;margin-top:10px;padding-top:8px;border-top:1px solid #ffffff1c;font:800 8px ui-monospace,SFMono-Regular,monospace;letter-spacing:.1em;color:#9eb7c1}
 .range-score strong{color:#ffd38a;font-size:14px;letter-spacing:0}.range-score em{margin-left:auto;color:#8ff2dc;font-style:normal;font-size:8px;letter-spacing:.06em}
-.button-row{display:flex;gap:7px}
+.button-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
 .glass-button{pointer-events:auto;flex:1;min-height:38px;padding:0 10px;border:1px solid #ffffff36;border-radius:12px;background:rgba(9,27,39,.73);color:#f1f8fb;font:800 9px ui-monospace,SFMono-Regular,monospace;letter-spacing:.11em;backdrop-filter:blur(10px);cursor:pointer;transition:transform .15s,border-color .15s,background .15s}
 .glass-button:hover{border-color:#8fe7ed;background:rgba(16,47,61,.9);transform:translateY(-1px)}
 .glass-button:active{transform:translateY(1px)}
@@ -84,8 +84,8 @@ body{user-select:none;-webkit-user-select:none}
 .stick-knob{position:absolute;width:54px;height:54px;left:50%;top:50%;margin:-27px 0 0 -27px;border:1px solid #defaff9c;border-radius:50%;background:linear-gradient(145deg,#90edf099,#1b718299);box-shadow:0 5px 18px #06172277,inset 0 0 10px #ffffff5a;transition:background .15s;touch-action:none}
 .stick-label{position:absolute;bottom:-17px;left:0;right:0;text-align:center;color:#edfaffb0;font:800 8px ui-monospace,SFMono-Regular,monospace;letter-spacing:.16em}
 .touch-right{position:absolute;right:18px;bottom:calc(24px + var(--safe-b));display:flex;flex-direction:column;align-items:flex-end;gap:9px;pointer-events:auto}
-.touch-actions{display:flex;gap:8px}
-.touch-actions .glass-button{min-width:65px;min-height:42px;font-size:9px}
+.touch-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:204px;gap:8px}
+.touch-actions .glass-button{min-width:0;min-height:42px;font-size:9px}
 .throttle-box{width:148px;padding:9px 11px 10px;border:1px solid #ffffff3a;border-radius:14px;background:rgba(7,25,38,.72);backdrop-filter:blur(12px)}
 .throttle-label{display:flex;justify-content:space-between;align-items:center;color:#dff0f4;font:800 8px ui-monospace,SFMono-Regular,monospace;letter-spacing:.1em}
 .throttle-label b{color:var(--gold);font-size:10px}
@@ -107,14 +107,14 @@ button:focus-visible,input:focus-visible{outline:2px solid #9cf2f1;outline-offse
  .topbar{top:calc(10px + var(--safe-t));left:12px;right:12px}.brandmark{width:34px;height:34px;border-radius:11px}.brandname{font-size:10px}.brandsub{font-size:7px}.mission{display:none}.status{font-size:8px;padding:7px 9px}
  .heading-panel{top:58px;width:min(280px,70vw)}.left-hud{left:11px;bottom:calc(172px + var(--safe-b))}.instrument{width:184px;padding:10px 11px;border-radius:14px}.instrument-head{margin-bottom:9px}.instrument-title{font-size:8px}.readouts{gap:9px 10px}.readout{padding-top:7px}.readout strong{font-size:18px}.readout label{font-size:7px}
  .right-hud{right:11px;bottom:calc(172px + var(--safe-b));width:162px;gap:7px}.objective{padding:9px;border-radius:13px}.objective-top{font-size:7px}.ring-count{font-size:14px}.objective-name{font-size:11px}.objective-note{font-size:8px}.range-score{margin-top:7px;padding-top:6px;font-size:7px}.range-score strong{font-size:12px}.range-score em{font-size:7px}
- .stick-base{left:13px;width:124px;height:124px;bottom:calc(23px + var(--safe-b))}.stick-knob{width:50px;height:50px;margin:-25px 0 0 -25px}.touch-right{right:12px;bottom:calc(22px + var(--safe-b));gap:7px}.touch-actions{gap:5px}.touch-actions .glass-button{min-width:47px;min-height:39px;padding:0 5px;font-size:8px}.throttle-box{width:145px;padding:8px}.readout small{font-size:7px}
+ .stick-base{left:13px;width:124px;height:124px;bottom:calc(23px + var(--safe-b))}.stick-knob{width:50px;height:50px;margin:-25px 0 0 -25px}.touch-right{right:12px;bottom:calc(22px + var(--safe-b));gap:7px}.touch-actions{width:154px;gap:5px}.touch-actions .glass-button{min-width:0;min-height:39px;padding:0 5px;font-size:8px}.throttle-box{width:145px;padding:8px}.readout small{font-size:7px}
  .keyboard-hint{display:none}
 }
 @media (max-height:620px) and (orientation:landscape){
  .left-hud{left:132px;bottom:calc(10px + var(--safe-b))}.right-hud{top:105px;bottom:auto;right:12px;width:156px}.instrument{padding:8px 10px}.readouts{gap:7px}.readout strong{font-size:17px}.stick-base{width:110px;height:110px;left:12px;bottom:calc(10px + var(--safe-b))}.stick-knob{width:46px;height:46px;margin:-23px 0 0 -23px}.touch-right{bottom:calc(10px + var(--safe-b))}.heading-panel{top:57px}.mission{display:none}
 }
 @media (max-width:360px) and (orientation:portrait){
- .left-hud{left:8px}.instrument{width:166px}.right-hud{right:8px;width:145px}.stick-base{left:9px;width:112px;height:112px}.touch-right{right:8px}.touch-actions{gap:3px}.touch-actions .glass-button{min-width:42px;padding:0 3px;font-size:7px}.throttle-box{width:138px}
+ .left-hud{left:8px}.instrument{width:166px}.right-hud{right:8px;width:145px}.stick-base{left:9px;width:112px;height:112px}.touch-right{right:8px}.touch-actions{width:132px;gap:3px}.touch-actions .glass-button{min-width:0;padding:0 3px;font-size:7px}.throttle-box{width:138px}
 }
 @media (prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}
 </style>
@@ -151,11 +151,12 @@ button:focus-visible,input:focus-visible{outline:2px solid #9cf2f1;outline-offse
   <section class="objective">
     <div class="objective-top"><span>ISLAND RUN</span><span class="ring-count"><span id="ringsRead">0</span><span style="color:#fff9"> / 8</span></span></div>
     <div class="objective-name" id="objectiveName">The Aurora Route</div>
-    <div class="objective-note" id="objectiveNote">Fly through a glowing ring to begin.</div>
+    <div class="objective-note" id="objectiveNote">Fly rings, or gear down and land at the runway.</div>
     <div class="range-score" aria-live="polite"><span>RANGE</span><strong id="scoreRead">00000</strong><em id="targetsLeft">10 TARGETS</em></div>
   </section>
   <div class="button-row">
     <button class="glass-button" id="cameraBtn" aria-label="Change camera">CAM · C</button>
+    <button class="glass-button" id="gearBtn" aria-label="Toggle landing gear">GEAR · G</button>
     <button class="glass-button accent" id="fireBtn" aria-label="Hold to fire machine guns">FIRE · SPACE</button>
     <button class="glass-button accent" id="bombBtn" aria-label="Drop a cartoon flare bomb">FLARE · B</button>
     <button class="glass-button" id="resetBtn" aria-label="Reset flight">RESET · R</button>
@@ -168,6 +169,7 @@ button:focus-visible,input:focus-visible{outline:2px solid #9cf2f1;outline-offse
     <div class="throttle-box"><div class="throttle-label"><span>THROTTLE</span><b id="touchThrottle">68%</b></div><input id="throttleSlider" type="range" min="20" max="100" value="68" aria-label="Throttle"></div>
     <div class="touch-actions">
       <button class="glass-button" id="touchCamera" aria-label="Change camera">CAM</button>
+      <button class="glass-button" id="touchGear" aria-label="Toggle landing gear">GEAR</button>
       <button class="glass-button accent" id="touchFire" aria-label="Hold to fire machine guns">FIRE</button>
       <button class="glass-button accent" id="touchBomb" aria-label="Drop a flare bomb">BOMB</button>
       <button class="glass-button" id="touchReset" aria-label="Reset flight">RESET</button>
@@ -175,7 +177,7 @@ button:focus-visible,input:focus-visible{outline:2px solid #9cf2f1;outline-offse
   </div>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<div class="keyboard-hint">ARROWS FLY · W/S THROTTLE · SPACE FIRE · C CAMERA · B FLARE · R RESET · M SOUND</div>
+<div class="keyboard-hint">ARROWS FLY · W/S THROTTLE · G GEAR · LAND ON RUNWAY · SPACE FIRE · C CAMERA · B FLARE · R RESET · M SOUND</div>
 <div class="loading" id="loading"><div class="loading-card"><div class="loading-plane">✈</div><div class="loading-title">SKYBOUND</div><div class="loading-note">Building your island in the clouds…<br>Flight begins in the air.</div><div class="loading-bar"><span></span></div></div></div>
 <div class="error-note" id="errorNote"></div>
 <script type="module">
@@ -219,6 +221,7 @@ function terrainHeight(x,z){
   return -8+land*(Math.max(2,hills)+peaks+north);
 }
 function landFactor(x,z){return terrainHeight(x,z)>-4}
+const AIRPORT={x:-1330,z:920,runwayZ:905,surfaceY:terrainHeight(-1330,920)+4.1};
 function terrainColor(h){
   const sand=new THREE.Color(0xe7d6a1),low=new THREE.Color(0x5fb35a),mid=new THREE.Color(0x3f8f43),high=new THREE.Color(0x8a8178),snow=new THREE.Color(0xf3f7fb);
   if(h<2)return sand;
@@ -277,7 +280,7 @@ function addMountains(){
 addMountains();
 
 function addAirport(){
-  const x=-1330,z=920,y=terrainHeight(x,z)+2;
+  const {x,z}=AIRPORT,y=terrainHeight(x,z)+2;
   const apron=new THREE.Mesh(new THREE.BoxGeometry(430,2,350),new THREE.MeshStandardMaterial({color:0x777b73,roughness:1}));
   apron.position.set(x,y,z);scene.add(apron);
   const runway=new THREE.Mesh(new THREE.BoxGeometry(80,2,570),new THREE.MeshStandardMaterial({color:0x343e42,roughness:.95}));
@@ -431,11 +434,21 @@ function buildPlane(){
   const prop=new THREE.Group();prop.position.set(0,0,-30);body.add(prop);
   const blade=new THREE.Mesh(new THREE.BoxGeometry(1.75,26,1.25),dark),blade2=blade.clone();blade2.rotation.z=Math.PI/2;
   const hub=new THREE.Mesh(new THREE.CylinderGeometry(2.5,2.5,4,8),dark);hub.rotation.x=Math.PI/2;prop.add(blade,blade2,hub);
-  root.userData.body=body;root.userData.prop=prop;return root;
+  const gear=new THREE.Group();gear.visible=false;body.add(gear);
+  const strutMat=new THREE.MeshStandardMaterial({color:0xc5cbd0,metalness:.48,roughness:.42});
+  const tireMat=new THREE.MeshStandardMaterial({color:0x20262a,roughness:.92});
+  const hubMat=new THREE.MeshStandardMaterial({color:0xb7c1c6,metalness:.58,roughness:.35});
+  function addWheel(x,z,r,strutLength){
+    const strut=new THREE.Mesh(new THREE.CylinderGeometry(.8,1.1,strutLength,6),strutMat);strut.position.set(x,-2-strutLength/2,z);gear.add(strut);
+    const wheelY=-2-strutLength-r,wheel=new THREE.Mesh(new THREE.CylinderGeometry(r,r,2.4,10),tireMat);wheel.rotation.z=Math.PI/2;wheel.position.set(x,wheelY,z);gear.add(wheel);
+    const hubcap=new THREE.Mesh(new THREE.CylinderGeometry(r*.38,r*.38,2.7,8),hubMat);hubcap.rotation.z=Math.PI/2;hubcap.position.set(x,wheelY,z);gear.add(hubcap);
+  }
+  addWheel(-14,7,4,8);addWheel(14,7,4,8);addWheel(0,-14,3.5,9);
+  root.userData.body=body;root.userData.prop=prop;root.userData.gear=gear;return root;
 }
 const plane=buildPlane();
 plane.position.set(0,360,1580);
-const flight={yaw:0,pitch:0,bank:0,throttle:.68,speed:78,vertical:0,camera:0,rings:0,combo:0,score:0,targetsHit:0,streak:0,lastHit:-Infinity};
+const flight={yaw:0,pitch:0,bank:0,throttle:.68,speed:78,vertical:0,camera:0,gearDown:false,landed:false,rings:0,combo:0,score:0,targetsHit:0,streak:0,lastHit:-Infinity};
 const forward=new THREE.Vector3();
 const keys=new Set(),touch={x:0,y:0,active:false};
 let bombs=[],effects=[],people=[],cars=[],gunShots=[],touchFiring=false,weaponCooldown=0,lastGunSound=-Infinity;
@@ -506,8 +519,17 @@ function setCamera(){
   $("modeLabel").textContent=names[flight.camera];plane.userData.body.visible=flight.camera===0;
   showToast(["CHASE CAMERA","COCKPIT VIEW","NOSE CAM"][flight.camera]);
 }
+function setGear(down){
+  if(flight.landed&&!down){showToast("PARKED ON RUNWAY");return}
+  flight.gearDown=down;plane.userData.gear.visible=down;
+  $("gearBtn").textContent=down?"GEAR DN":"GEAR · G";$("touchGear").textContent=down?"GEAR DN":"GEAR";
+  $("flightStatus").textContent=flight.landed?"LANDED · GEAR DOWN":down?"GEAR DOWN · APPROACH":"AIRBORNE";
+  showToast(down?"LANDING GEAR DOWN":"LANDING GEAR UP");
+}
+function toggleGear(){setGear(!flight.gearDown)}
 function resetFlight(show=true){
-  plane.position.set(0,360,1580);flight.yaw=0;flight.pitch=0;flight.bank=0;flight.speed=78;flight.vertical=0;
+  plane.position.set(0,360,1580);flight.yaw=0;flight.pitch=0;flight.bank=0;flight.speed=78;flight.vertical=0;flight.landed=false;
+  $("flightStatus").textContent=flight.gearDown?"GEAR DOWN · APPROACH":"AIRBORNE";
   if(show)showToast("BACK TO CRUISE ALTITUDE");
 }
 function dropBomb(){
@@ -652,6 +674,14 @@ function updateFlight(dt){
   const c=readControls();
   if(keys.has("w"))flight.throttle=clamp(flight.throttle+dt*.12,.2,1);
   if(keys.has("s"))flight.throttle=clamp(flight.throttle-dt*.12,.2,1);
+  if(flight.landed){
+    flight.pitch=0;flight.bank=0;plane.rotation.order="YXZ";plane.rotation.set(0,flight.yaw,0);
+    plane.getWorldDirection(forward);forward.negate();
+    flight.speed=lerp(flight.speed,Math.max(0,(flight.throttle-.2)*24),1-Math.exp(-dt*.8));
+    plane.position.addScaledVector(forward,flight.speed*dt);plane.position.x=AIRPORT.x;
+    plane.position.z=clamp(plane.position.z,AIRPORT.runwayZ-250,AIRPORT.runwayZ+250);
+    flight.vertical=0;$("flightStatus").textContent=flight.speed>2?"ON RUNWAY · GEAR DOWN":"LANDED · GEAR DOWN";return;
+  }
   const targetBank=-c.x*.48;
   flight.bank=lerp(flight.bank,targetBank,1-Math.exp(-dt*(c.x?2.8:1.4)));
   flight.yaw-=c.x*.58*dt+Math.sin(-flight.bank)*.34*dt;
@@ -665,6 +695,18 @@ function updateFlight(dt){
   plane.position.addScaledVector(forward,flight.speed*dt);
   const h=terrainHeight(plane.position.x,plane.position.z);
   flight.vertical=forward.y*flight.speed;
+  const runwayZDist=plane.position.z-AIRPORT.runwayZ;
+  if(flight.gearDown&&flight.vertical<=0&&plane.position.y<=AIRPORT.surfaceY+19){
+    const heading=Math.atan2(Math.sin(flight.yaw),Math.cos(flight.yaw));
+    const runwayHeading=Math.min(Math.abs(heading),Math.abs(Math.abs(heading)-Math.PI))<.2;
+    const aligned=Math.abs(plane.position.x-AIRPORT.x)<25&&Math.abs(runwayZDist)<270&&runwayHeading;
+    const gentle=Math.abs(flight.pitch)<.22&&Math.abs(flight.bank)<.2&&flight.vertical>=-18&&flight.speed>=44&&flight.speed<=92;
+    if(aligned&&gentle&&plane.position.y>=AIRPORT.surfaceY+15){
+      plane.position.y=AIRPORT.surfaceY+18;flight.landed=true;flight.pitch=0;flight.bank=0;flight.vertical=0;
+      $("flightStatus").textContent="LANDED · GEAR DOWN";showToast("LANDING COMPLETE · RUNWAY");return;
+    }
+    if(plane.position.y<AIRPORT.surfaceY+15){showToast(aligned?"HARD LANDING · RESETTING":"MISSED RUNWAY · RESETTING");resetFlight(false);return}
+  }
   if(plane.position.y<(h+14)&&h>-5){showToast("TERRAIN AHEAD · RESETTING");resetFlight(false)}
   else if(plane.position.y<5){showToast("SPLASH-FREE RESET");resetFlight(false)}
   if(Math.abs(plane.position.x)>4750||Math.abs(plane.position.z)>4750){showToast("BACK INSIDE THE ISLAND");resetFlight(false)}
@@ -726,6 +768,7 @@ stickBase.addEventListener("pointerup",releaseStick);stickBase.addEventListener(
 $("throttleSlider").addEventListener("input",e=>{flight.throttle=Number(e.target.value)/100;unlockAudio()});
 function bindButton(id,fn){$(id).addEventListener("click",e=>{e.preventDefault();unlockAudio();fn()})}
 bindButton("cameraBtn",setCamera);bindButton("touchCamera",setCamera);
+bindButton("gearBtn",toggleGear);bindButton("touchGear",toggleGear);
 bindButton("resetBtn",()=>resetFlight());bindButton("touchReset",()=>resetFlight());
 bindButton("bombBtn",dropBomb);bindButton("touchBomb",dropBomb);bindButton("soundToggle",setMute);
 function bindFireButton(id){
@@ -740,7 +783,7 @@ function keyName(e){return e.key.length===1?e.key.toLowerCase():e.key}
 addEventListener("keydown",e=>{
   const k=keyName(e);
   if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].includes(k))e.preventDefault();
-  if(!keys.has(k)){if(k==="c")setCamera();if(k==="r")resetFlight();if(k==="b")dropBomb();if(k==="m"){unlockAudio();setMute()}}
+  if(!keys.has(k)){if(k==="c")setCamera();if(k==="g")toggleGear();if(k==="r")resetFlight();if(k==="b")dropBomb();if(k==="m"){unlockAudio();setMute()}}
   keys.add(k);unlockAudio();
 });
 addEventListener("keyup",e=>keys.delete(keyName(e)));

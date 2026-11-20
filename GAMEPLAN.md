@@ -1,5 +1,11 @@
 # Zelda-style game: project handoff
 
+## Flight Simulator v2 — landing gear and runway landings
+- Added retractable visible landing gear, toggled by **G** or the touch **GEAR** button. The HUD reports gear/landing status and the objective hint explains airport landings.
+- A touchdown on the runway at the airport succeeds only with gear down, runway alignment, a gentle descent, and landing speed; otherwise the plane resets with a hard/missed-runway message. Successful landings roll to a stop on the runway.
+- Validation: inline module JavaScript syntax check; no browser visual test run.
+- Next: browser-playtest a full runway approach and touchdown on desktop and touch controls.
+
 ## Flight Simulator v2 — plane and environment color pass
 - Replaced the teal/cream aircraft in `flight-simulatorv2.html` with the red-and-white low-poly prop plane from `flight-simulator.html`, scaled to match v2's world; retained v2's camera and prop-animation hooks.
 - Restored a vivid blue sky gradient and richer green terrain/trees, plus clearer blue ocean colors based on the original simulator palette.
