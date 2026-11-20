@@ -1,0 +1,1479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<title>Sky Drift — 3D Flight Simulator</title>
+<style>
+  :root{
+    --hud: rgba(8,14,24,0.62);
+    --hud-line: rgba(120,200,255,0.55);
+    --glow: #7fe7ff;
+    --accent: #ffd24a;
+    --good: #59ffa0;
+    --bad: #ff5c6c;
+    --text: #eaf6ff;
+    --safe-t: env(safe-area-inset-top, 0px);
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-l: env(safe-area-inset-left, 0px);
+    --safe-r: env(safe-area-inset-right, 0px);
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ margin:0; height:100%; overflow:hidden; background:#0a1424; color:var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    overscroll-behavior:none; touch-action:none; user-select:none; -webkit-user-select:none; }
+  #app{ position:fixed; inset:0; }
+  canvas{ display:block; width:100%; height:100%; touch-action:none; }
+
+  /* ---------- HUD ---------- */
+  .hud{ position:absolute; inset:0; pointer-events:none; z-index:5;
+    padding: calc(10px + var(--safe-t)) calc(12px + var(--safe-r)) calc(10px + var(--safe-b)) calc(12px + var(--safe-l)); }
+  .panel{ background:var(--hud); border:1px solid var(--hud-line); border-radius:12px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); box-shadow:0 4px 18px rgba(0,0,0,.35); }
+  .lbl{ font-size:10px; letter-spacing:.14em; text-transform:uppercase; opacity:.72; }
+  .val{ font-variant-numeric: tabular-nums; font-weight:700; }
+
+  /* top-left cluster */
+  #tl{ position:absolute; top:calc(10px + var(--safe-t)); left:calc(12px + var(--safe-l)); display:flex; gap:8px; flex-wrap:wrap; }
+  .stat{ padding:8px 12px; min-width:86px; }
+  .stat .val{ font-size:22px; line-height:1.05; }
+  .stat .unit{ font-size:11px; opacity:.7; margin-left:2px; }
+
+  /* compass top-center */
+  #compassWrap{ position:absolute; top:calc(8px + var(--safe-t)); left:50%; transform:translateX(-50%);
+    width:min(46vw,360px); padding:6px 10px 8px; text-align:center; }
+  #compassHead{ font-size:12px; letter-spacing:.2em; opacity:.85; margin-bottom:2px; }
+  #compass{ position:relative; height:26px; overflow:hidden; border-radius:6px;
+    background:linear-gradient(180deg, rgba(20,40,60,.6), rgba(10,20,32,.6)); border:1px solid rgba(120,200,255,.25); }
+  #compassStrip{ position:absolute; top:0; height:100%; white-space:nowrap; will-change:transform; }
+  #compassStrip .tick{ position:absolute; top:0; height:100%; display:flex; align-items:center; justify-content:center;
+    font-size:11px; color:#bfe6ff; }
+  #compassStrip .tick .n{ position:absolute; top:1px; font-size:9px; opacity:.7; }
+  #needle{ position:absolute; top:-2px; left:50%; width:2px; height:8px; background:var(--accent);
+    transform:translateX(-50%); box-shadow:0 0 6px var(--accent); }
+
+  /* artificial horizon top-right */
+  #horizonWrap{ position:absolute; top:calc(10px + var(--safe-t)); right:calc(12px + var(--safe-r));
+    width:118px; height:118px; padding:8px; display:flex; flex-direction:column; align-items:center; }
+  #horizon{ position:relative; width:96px; height:96px; border-radius:50%; overflow:hidden;
+    border:2px solid rgba(120,200,255,.4); box-shadow:inset 0 0 14px rgba(0,0,0,.5); }
+  #horizonArt{ position:absolute; left:-100%; top:-100%; width:300%; height:300%; will-change:transform; }
+  #horizonSky{ position:absolute; left:0; top:0; width:100%; height:50%; background:linear-gradient(180deg,#2f7fd0,#79b6ee); }
+  #horizonGround{ position:absolute; left:0; top:50%; width:100%; height:50%; background:linear-gradient(180deg,#8a6a3a,#4d3a22); }
+  #horizonHLine{ position:absolute; left:0; top:50%; width:100%; height:2px; background:rgba(255,255,255,.85); }
+  #horizonPitch{ position:absolute; left:0; right:0; top:50%; height:0; }
+  .pitchLine{ position:absolute; left:20%; right:20%; height:2px; background:rgba(255,255,255,.55); transform:translateY(-50%); }
+  .pitchLine.major{ background:#fff; height:2px; }
+  .pitchLine span{ position:absolute; left:-14px; top:-6px; font-size:9px; color:#fff; }
+  #horizonFixed{ position:absolute; left:0; right:0; top:50%; height:0; transform:translateY(-50%); }
+  #horizonFixed .wing{ position:absolute; top:-1px; width:26px; height:4px; background:var(--accent); }
+  #horizonFixed .wing.l{ left:6px; border-radius:4px 0 0 4px; }
+  #horizonFixed .wing.r{ right:6px; border-radius:0 4px 4px 0; }
+  #horizonFixed .dot{ position:absolute; left:50%; top:-2px; width:6px; height:6px; margin-left:-3px; background:var(--accent); border-radius:50%; }
+  #horizonLabel{ font-size:10px; opacity:.7; margin-top:4px; letter-spacing:.12em; }
+
+  /* rings counter: prominent, top-center under compass */
+  #ringsTop{ position:absolute; top:calc(50px + var(--safe-t)); left:50%; transform:translateX(-50%);
+    text-align:center; padding:6px 16px; }
+  #ringsTop .val{ font-size:24px; color:var(--accent); text-shadow:0 0 10px rgba(255,210,74,.5); }
+  #combo{ font-size:11px; color:var(--good); opacity:.9; min-height:14px; }
+
+  /* bottom-left: throttle (desktop) */
+  #bl{ position:absolute; bottom:calc(10px + var(--safe-b)); left:calc(12px + var(--safe-l)); display:flex; gap:8px; align-items:flex-end; }
+  #throttlePanel{ padding:8px 12px; display:flex; flex-direction:column; gap:6px; min-width:120px; }
+  #throttleBar{ width:120px; height:12px; border-radius:6px; background:rgba(255,255,255,.12); overflow:hidden; border:1px solid rgba(120,200,255,.25); }
+  #throttleFill{ height:100%; width:60%; background:linear-gradient(90deg,#4fd07a,#ffd24a); transition:width .08s linear; }
+
+  /* bottom-right buttons (desktop hints / always available) */
+  #br{ position:absolute; bottom:calc(10px + var(--safe-b)); right:calc(12px + var(--safe-r));
+    display:flex; gap:8px; pointer-events:auto; }
+  .btn{ pointer-events:auto; cursor:pointer; background:var(--hud); color:var(--text);
+    border:1px solid var(--hud-line); border-radius:12px; padding:10px 14px; font-size:13px; font-weight:600;
+    letter-spacing:.03em; touch-action:none; min-width:52px; min-height:44px; display:flex; align-items:center; justify-content:center; gap:6px; }
+  .btn:active{ transform:translateY(1px); }
+  .btn.on{ background:rgba(127,231,255,.22); border-color:var(--glow); }
+
+  /* ---------- touch flight stick ---------- */
+  #stickZone{ position:absolute; left:calc(12px + var(--safe-l)); bottom:calc(12px + var(--safe-b));
+    width:min(42vw,220px); height:min(42vw,220px); pointer-events:auto; touch-action:none; z-index:6; }
+  #stickBase{ position:absolute; inset:0; border-radius:50%; background:radial-gradient(circle at 50% 45%, rgba(127,231,255,.10), rgba(10,20,32,.30));
+    border:1.5px solid rgba(127,231,255,.30); }
+  #stickBase .cross{ position:absolute; background:rgba(127,231,255,.18); }
+  #stickBase .cx{ left:50%; top:12%; bottom:12%; width:1.5px; transform:translateX(-50%); }
+  #stickBase .cy{ top:50%; left:12%; right:12%; height:1.5px; transform:translateY(-50%); }
+  #stickKnob{ position:absolute; left:50%; top:50%; width:44%; height:44%; border-radius:50%;
+    transform:translate(-50%,-50%); background:radial-gradient(circle at 40% 35%, #d6f6ff, #3aa7d8 70%, #1c5f86);
+    border:2px solid rgba(255,255,255,.5); box-shadow:0 6px 16px rgba(0,0,0,.45), inset 0 2px 6px rgba(255,255,255,.4);
+    will-change:transform; }
+
+  /* ---------- toast ---------- */
+  #toast{ position:absolute; top:38%; left:50%; transform:translate(-50%,-50%) scale(.9);
+    padding:16px 26px; font-size:26px; font-weight:800; letter-spacing:.06em; opacity:0; pointer-events:none;
+    text-shadow:0 2px 14px rgba(0,0,0,.6); transition:opacity .25s, transform .25s; z-index:8; text-align:center; }
+  #toast.show{ opacity:1; transform:translate(-50%,-50%) scale(1); }
+  #toast small{ display:block; font-size:13px; font-weight:500; opacity:.8; margin-top:4px; letter-spacing:.02em; }
+
+  /* ---------- start overlay ---------- */
+  #start{ position:absolute; inset:0; z-index:20; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:18px; padding:24px; text-align:center;
+    background:radial-gradient(120% 90% at 50% 20%, rgba(30,90,150,.35), rgba(6,12,22,.86));
+    backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); }
+  #start h1{ margin:0; font-size:clamp(34px,8vw,64px); letter-spacing:.08em; font-weight:900;
+    background:linear-gradient(90deg,#bfeaff,#7fe7ff,#ffd24a); -webkit-background-clip:text; background-clip:text; color:transparent;
+    text-shadow:0 0 30px rgba(127,231,255,.25); }
+  #start p{ margin:0; max-width:520px; line-height:1.5; opacity:.9; font-size:15px; }
+  #start .keys{ display:grid; grid-template-columns:auto auto; gap:6px 18px; font-size:13px; opacity:.85;
+    background:rgba(10,20,32,.4); border:1px solid rgba(127,231,255,.25); border-radius:12px; padding:14px 18px; }
+  #start .keys b{ color:var(--glow); font-variant-numeric:tabular-nums; text-align:right; }
+  #startBtn{ pointer-events:auto; cursor:pointer; font-size:20px; font-weight:800; letter-spacing:.06em; color:#06121f;
+    background:linear-gradient(180deg,#bfeaff,#5fd0ff); border:none; border-radius:16px; padding:16px 40px;
+    box-shadow:0 10px 30px rgba(95,208,255,.4); touch-action:none; }
+  #startBtn:active{ transform:translateY(2px); }
+  #start .foot{ font-size:11px; opacity:.55; letter-spacing:.05em; }
+
+  .hide{ display:none !important; }
+  /* vertical throttle slider (right side) */
+  #thrSlider{ position:absolute; right:calc(12px + var(--safe-r)); top:50%; transform:translateY(-50%);
+    width:34px; height:min(40vh,240px); pointer-events:auto; touch-action:none; z-index:6;
+    background:var(--hud); border:1px solid var(--hud-line); border-radius:16px; padding:5px; }
+  #thrTrack{ position:relative; width:100%; height:100%; border-radius:12px; background:rgba(255,255,255,.1); overflow:hidden; }
+  #thrFill2{ position:absolute; left:0; right:0; bottom:0; height:60%; background:linear-gradient(180deg,#ffd24a,#4fd07a); }
+  #thrHandle{ position:absolute; left:-3px; right:-3px; height:14px; bottom:60%; transform:translateY(50%);
+    background:#fff; border-radius:6px; box-shadow:0 2px 6px rgba(0,0,0,.4); }
+  #thrSlider .cap{ position:absolute; top:-18px; left:50%; transform:translateX(-50%); font-size:9px; opacity:.7; letter-spacing:.1em; }
+  @media (max-width:560px){
+    .stat{ min-width:70px; padding:6px 9px; }
+    .stat .val{ font-size:18px; }
+    #horizonWrap{ width:96px; height:96px; }
+    #horizon{ width:78px; height:78px; }
+    #compassWrap{ width:40vw; }
+    #ringsTop{ top:calc(46px + var(--safe-t)); }
+  }
+  /* touch layout: hide redundant bottom throttle bar (slider is the control), shrink stick */
+  body.touch #throttlePanel{ display:none; }
+  body.touch #stickZone{ width:min(38vw,200px); height:min(38vw,200px); }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="hud" id="hud">
+    <div id="tl">
+      <div class="panel stat"><div class="lbl">Airspeed</div><div><span class="val" id="vSpeed">0</span><span class="unit">kt</span></div></div>
+      <div class="panel stat"><div class="lbl">Altitude</div><div><span class="val" id="vAlt">0</span><span class="unit">ft</span></div></div>
+      <div class="panel stat"><div class="lbl">Heading</div><div><span class="val" id="vHead">000</span><span class="unit">°</span></div></div>
+    </div>
+
+    <div id="compassWrap" class="panel">
+      <div id="compassHead">N 000°</div>
+      <div id="compass"><div id="compassStrip"></div><div id="needle"></div></div>
+    </div>
+
+    <div id="horizonWrap" class="panel">
+      <div id="horizon">
+        <div id="horizonArt">
+          <div id="horizonSky"></div>
+          <div id="horizonGround"></div>
+          <div id="horizonHLine"></div>
+          <div id="horizonPitch"></div>
+        </div>
+        <div id="horizonFixed"><div class="wing l"></div><div class="wing r"></div><div class="dot"></div></div>
+      </div>
+      <div id="horizonLabel">PITCH / BANK</div>
+    </div>
+
+    <div id="bl">
+      <div class="panel" id="throttlePanel">
+        <div class="lbl">Throttle <span class="val" id="vThr">60</span>%</div>
+        <div id="throttleBar"><div id="throttleFill"></div></div>
+      </div>
+    </div>
+
+    <div id="ringsTop" class="panel">
+      <div class="lbl">Sky Rings</div>
+      <div class="val" id="vRings">0</div>
+      <div id="combo"></div>
+    </div>
+
+    <div id="br">
+      <button class="btn" id="btnCam" title="Camera (C)">CAM</button>
+      <button class="btn" id="btnReset" title="Reset (R)">RESET</button>
+      <button class="btn on" id="btnMute" title="Mute (M)">SOUND</button>
+    </div>
+
+    <div id="thrSlider" title="Throttle (drag, or W/S)">
+      <div class="cap">THR</div>
+      <div id="thrTrack"><div id="thrFill2"></div><div id="thrHandle"></div></div>
+    </div>
+  </div>
+
+  <div id="stickZone" class="hide">
+    <div id="stickBase"><div class="cross cx"></div><div class="cross cy"></div></div>
+    <div id="stickKnob"></div>
+  </div>
+
+  <div id="toast"></div>
+
+  <div id="start">
+    <h1>SKY DRIFT</h1>
+    <p>You're already airborne, cruising a scenic low-poly coastline. Bank into turns, climb the canyons, and thread the glowing sky rings for combo score. Fly free — or make a touch-and-go on the runway.</p>
+    <div class="keys" id="keysDesktop">
+      <b>↑ / ↓</b><span>Pitch up / down</span>
+      <b>← / →</b><span>Bank / turn</span>
+      <b>W / S</b><span>Throttle up / down</span>
+      <b>C</b><span>Toggle camera</span>
+      <b>R</b><span>Reset to cruise</span>
+      <b>M</b><span>Mute</span>
+    </div>
+    <button id="startBtn">TAKE OFF</button>
+    <div class="foot" id="foot">Desktop: keyboard &nbsp;·&nbsp; iPhone/iPad: touch stick + buttons</div>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+/* ============================================================
+   CONFIG
+   ============================================================ */
+const CFG = {
+  worldSize: 5200,          // terrain square extent (units)
+  seg: 200,                 // terrain segments (200x200 quads)
+  seaLevel: 0,
+  maxAlt: 620,
+  minSpeed: 42,             // units/s
+  maxSpeed: 150,
+  cruiseThrottle: 0.60,
+  // physics
+  pitchRate: 1.15,          // rad/s at full stick
+  rollRate: 2.3,            // rad/s
+  turnFromRoll: 1.55,       // how strongly bank -> yaw
+  levelRoll: 2.6,           // auto-level strength
+  levelPitch: 1.9,
+  throttleRate: 0.55,       // throttle units/s
+  drag: 0.10,
+  g: 9.8,
+  // collision
+  crashAlt: 10,             // min altitude above local terrain before crash
+  // rings
+  ringCount: 26,
+  ringRadius: 26,
+  ringScore: 100,
+};
+
+const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+
+/* ============================================================
+   PROCEDURAL NOISE  (deterministic value noise + fBm)
+   ============================================================ */
+function hash2(x, y){
+  let n = Math.sin(x*127.1 + y*311.7) * 43758.5453123;
+  return n - Math.floor(n);
+}
+function smooth(t){ return t*t*(3-2*t); }
+function valueNoise(x, y){
+  const xi = Math.floor(x), yi = Math.floor(y);
+  const xf = x - xi, yf = y - yi;
+  const a = hash2(xi, yi), b = hash2(xi+1, yi), c = hash2(xi, yi+1), d = hash2(xi+1, yi+1);
+  const u = smooth(xf), v = smooth(yf);
+  return a*(1-u)*(1-v) + b*u*(1-v) + c*(1-u)*v + d*u*v;
+}
+function fbm(x, y, oct=5, lac=2.0, gain=0.5){
+  let amp=1, freq=1, sum=0, norm=0;
+  for(let i=0;i<oct;i++){
+    sum += amp * valueNoise(x*freq, y*freq);
+    norm += amp; amp *= gain; freq *= lac;
+  }
+  return sum/norm; // 0..1
+}
+
+/* ============================================================
+   TERRAIN HEIGHTFIELD  (rolling hills + mountains + coast + river)
+   ============================================================ */
+const W = CFG.worldSize;
+const half = W/2;
+
+// Airport / runway (defined early so terrain + trees can use them)
+const RUNWAY_Z = -half*0.30;
+const RUNWAY_X0 = -220, RUNWAY_X1 = 220;
+const RUNWAY_H = 16;
+const runwayZ = RUNWAY_Z, runwayX0 = RUNWAY_X0, runwayX1 = RUNWAY_X1;
+
+// Normalized coordinates: nx,ny in [-1,1]
+function terrainHeight(x, z){
+  const nx = x / half, nz = z / half;
+  const dist = Math.sqrt(nx*nx + nz*nz); // 0 center .. ~1.41 corner
+
+  // Land mask: 1 = land, 0 = ocean (big landmass, ocean rim + bays).
+  let land = smooth(THREE.MathUtils.clamp((1.08 - dist) / 0.34, 0, 1));
+  // Carve a couple of bays into the coast for interest.
+  const bay = 0.09 * Math.sin(nx*3.1 + 1.0) * Math.sin(nz*2.7 + 0.5);
+  land = THREE.MathUtils.clamp(land - bay, 0, 1);
+  // A smaller island off to the side (southeast).
+  const ix = nx - 0.62, iz = nz + 0.5;
+  const island = smooth(THREE.MathUtils.clamp((0.30 - Math.sqrt(ix*ix+iz*iz)) / 0.13, 0, 1));
+  land = THREE.MathUtils.clamp(Math.max(land, island), 0, 1);
+
+  // Rolling hills (broad) — signed -1..1
+  let hills = (fbm(x*0.00045 + 10, z*0.00045 + 4, 5) - 0.5) * 2;
+  // Medium undulation
+  let mid = (fbm(x*0.0013 + 40, z*0.0013 + 9, 4) - 0.5) * 2;
+
+  // Mountains: two ridged systems, masked into ranges.
+  let mMask = fbm(x*0.00035 + 7, z*0.00035 + 3, 3);
+  mMask = THREE.MathUtils.smoothstep(mMask, 0.40, 0.70); // 0..1 mountain regions (wide)
+  let ridge = 1 - Math.abs(fbm(x*0.0009 + 2, z*0.0009 + 8, 5)*2 - 1);
+  ridge = Math.pow(ridge, 1.3);
+  let mtn = ridge * mMask * 520;
+  // A second, broader massif for variety
+  let m2 = 1 - Math.abs(fbm(x*0.0006 + 55, z*0.0006 + 31, 4)*2 - 1);
+  m2 = Math.pow(m2, 1.5) * THREE.MathUtils.smoothstep(fbm(x*0.0003+91, z*0.0003+17, 3), 0.42, 0.72) * 380;
+
+  // Land height (before ocean blend)
+  let h = 10 + hills*105 + mid*42 + (mtn + m2);
+  // Gentle coastal shelf so the shoreline is smooth
+  h = THREE.MathUtils.lerp(h, 2, 1 - land);
+
+  // Ocean: push below sea level where land mask is 0.
+  const oceanDepth = 160;
+  h = h - (1 - land) * oceanDepth * (0.6 + 0.4*fbm(x*0.001, z*0.001, 3));
+
+  // River: carve a meandering channel from inland toward the sea (east side)
+  // River center line: z as a function of x, meandering.
+  const riverX0 = -half*0.15, riverX1 = half*0.95;
+  if(x > riverX0 && x < riverX1){
+    const t = (x - riverX0) / (riverX1 - riverX0); // 0..1 along river
+    const riverZ = Math.sin(t*Math.PI*2.2 + 1.0) * half*0.45 + Math.sin(t*Math.PI*5.0)*half*0.12;
+    const dz = Math.abs(z - riverZ);
+    const width = 40 + 24*Math.sin(t*Math.PI); // wider in middle
+    const carve = THREE.MathUtils.smoothstep(dz, width*0.4, width*1.4); // 0 inside, 1 outside
+    const riverBed = -14;
+    const bankH = Math.min(h, 40);
+    h = THREE.MathUtils.lerp(riverBed, h, carve);
+    // gentle banks
+    h = THREE.MathUtils.lerp(h, bankH, THREE.MathUtils.smoothstep(dz, 0, width*0.4)*0.25);
+  }
+
+  // Flatten the airport apron for a flat runway
+  const rx0 = RUNWAY_X0-70, rx1 = RUNWAY_X1+70, rz0 = RUNWAY_Z-70, rz1 = RUNWAY_Z+70;
+  if(x > rx0 && x < rx1 && z > rz0 && z < rz1){
+    const ex = THREE.MathUtils.smoothstep(Math.abs(x - (RUNWAY_X0+RUNWAY_X1)/2), Math.min(RUNWAY_X1,220)-60, 220+40);
+    const ez = THREE.MathUtils.smoothstep(Math.abs(z - RUNWAY_Z), 40, 70);
+    const flat = 1 - Math.max(ex, ez);
+    h = THREE.MathUtils.lerp(h, RUNWAY_H, THREE.MathUtils.clamp(flat,0,1));
+  }
+
+  return h;
+}
+
+// Slope estimate for vegetation placement
+function terrainSlope(x, z){
+  const e = 8;
+  const h0 = terrainHeight(x, z);
+  const hx = terrainHeight(x+e, z);
+  const hz = terrainHeight(x, z+e);
+  const dx = (hx - h0)/e, dz = (hz - h0)/e;
+  return Math.sqrt(dx*dx + dz*dz);
+}
+function terrainNormal(x, z){
+  const e = 10;
+  const hL = terrainHeight(x-e, z), hR = terrainHeight(x+e, z);
+  const hD = terrainHeight(x, z-e), hU = terrainHeight(x, z+e);
+  const n = new THREE.Vector3(hL - hR, 2*e, hD - hU).normalize();
+  return n;
+}
+
+/* ============================================================
+   RENDERER / SCENE / CAMERA
+   ============================================================ */
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({ antialias:true, powerPreference:'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+app.insertBefore(renderer.domElement, app.firstChild);
+const canvas = renderer.domElement;
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0xbfd8ef, 900, 3400);
+
+const camera = new THREE.PerspectiveCamera(62, window.innerWidth/window.innerHeight, 0.5, 9000);
+
+/* ---- Lighting ---- */
+const hemi = new THREE.HemisphereLight(0xbfe4ff, 0x3a5a3a, 0.95);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff2d6, 1.15);
+sun.position.set(1200, 1600, 600);
+scene.add(sun);
+const amb = new THREE.AmbientLight(0x8fb4d8, 0.35);
+scene.add(amb);
+
+/* ---- Sky dome (gradient shader) ---- */
+const skyGeo = new THREE.SphereGeometry(6000, 32, 16);
+const skyMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide,
+  depthWrite: false,
+  uniforms: {
+    top:   { value: new THREE.Color(0x2f7fd0) },
+    mid:   { value: new THREE.Color(0x8fc4ee) },
+    bot:   { value: new THREE.Color(0xdff0ff) },
+  },
+  vertexShader: `varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader: `
+    varying vec3 vP; uniform vec3 top; uniform vec3 mid; uniform vec3 bot;
+    void main(){
+      float h = normalize(vP).y;
+      vec3 c = mix(mid, top, smoothstep(0.02, 0.6, h));
+      c = mix(bot, c, smoothstep(-0.12, 0.12, h));
+      gl_FragColor = vec4(c, 1.0);
+    }`,
+});
+const sky = new THREE.Mesh(skyGeo, skyMat);
+sky.frustumCulled = false;
+scene.add(sky);
+
+/* ---- Sun disc ---- */
+const sunSprite = (()=>{
+  const c = document.createElement('canvas'); c.width=c.height=128;
+  const g = c.getContext('2d');
+  const grd = g.createRadialGradient(64,64,4,64,64,64);
+  grd.addColorStop(0,'rgba(255,250,235,1)');
+  grd.addColorStop(0.35,'rgba(255,240,200,0.9)');
+  grd.addColorStop(1,'rgba(255,240,200,0)');
+  g.fillStyle=grd; g.fillRect(0,0,128,128);
+  const tex = new THREE.CanvasTexture(c);
+  const m = new THREE.SpriteMaterial({ map:tex, depthWrite:false, transparent:true, fog:false });
+  const s = new THREE.Sprite(m); s.scale.set(900,900,1); s.position.set(2600, 3200, 1400);
+  return s;
+})();
+scene.add(sunSprite);
+
+/* ============================================================
+   TERRAIN MESH  (heightfield, vertex-colored)
+   ============================================================ */
+function buildTerrain(){
+  const geo = new THREE.PlaneGeometry(W, W, CFG.seg, CFG.seg);
+  geo.rotateX(-Math.PI/2); // lie flat, Y up
+  const pos = geo.attributes.position;
+  const colors = new Float32Array(pos.count*3);
+
+  // color palette (linear-ish, will be gamma corrected by renderer)
+  const cDeep   = new THREE.Color(0x1f6f8f);
+  const cShallow= new THREE.Color(0x37a7c4);
+  const cSand   = new THREE.Color(0xe7d6a1);
+  const cGrass  = new THREE.Color(0x5fb35a);
+  const cGrass2 = new THREE.Color(0x3f8f43);
+  const cRock   = new THREE.Color(0x8a8178);
+  const cSnow   = new THREE.Color(0xf3f7fb);
+  const tmp = new THREE.Color();
+
+  for(let i=0;i<pos.count;i++){
+    const x = pos.getX(i), z = pos.getZ(i);
+    const h = terrainHeight(x, z);
+    pos.setY(i, h);
+
+    // color by height + slope
+    const slope = terrainSlope(x, z);
+    if(h < CFG.seaLevel - 2){ tmp.copy(cDeep); }
+    else if(h < CFG.seaLevel + 3){ tmp.copy(cShallow); }
+    else if(h < CFG.seaLevel + 7){ tmp.copy(cSand); }
+    else {
+      const g = THREE.MathUtils.clamp((h-7)/40, 0, 1);
+      tmp.copy(cGrass).lerp(cGrass2, g);
+    }
+    if(h > 170){ tmp.lerp(cRock, THREE.MathUtils.clamp((h-170)/130,0,1)); }
+    if(h > 300){ tmp.lerp(cSnow, THREE.MathUtils.clamp((h-300)/120,0,1)); }
+    if(slope > 0.9 && h > 8){ tmp.lerp(cRock, THREE.MathUtils.clamp((slope-0.9)*1.2,0,1)); }
+
+    // subtle noise speckle for texture
+    const sp = (hash2(Math.floor(x*0.5), Math.floor(z*0.5)) - 0.5) * 0.06;
+    colors[i*3]   = THREE.MathUtils.clamp(tmp.r + sp, 0, 1);
+    colors[i*3+1] = THREE.MathUtils.clamp(tmp.g + sp, 0, 1);
+    colors[i*3+2] = THREE.MathUtils.clamp(tmp.b + sp, 0, 1);
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.computeVertexNormals();
+
+  const mat = new THREE.MeshStandardMaterial({ vertexColors:true, roughness:0.95, metalness:0.0, flatShading:false });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.receiveShadow = false;
+  scene.add(mesh);
+  return mesh;
+}
+buildTerrain();
+
+/* ---- Ocean ---- */
+const oceanGeo = new THREE.PlaneGeometry(W*1.6, W*1.6, 64, 64);
+oceanGeo.rotateX(-Math.PI/2);
+const oceanMat = new THREE.MeshStandardMaterial({
+  color:0x2f8fc0, transparent:true, opacity:0.82, roughness:0.18, metalness:0.15,
+});
+const ocean = new THREE.Mesh(oceanGeo, oceanMat);
+ocean.position.y = CFG.seaLevel + 0.5;
+scene.add(ocean);
+
+// store ocean base positions for gentle wave animation
+const oceanBase = oceanGeo.attributes.position.array.slice();
+
+/* ============================================================
+   VEGETATION  (instanced trees: trunk + foliage)
+   ============================================================ */
+function placeTrees(){
+  const count = 1500;
+  const trunkGeo = new THREE.CylinderGeometry(0.5, 0.85, 5, 5);
+  trunkGeo.translate(0, 2.5, 0);
+  const folGeo = new THREE.ConeGeometry(4.6, 13, 6);
+  folGeo.translate(0, 10, 0);
+
+  const trunkMat = new THREE.MeshStandardMaterial({ color:0x6b4a2b, roughness:0.9, flatShading:true });
+  const folMat   = new THREE.MeshStandardMaterial({ color:0x2f7d3a, roughness:0.9, flatShading:true });
+
+  const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, count);
+  const fols   = new THREE.InstancedMesh(folGeo, folMat, count);
+
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
+  const up = new THREE.Vector3(0,1,0);
+  let placed = 0, tries = 0;
+  while(placed < count && tries < count*30){
+    tries++;
+    const x = (Math.random()*2-1)*half*0.98;
+    const z = (Math.random()*2-1)*half*0.98;
+    const h = terrainHeight(x, z);
+    if(h < 9 || h > 150) continue;              // grass band only
+    if(terrainSlope(x, z) > 0.75) continue;      // not too steep
+    if(Math.abs(z - runwayZ) < 90 && x > runwayX0-60 && x < runwayX1+60) continue; // keep runway clear
+    const sc = 0.8 + Math.random()*1.4;
+    p.set(x, h-0.5, z);
+    q.setFromAxisAngle(up, Math.random()*Math.PI*2);
+    s.set(sc, sc*(0.9+Math.random()*0.4), sc);
+    m.compose(p, q, s);
+    trunks.setMatrixAt(placed, m);
+    fols.setMatrixAt(placed, m);
+    // vary foliage hue slightly
+    const c = new THREE.Color(0x2f7d3a).offsetHSL((Math.random()-0.5)*0.03, (Math.random()-0.5)*0.1, (Math.random()-0.5)*0.06);
+    fols.setColorAt(placed, c);
+    placed++;
+  }
+  trunks.count = placed; fols.count = placed;
+  trunks.instanceMatrix.needsUpdate = true; fols.instanceMatrix.needsUpdate = true;
+  if(fols.instanceColor) fols.instanceColor.needsUpdate = true;
+  scene.add(trunks, fols);
+}
+placeTrees();
+
+/* ============================================================
+   CLOUDS  (instanced puffs, gentle drift)
+   ============================================================ */
+const clouds = (()=>{
+  const puffGeo = new THREE.IcosahedronGeometry(1, 1);
+  const puffMat = new THREE.MeshStandardMaterial({ color:0xffffff, roughness:1, metalness:0, transparent:true, opacity:0.92, flatShading:true });
+  const perCloud = 5;
+  const nCloud = 26;
+  const total = perCloud * nCloud;
+  const mesh = new THREE.InstancedMesh(puffGeo, puffMat, total);
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+  const data = []; // per-cloud: center, drift
+  const m = new THREE.Matrix4(), p = new THREE.Vector3(), s = new THREE.Vector3(), q = new THREE.Quaternion();
+  for(let c=0;c<nCloud;c++){
+    const cx = (Math.random()*2-1)*half*0.9;
+    const cz = (Math.random()*2-1)*half*0.9;
+    const cy = 260 + Math.random()*260;
+    const drift = new THREE.Vector3((Math.random()*2-1)*3, 0, (Math.random()*2-1)*3);
+    data.push({cx,cy,cz,drift, puffs:[]});
+    for(let k=0;k<perCloud;k++){
+      const ox = (Math.random()*2-1)*40;
+      const oz = (Math.random()*2-1)*40;
+      const oy = (Math.random()*2-1)*12;
+      const sc = 22 + Math.random()*30;
+      data[c].puffs.push({ox,oy,oz,sc});
+    }
+  }
+  function update(t, dt){
+    let i = 0;
+    for(const c of data){
+      c.cx += c.drift.x*dt; c.cz += c.drift.z*dt;
+      // wrap
+      if(c.cx >  half) c.cx = -half; if(c.cx < -half) c.cx =  half;
+      if(c.cz >  half) c.cz = -half; if(c.cz < -half) c.cz =  half;
+      for(const pf of c.puffs){
+        p.set(c.cx+pf.ox, c.cy+pf.oy + Math.sin(t*0.3 + c.cx)*3, c.cz+pf.oz);
+        s.set(pf.sc, pf.sc*0.62, pf.sc);
+        m.compose(p, q, s);
+        mesh.setMatrixAt(i++, m);
+      }
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  }
+  mesh.userData.update = update;
+  scene.add(mesh);
+  return mesh;
+})();
+
+/* ============================================================
+   AIRPORT  (runway + tower + hangars)
+   ============================================================ */
+function buildAirport(){
+  const g = new THREE.Group();
+  const len = (RUNWAY_X1 - RUNWAY_X0);
+  const y = RUNWAY_H + 0.4;
+
+  // runway slab
+  const rw = new THREE.Mesh(
+    new THREE.BoxGeometry(len, 0.8, 46),
+    new THREE.MeshStandardMaterial({ color:0x2b2f36, roughness:0.95 })
+  );
+  rw.position.set((RUNWAY_X0+RUNWAY_X1)/2, y, RUNWAY_Z);
+  g.add(rw);
+
+  // centerline dashes
+  const dashMat = new THREE.MeshBasicMaterial({ color:0xf4f4f4 });
+  const nDash = 16;
+  for(let i=0;i<nDash;i++){
+    const d = new THREE.Mesh(new THREE.BoxGeometry(10, 0.1, 1.6), dashMat);
+    d.position.set(RUNWAY_X0 + 20 + i*(len-40)/nDash, y+0.5, RUNWAY_Z);
+    g.add(d);
+  }
+  // threshold stripes
+  const thMat = new THREE.MeshBasicMaterial({ color:0xf4f4f4 });
+  for(let side=0; side<2; side++){
+    const xx = side===0 ? RUNWAY_X0+6 : RUNWAY_X1-6;
+    for(let k=0;k<6;k++){
+      const s = new THREE.Mesh(new THREE.BoxGeometry(8,0.1,2.4), thMat);
+      s.position.set(xx, y+0.5, RUNWAY_Z - 16 + k*6.4);
+      g.add(s);
+    }
+  }
+
+  // control tower
+  const tower = new THREE.Group();
+  const tBase = new THREE.Mesh(new THREE.CylinderGeometry(6,8,40,10), new THREE.MeshStandardMaterial({color:0xcfd6dd, roughness:0.7}));
+  tBase.position.y = 20;
+  const tTop = new THREE.Mesh(new THREE.CylinderGeometry(11,9,12,10), new THREE.MeshStandardMaterial({color:0x2f6f9f, roughness:0.4, metalness:0.3, emissive:0x113344, emissiveIntensity:0.4}));
+  tTop.position.y = 46;
+  const tLight = new THREE.PointLight(0xffcf6a, 1.2, 120); tLight.position.y = 50;
+  tower.add(tBase, tTop, tLight);
+  tower.position.set(RUNWAY_X1-40, y, RUNWAY_Z+40);
+  g.add(tower);
+
+  // hangars
+  const hangMat = new THREE.MeshStandardMaterial({ color:0x9fb2c0, roughness:0.6, metalness:0.2 });
+  for(let i=0;i<2;i++){
+    const h = new THREE.Mesh(new THREE.BoxGeometry(40, 18, 30), hangMat);
+    h.position.set(RUNWAY_X0+40+i*50, y+9, RUNWAY_Z+42);
+    g.add(h);
+    const roof = new THREE.Mesh(new THREE.CylinderGeometry(15,15,40,16,1,false,0,Math.PI), new THREE.MeshStandardMaterial({color:0x7f93a2, roughness:0.6}));
+    roof.rotation.z = Math.PI/2; roof.position.set(h.position.x, y+18, h.position.z);
+    g.add(roof);
+  }
+
+  // apron
+  const apron = new THREE.Mesh(new THREE.BoxGeometry(len+120, 0.5, 90), new THREE.MeshStandardMaterial({color:0x3a4048, roughness:0.95}));
+  apron.position.set((RUNWAY_X0+RUNWAY_X1)/2, y-0.2, RUNWAY_Z+40);
+  g.add(apron);
+
+  scene.add(g);
+  return g;
+}
+buildAirport();
+
+/* ============================================================
+   BRIDGE  (over the river)
+   ============================================================ */
+function riverCenterZ(x){
+  const riverX0 = -half*0.15, riverX1 = half*0.95;
+  if(x < riverX0 || x > riverX1) return null;
+  const t = (x - riverX0) / (riverX1 - riverX0);
+  return Math.sin(t*Math.PI*2.2 + 1.0) * half*0.45 + Math.sin(t*Math.PI*5.0)*half*0.12;
+}
+function buildBridge(){
+  const xB = half*0.40;
+  const rz = riverCenterZ(xB); if(rz===null) return;
+  const span = 150;
+  const deckY = Math.max(terrainHeight(xB, rz-80), terrainHeight(xB, rz+80)) + 14;
+  const g = new THREE.Group();
+  const deckMat = new THREE.MeshStandardMaterial({ color:0x8a6a44, roughness:0.8 });
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(16, 3, span), deckMat);
+  deck.position.set(xB, deckY, rz);
+  g.add(deck);
+  // rails
+  const railMat = new THREE.MeshStandardMaterial({ color:0xd8c9a0, roughness:0.7 });
+  for(const s of [-1,1]){
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.8, 3, span), railMat);
+    rail.position.set(xB + s*7.4, deckY+2, rz);
+    g.add(rail);
+  }
+  // piers
+  const pierMat = new THREE.MeshStandardMaterial({ color:0x6f6a60, roughness:0.9 });
+  for(let i=-2;i<=2;i++){
+    const z = rz + i*(span/5);
+    const baseY = Math.min(terrainHeight(xB, z), deckY-10);
+    const pier = new THREE.Mesh(new THREE.BoxGeometry(4, deckY-baseY, 4), pierMat);
+    pier.position.set(xB, (deckY+baseY)/2, z);
+    g.add(pier);
+  }
+  scene.add(g);
+}
+buildBridge();
+
+/* ============================================================
+   SKY RINGS  (glowing checkpoints / score)
+   ============================================================ */
+const ringGlowTex = (()=>{
+  const c = document.createElement('canvas'); c.width=c.height=128;
+  const g = c.getContext('2d');
+  const grd = g.createRadialGradient(64,64,2,64,64,64);
+  grd.addColorStop(0,'rgba(255,255,255,1)');
+  grd.addColorStop(0.3,'rgba(140,230,255,0.8)');
+  grd.addColorStop(1,'rgba(120,210,255,0)');
+  g.fillStyle=grd; g.fillRect(0,0,128,128);
+  return new THREE.CanvasTexture(c);
+})();
+
+const rings = [];
+const ringGroup = new THREE.Group();
+scene.add(ringGroup);
+
+function makeRing(pos, color=0x7fe7ff){
+  const geo = new THREE.TorusGeometry(CFG.ringRadius, 2.2, 12, 40);
+  const mat = new THREE.MeshStandardMaterial({ color, emissive:color, emissiveIntensity:1.4, roughness:0.3, metalness:0.1 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.copy(pos);
+  // glow sprite
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map:ringGlowTex, color, transparent:true, opacity:0.55, depthWrite:false, blending:THREE.AdditiveBlending }));
+  glow.scale.set(CFG.ringRadius*3.2, CFG.ringRadius*3.2, 1);
+  glow.position.copy(pos);
+  ringGroup.add(mesh, glow);
+  rings.push({ mesh, glow, pos:pos.clone(), collected:false, pulse:Math.random()*6, color });
+}
+
+function scatterRings(){
+  const rand = (a,b)=>a+Math.random()*(b-a);
+  const place = (x, z, alt)=>{
+    const h = terrainHeight(x, z);
+    const y = Math.max(alt, h+70);
+    makeRing(new THREE.Vector3(x, y, z));
+  };
+  // Approach line over the runway (fly down the runway)
+  for(let i=0;i<5;i++){
+    const x = RUNWAY_X1 - 120 - i*130;
+    place(x, RUNWAY_Z, RUNWAY_H + 40 + i*18);
+  }
+  // Over the river
+  for(let i=0;i<5;i++){
+    const x = -half*0.05 + i*half*0.22;
+    const rz = riverCenterZ(x);
+    if(rz!==null) place(x, rz, Math.max(terrainHeight(x,rz)+90, 120));
+  }
+  // Scattered scenic / mountains
+  let n = 0, guard = 0;
+  while(n < (CFG.ringCount - 10) && guard < 2000){
+    guard++;
+    const x = rand(-half*0.9, half*0.9);
+    const z = rand(-half*0.9, half*0.9);
+    const h = terrainHeight(x, z);
+    if(h < 4) continue; // skip open ocean
+    const alt = rand(120, 360);
+    if(alt < h + 60) continue;
+    place(x, z, alt);
+    n++;
+  }
+}
+scatterRings();
+
+/* ============================================================
+   PLANE MODEL  (procedural low-poly prop plane)
+   ============================================================ */
+function buildPlane(){
+  const g = new THREE.Group();
+  const bodyMat  = new THREE.MeshStandardMaterial({ color:0xd83a2f, roughness:0.5, metalness:0.15, flatShading:true });
+  const wingMat  = new THREE.MeshStandardMaterial({ color:0xf2f4f8, roughness:0.6, metalness:0.1, flatShading:true });
+  const darkMat  = new THREE.MeshStandardMaterial({ color:0x2a2f38, roughness:0.5, metalness:0.2, flatShading:true });
+  const glassMat = new THREE.MeshStandardMaterial({ color:0x9fd8ff, roughness:0.2, metalness:0.3, transparent:true, opacity:0.85 });
+
+  // fuselage (tapered)
+  const fus = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.7, 9, 8), bodyMat);
+  fus.rotation.x = Math.PI/2; fus.position.z = 0.5; g.add(fus);
+  // nose cone
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(1.1, 2.6, 8), darkMat);
+  nose.rotation.x = -Math.PI/2; nose.position.z = -4.6; g.add(nose);
+  // tail
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(1.5, 3.2, 8), bodyMat);
+  tail.rotation.x = Math.PI/2; tail.position.z = 4.6; g.add(tail);
+  // main wings
+  const wing = new THREE.Mesh(new THREE.BoxGeometry(16, 0.4, 3.4), wingMat);
+  wing.position.set(0, 0.6, -0.5); g.add(wing);
+  // wingtips
+  const tipMat = new THREE.MeshStandardMaterial({ color:0xd83a2f, roughness:0.5, flatShading:true });
+  for(const s of [-1,1]){
+    const tip = new THREE.Mesh(new THREE.BoxGeometry(1.4,0.5,3.4), tipMat);
+    tip.position.set(s*8.2, 0.6, -0.5); g.add(tip);
+  }
+  // tail wings
+  const htail = new THREE.Mesh(new THREE.BoxGeometry(6,0.3,1.8), wingMat);
+  htail.position.set(0,0.4,4.6); g.add(htail);
+  const vtail = new THREE.Mesh(new THREE.BoxGeometry(0.3,2.6,1.8), wingMat);
+  vtail.position.set(0,1.6,4.6); g.add(vtail);
+  // cockpit
+  const cock = new THREE.Mesh(new THREE.SphereGeometry(1.0, 10, 8, 0, Math.PI*2, 0, Math.PI*0.5), glassMat);
+  cock.scale.set(1,0.8,1.6); cock.position.set(0,1.0,-1.2); g.add(cock);
+
+  // propeller (spins)
+  const prop = new THREE.Group();
+  const bladeMat = new THREE.MeshStandardMaterial({ color:0x1a1d22, roughness:0.5, flatShading:true });
+  const b1 = new THREE.Mesh(new THREE.BoxGeometry(0.35, 5.2, 0.25), bladeMat);
+  const b2 = b1.clone(); b2.rotation.z = Math.PI/2;
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.5,0.5,0.8,8), darkMat);
+  hub.rotation.x = Math.PI/2;
+  prop.add(b1, b2, hub);
+  prop.position.z = -6.0;
+  g.add(prop);
+
+  g.traverse(o=>{ if(o.isMesh){ o.castShadow=false; } });
+  g.scale.setScalar(1.0);
+  return { group:g, prop };
+}
+const plane = buildPlane();
+scene.add(plane.group);
+
+/* ============================================================
+   FLIGHT STATE
+   ============================================================ */
+const qYaw = new THREE.Quaternion(), qPitch = new THREE.Quaternion(), qRoll = new THREE.Quaternion();
+const axY = new THREE.Vector3(0,1,0), axX = new THREE.Vector3(1,0,0), axZ = new THREE.Vector3(0,0,1);
+const tmpQ = new THREE.Quaternion(), tmpV = new THREE.Vector3();
+
+const flight = {
+  pos: new THREE.Vector3(-1320, 240, 1160),
+  yaw: -Math.PI/2,      // face +X (east)
+  pitch: 0,
+  roll: 0,
+  speed: 90,
+  throttle: CFG.cruiseThrottle,
+  altitude: 240,
+};
+
+const START = { pos:new THREE.Vector3(-1320, 240, 1160), yaw:-Math.PI/2, pitch:0, roll:0, speed:90, throttle:CFG.cruiseThrottle };
+
+function resetFlight(){
+  flight.pos.copy(START.pos);
+  flight.yaw = START.yaw; flight.pitch = START.pitch; flight.roll = START.roll;
+  flight.speed = START.speed; flight.throttle = START.throttle;
+  crashed = false;
+}
+
+let crashed = false;
+
+// input: -1..1
+const input = { pitch:0, roll:0, yaw:0, thr:0 };
+
+/* ============================================================
+   FLIGHT PHYSICS
+   ============================================================ */
+function damp(cur, target, rate, dt){
+  return cur + (target - cur) * (1 - Math.exp(-rate*dt));
+}
+
+function updateFlight(dt){
+  if(crashed) return;
+  const f = flight;
+
+  // --- throttle ---
+  if(input.thr > 0) f.throttle = Math.min(1, f.throttle + input.thr*CFG.throttleRate*dt);
+  else if(input.thr < 0) f.throttle = Math.max(0, f.throttle + input.thr*CFG.throttleRate*dt);
+  f.throttle = THREE.MathUtils.clamp(f.throttle, 0, 1);
+
+  // --- speed (with climb/dive energy) ---
+  const climbCost = Math.sin(f.pitch) * 55;      // climbing bleeds speed
+  const speedTarget = THREE.MathUtils.lerp(CFG.minSpeed, CFG.maxSpeed, f.throttle) - climbCost;
+  const tgt = THREE.MathUtils.clamp(speedTarget, CFG.minSpeed*0.6, CFG.maxSpeed);
+  f.speed = damp(f.speed, tgt, 1.4, dt);
+
+  // --- pitch (with auto-level) ---
+  const pitchInput = input.pitch;
+  if(pitchInput !== 0){
+    f.pitch += pitchInput * CFG.pitchRate * dt;
+  } else {
+    // ease back to level (slightly below-horizon cruise feel)
+    f.pitch = damp(f.pitch, 0, CFG.levelPitch, dt);
+  }
+  f.pitch = THREE.MathUtils.clamp(f.pitch, -1.15, 1.15);
+
+  // --- roll (bank) ---
+  const rollInput = input.roll;
+  if(rollInput !== 0){
+    f.roll += rollInput * CFG.rollRate * dt;
+  } else {
+    f.roll = damp(f.roll, 0, CFG.levelRoll, dt);
+  }
+  f.roll = THREE.MathUtils.clamp(f.roll, -1.25, 1.25);
+
+  // --- yaw: banked turn + direct yaw input (positive = turn right) ---
+  const bankTurn = -f.roll * CFG.turnFromRoll;   // right bank -> right turn
+  const directYaw = -input.yaw * 0.9;            // input.yaw +1 = turn right
+  f.yaw += (bankTurn + directYaw) * dt;
+
+  // --- orientation ---
+  qYaw.setFromAxisAngle(axY, f.yaw);
+  qPitch.setFromAxisAngle(axX, f.pitch);
+  qRoll.setFromAxisAngle(axZ, f.roll);
+  plane.group.quaternion.copy(qYaw).multiply(qPitch).multiply(qRoll);
+
+  // --- forward vector & integrate position ---
+  tmpV.set(0,0,-1).applyQuaternion(plane.group.quaternion);
+  f.pos.addScaledVector(tmpV, f.speed*dt);
+
+  // gentle world wrap so you never fly out of the map
+  const bound = half - 60;
+  if(f.pos.x >  bound) f.pos.x = -bound; if(f.pos.x < -bound) f.pos.x =  bound;
+  if(f.pos.z >  bound) f.pos.z = -bound; if(f.pos.z < -bound) f.pos.z =  bound;
+  f.pos.y = THREE.MathUtils.clamp(f.pos.y, 4, CFG.maxAlt+200);
+
+  // --- altitude & terrain collision ---
+  const ground = terrainHeight(f.pos.x, f.pos.z);
+  f.altitude = f.pos.y - ground;
+  const overWater = ground < CFG.seaLevel;
+  const crashLimit = overWater ? 2 : CFG.crashAlt;
+  if(f.pos.y <= ground + crashLimit){
+    doCrash(overWater ? 'water' : 'terrain');
+    return;
+  }
+
+  // --- rings ---
+  checkRings(dt);
+
+  plane.group.position.copy(f.pos);
+  // prop spin
+  plane.prop.rotation.z += (4 + f.throttle*40) * dt * 6;
+}
+
+function doCrash(reason){
+  if(crashed) return;
+  crashed = true;
+  combo = 0; updateComboUI();
+  // Rest the wrecked plane on the surface with a nose-down tilt.
+  const surfY = reason==='water' ? 0.4 : terrainHeight(flight.pos.x, flight.pos.z);
+  flight.pos.y = surfY + 0.6;
+  flight.pitch = -0.45;
+  qYaw.setFromAxisAngle(axY, flight.yaw);
+  qPitch.setFromAxisAngle(axX, flight.pitch);
+  qRoll.setFromAxisAngle(axZ, flight.roll*0.5);
+  plane.group.quaternion.copy(qYaw).multiply(qPitch).multiply(qRoll);
+  plane.group.position.copy(flight.pos);
+  showToast(reason==='water' ? 'SPLASH!' : 'CRASHED!', 'Press RESET or R to relaunch');
+  if(audio.ready) audio.crash();
+  // brief shake handled in loop via crashTimer
+  crashTimer = 0.7;
+}
+
+let crashTimer = 0;
+
+/* ============================================================
+   RINGS / SCORE / COMBO
+   ============================================================ */
+let score = 0, combo = 0, comboTimer = 0, ringsCollected = 0;
+const elRings = document.getElementById('vRings');
+const elCombo = document.getElementById('combo');
+
+function checkRings(dt){
+  for(const r of rings){
+    if(r.collected){
+      r.cooldown -= dt;
+      if(r.cooldown <= 0){ r.collected = false; }
+      continue;
+    }
+    const d = r.pos.distanceTo(flight.pos);
+    if(d < CFG.ringRadius*0.95){
+      r.collected = true; r.cooldown = 7;
+      ringsCollected++;
+      combo++; comboTimer = 5;
+      const mult = 1 + (combo-1)*0.5;
+      score += Math.round(CFG.ringScore * mult);
+      r.pulse = 0;
+      if(audio.ready) audio.chime(combo);
+      // flash
+      r.flash = 1;
+      updateRingsUI();
+    }
+  }
+  if(comboTimer > 0){
+    comboTimer -= dt;
+    if(comboTimer <= 0 && combo > 0){ combo = 0; updateComboUI(); }
+  }
+}
+function updateRingsUI(){ elRings.textContent = ringsCollected; }
+function updateComboUI(){
+  if(combo > 1) elCombo.textContent = 'COMBO x' + combo;
+  else elCombo.textContent = '';
+}
+
+function updateRings(dt, t){
+  for(const r of rings){
+    r.pulse += dt*2;
+    const base = 1 + Math.sin(r.pulse)*0.04;
+    let target = r.collected ? 0.0 : base;
+    if(r.flash > 0){ r.flash = Math.max(0, r.flash - dt*2.5); target = base + r.flash*0.8; }
+    const s = damp(r.mesh.scale.x, target, 10, dt);
+    r.mesh.scale.setScalar(Math.max(0.001, s));
+    r.glow.scale.setScalar(CFG.ringRadius*3.2 * (1 + Math.sin(r.pulse*1.3)*0.08) * (r.collected?0.001:1));
+    r.glow.material.opacity = (r.collected?0:0.5) + (r.flash||0)*0.5;
+    // billboard: always face the plane so the opening is easy to see and thread
+    if(!r.collected) r.mesh.lookAt(flight.pos);
+  }
+}
+
+/* ============================================================
+   CAMERA  (chase + cockpit)
+   ============================================================ */
+let camMode = 0; // 0 chase, 1 cockpit
+const camPos = new THREE.Vector3();
+const camLook = new THREE.Vector3();
+const camUp = new THREE.Vector3(0,1,0);
+let camInit = false;
+
+function updateCamera(dt){
+  const f = flight;
+  const fwd = tmpV.set(0,0,-1).applyQuaternion(plane.group.quaternion).clone();
+
+  let desired, look, fov, posRate, lookRate, bank;
+  if(camMode === 0){
+    desired = f.pos.clone().addScaledVector(fwd, -20).add(new THREE.Vector3(0,7,0));
+    // keep camera above terrain
+    const cg = terrainHeight(desired.x, desired.z);
+    if(desired.y < cg + 4) desired.y = cg + 4;
+    look = f.pos.clone().addScaledVector(fwd, 14);
+    fov = 60 + (f.speed/CFG.maxSpeed)*12 + Math.abs(f.pitch)*8;
+    posRate = 5.0; lookRate = 12; bank = f.roll*0.45;
+  } else {
+    desired = f.pos.clone().addScaledVector(fwd, 2.5).add(new THREE.Vector3(0,1.4,0));
+    look = f.pos.clone().addScaledVector(fwd, 60);
+    fov = 55 + (f.speed/CFG.maxSpeed)*10;
+    posRate = 25; lookRate = 40; bank = f.roll*0.9;
+  }
+
+  if(!camInit){ camPos.copy(desired); camLook.copy(look); camInit = true; }
+  camPos.x = damp(camPos.x, desired.x, posRate, dt);
+  camPos.y = damp(camPos.y, desired.y, posRate, dt);
+  camPos.z = damp(camPos.z, desired.z, posRate, dt);
+  camLook.x = damp(camLook.x, look.x, lookRate, dt);
+  camLook.y = damp(camLook.y, look.y, lookRate, dt);
+  camLook.z = damp(camLook.z, look.z, lookRate, dt);
+
+  camera.position.copy(camPos);
+  // crash shake
+  if(crashTimer > 0){
+    crashTimer -= dt;
+    const s = crashTimer*0.6;
+    camera.position.x += (Math.random()-0.5)*s;
+    camera.position.y += (Math.random()-0.5)*s;
+    camera.position.z += (Math.random()-0.5)*s;
+  }
+  camUp.set(0,1,0);
+  camera.up.copy(camUp);
+  camera.lookAt(camLook);
+  if(bank !== 0) camera.rotateZ(bank);
+
+  const fovT = THREE.MathUtils.clamp(fov, 50, 82);
+  camera.fov = damp(camera.fov, fovT, 6, dt);
+  camera.updateProjectionMatrix();
+
+  // keep sky + fog centered on camera for parallax
+  sky.position.copy(camera.position);
+  sunSprite.position.set(camera.position.x + 2600, camera.position.y + 3200, camera.position.z + 1400);
+}
+
+/* ============================================================
+   HUD
+   ============================================================ */
+const elSpeed = document.getElementById('vSpeed');
+const elAlt   = document.getElementById('vAlt');
+const elHead  = document.getElementById('vHead');
+const elHeadTop = document.getElementById('compassHead');
+const elThr   = document.getElementById('vThr');
+const elThrFill = document.getElementById('throttleFill');
+const compassStrip = document.getElementById('compassStrip');
+const elHizArt = document.getElementById('horizonArt');
+const elHizPitch = document.getElementById('horizonPitch');
+
+// build compass strip once (two full rotations for wrap)
+(function buildCompass(){
+  const pxPerDeg = 6;
+  let html = '';
+  const labels = {0:'N',90:'E',180:'S',270:'W'};
+  for(let d=0; d<=730; d+=10){
+    const hd = ((d%360)+360)%360;
+    const left = d*pxPerDeg;
+    const isCard = labels[hd] !== undefined;
+    const isMajor = hd%30===0;
+    const txt = isCard ? labels[hd] : (isMajor ? hd : '');
+    html += `<div class="tick" style="left:${left}px;${isCard?'width:26px;font-weight:800;':''}"><span>${txt}</span></div>`;
+  }
+  compassStrip.innerHTML = html;
+  compassStrip.style.width = (730*pxPerDeg)+'px';
+  window.__ppd = pxPerDeg;
+})();
+
+const _hvec = new THREE.Vector3();
+function headingDeg(){
+  _hvec.set(0,0,-1).applyQuaternion(plane.group.quaternion);
+  let h = Math.atan2(_hvec.x, -_hvec.z) * 180/Math.PI;
+  if(h < 0) h += 360;
+  return h;
+}
+
+function updateHUD(dt){
+  const f = flight;
+  const kt = Math.round(f.speed * 1.0);           // units treated as ~knots for a friendly readout
+  const altFt = Math.max(0, Math.round(f.altitude * 3.28)); // 1 unit ~ 1 m -> feet
+  elSpeed.textContent = kt;
+  elAlt.textContent = altFt;
+  const hd = headingDeg();
+  elHead.textContent = String(Math.round(hd)).padStart(3,'0');
+  const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+  elHeadTop.textContent = dirs[Math.round(hd/45)%8] + ' ' + String(Math.round(hd)).padStart(3,'0') + '°';
+
+  // compass strip center on heading
+  const cw = compassStrip.parentElement.clientWidth;
+  const off = -(hd*window.__ppd) + cw/2;
+  compassStrip.style.transform = `translateX(${off}px)`;
+
+  // throttle
+  elThr.textContent = Math.round(f.throttle*100);
+  elThrFill.style.width = (f.throttle*100)+'%';
+
+  // artificial horizon: rotate+shift the art (sky/ground/horizon/pitch ladder) as one
+  const rollDeg = -f.roll*180/Math.PI;
+  const pitchPx = THREE.MathUtils.clamp(f.pitch*180/Math.PI, -60, 60) * 1.6;
+  elHizArt.style.transform = `translate(0, ${pitchPx}px) rotate(${rollDeg}deg)`;
+  // pitch ladder
+  if(elHizPitch.dataset.built !== '1'){
+    let pl='';
+    for(let p=-40;p<=40;p+=10){
+      if(p===0) continue;
+      const y = -p*1.4;
+      pl += `<div class="pitchLine ${Math.abs(p)%20===0?'major':''}" style="top:${y}px"><span>${Math.abs(p)}</span></div>`;
+    }
+    elHizPitch.innerHTML = pl; elHizPitch.dataset.built='1';
+  }
+}
+
+/* ============================================================
+   AUDIO  (procedural Web Audio)
+   ============================================================ */
+const audio = {
+  ready:false, muted:false, ctx:null, master:null,
+  engGain:null, engFilter:null, engOsc1:null, engOsc2:null, engOsc3:null,
+  windGain:null, windFilter:null,
+  init(){
+    if(this.ready) return;
+    try{
+      const AC = window.AudioContext || window.webkitAudioContext;
+      this.ctx = new AC();
+      const ctx = this.ctx;
+      this.master = ctx.createGain();
+      this.master.gain.value = this.muted ? 0 : 0.9;
+      this.master.connect(ctx.destination);
+
+      // ---- engine: layered low oscillators through a lowpass ----
+      this.engFilter = ctx.createBiquadFilter();
+      this.engFilter.type = 'lowpass'; this.engFilter.frequency.value = 500; this.engFilter.Q.value = 0.7;
+      this.engGain = ctx.createGain(); this.engGain.gain.value = 0;
+      this.engFilter.connect(this.engGain); this.engGain.connect(this.master);
+
+      this.engOsc1 = ctx.createOscillator(); this.engOsc1.type='sawtooth'; this.engOsc1.frequency.value=70;
+      this.engOsc2 = ctx.createOscillator(); this.engOsc2.type='square';  this.engOsc2.frequency.value=110;
+      this.engOsc3 = ctx.createOscillator(); this.engOsc3.type='triangle';this.engOsc3.frequency.value=45;
+      const g2 = ctx.createGain(); g2.gain.value=0.5;
+      const g3 = ctx.createGain(); g3.gain.value=0.7;
+      this.engOsc1.connect(this.engFilter);
+      this.engOsc2.connect(g2); g2.connect(this.engFilter);
+      this.engOsc3.connect(g3); g3.connect(this.engFilter);
+      this.engOsc1.start(); this.engOsc2.start(); this.engOsc3.start();
+
+      // ---- wind: looping noise through a bandpass ----
+      const nlen = ctx.sampleRate * 2;
+      const buf = ctx.createBuffer(1, nlen, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for(let i=0;i<nlen;i++) d[i] = (Math.random()*2-1)*0.6;
+      const noise = ctx.createBufferSource(); noise.buffer=buf; noise.loop=true;
+      this.windFilter = ctx.createBiquadFilter(); this.windFilter.type='bandpass'; this.windFilter.frequency.value=700; this.windFilter.Q.value=0.6;
+      this.windGain = ctx.createGain(); this.windGain.gain.value=0;
+      noise.connect(this.windFilter); this.windFilter.connect(this.windGain); this.windGain.connect(this.master);
+      noise.start();
+
+      this.ready = true;
+      if(ctx.state === 'suspended') ctx.resume();
+    }catch(e){ this.ready=false; }
+  },
+  setMute(m){
+    this.muted = m;
+    if(this.master) this.master.gain.setTargetAtTime(m?0:0.9, this.ctx.currentTime, 0.05);
+  },
+  update(f){
+    if(!this.ready) return;
+    const t = this.ctx.currentTime;
+    const th = f.throttle, sp = f.speed/CFG.maxSpeed;
+    // engine pitch + level follow throttle
+    this.engOsc1.frequency.setTargetAtTime(55 + th*150, t, 0.08);
+    this.engOsc2.frequency.setTargetAtTime(82 + th*220, t, 0.08);
+    this.engOsc3.frequency.setTargetAtTime(34 + th*70, t, 0.08);
+    this.engFilter.frequency.setTargetAtTime(350 + th*900 + sp*500, t, 0.1);
+    const engLevel = crashed ? 0.02 : (0.05 + th*0.13);
+    this.engGain.gain.setTargetAtTime(engLevel, t, 0.12);
+    // wind follows speed + climb
+    const climb = Math.abs(f.pitch)*0.5;
+    this.windFilter.frequency.setTargetAtTime(500 + sp*1800 + Math.abs(f.pitch)*800, t, 0.1);
+    const windLevel = crashed ? 0 : (0.02 + sp*0.22 + climb*0.12);
+    this.windGain.gain.setTargetAtTime(windLevel, t, 0.15);
+  },
+  chime(combo){
+    if(!this.ready) return;
+    const ctx=this.ctx, t=ctx.currentTime;
+    const base = 660 * Math.pow(1.059, Math.min(combo,12)); // rises with combo
+    const notes = [base, base*1.5];
+    notes.forEach((fr,i)=>{
+      const o=ctx.createOscillator(), g=ctx.createGain();
+      o.type='sine'; o.frequency.value=fr;
+      g.gain.setValueAtTime(0.0001,t);
+      g.gain.exponentialRampToValueAtTime(0.22, t+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t+0.5);
+      o.connect(g); g.connect(this.master);
+      o.start(t+i*0.03); o.stop(t+0.6);
+    });
+  },
+  crash(){
+    if(!this.ready) return;
+    const ctx=this.ctx, t=ctx.currentTime;
+    // noise burst
+    const nlen=ctx.sampleRate*0.5, buf=ctx.createBuffer(1,nlen,ctx.sampleRate), d=buf.getChannelData(0);
+    for(let i=0;i<nlen;i++) d[i]=(Math.random()*2-1)*(1-i/nlen);
+    const ns=ctx.createBufferSource(); ns.buffer=buf;
+    const ng=ctx.createGain(); ng.gain.setValueAtTime(0.5,t); ng.gain.exponentialRampToValueAtTime(0.0001,t+0.5);
+    const nf=ctx.createBiquadFilter(); nf.type='lowpass'; nf.frequency.value=1200;
+    ns.connect(nf); nf.connect(ng); ng.connect(this.master); ns.start();
+    // descending tone
+    const o=ctx.createOscillator(), g=ctx.createGain();
+    o.type='sawtooth'; o.frequency.setValueAtTime(220,t); o.frequency.exponentialRampToValueAtTime(40,t+0.5);
+    g.gain.setValueAtTime(0.3,t); g.gain.exponentialRampToValueAtTime(0.0001,t+0.55);
+    o.connect(g); g.connect(this.master); o.start(); o.stop(t+0.6);
+  },
+};
+
+/* ============================================================
+   CONTROLS
+   ============================================================ */
+const keyInput = { pitch:0, roll:0, yaw:0, thr:0 };
+const touchInput = { pitch:0, roll:0, thr:0 };
+const keys = {};
+
+const KEYMAP = {
+  ArrowUp:   ['pitch', +1], ArrowDown: ['pitch', -1],
+  KeyW:      ['thr', +1],   KeyS: ['thr', -1],
+  ArrowLeft: ['roll', +1],  ArrowRight: ['roll', -1],
+  KeyA:      ['roll', +1],  KeyD: ['roll', -1],
+  KeyQ:      ['yaw', -1],   KeyE: ['yaw', +1],
+};
+
+function syncKeyInput(){
+  keyInput.pitch = (keys['ArrowUp']?1:0) + (keys['ArrowDown']?-1:0);
+  keyInput.roll  = (keys['ArrowLeft']?1:0) + (keys['ArrowRight']?-1:0) + (keys['KeyA']?1:0) + (keys['KeyD']?-1:0);
+  keyInput.yaw   = (keys['KeyQ']?1:0) + (keys['KeyE']?-1:0);
+  keyInput.thr   = (keys['KeyW']?1:0) + (keys['KeyS']?-1:0);
+}
+window.addEventListener('keydown', (e)=>{
+  if(e.code==='KeyC'){ toggleCamera(); return; }
+  if(e.code==='KeyR'){ doReset(); return; }
+  if(e.code==='KeyM'){ toggleMute(); return; }
+  if(KEYMAP[e.code]){ keys[e.code]=true; syncKeyInput(); e.preventDefault(); }
+  unlockAudio();
+});
+window.addEventListener('keyup', (e)=>{ if(KEYMAP[e.code]){ keys[e.code]=false; syncKeyInput(); } });
+
+// ---- virtual flight stick (left) ----
+const stickZone = document.getElementById('stickZone');
+const stickKnob = document.getElementById('stickKnob');
+let stickTouch = null;
+function stickCenter(){ const r = stickZone.getBoundingClientRect(); return { x:r.left+r.width/2, y:r.top+r.height/2, rad:Math.min(r.width,r.height)/2 }; }
+function stickMove(t){
+  const c = stickCenter();
+  let dx = (t.clientX - c.x)/c.rad, dy = (t.clientY - c.y)/c.rad;
+  const mag = Math.hypot(dx,dy);
+  if(mag > 1){ dx/=mag; dy/=mag; }
+  touchInput.pitch = -dy;   // up = pitch up
+  touchInput.roll  =  dx;   // right = bank right
+  const kx = dx*0.5*100, ky = dy*0.5*100;
+  stickKnob.style.transform = `translate(calc(-50% + ${kx}%), calc(-50% + ${ky}%))`;
+}
+stickZone.addEventListener('touchstart', (e)=>{ e.preventDefault(); unlockAudio(); const t=e.changedTouches[0]; stickTouch=t.identifier; stickMove(t); }, {passive:false});
+stickZone.addEventListener('touchmove', (e)=>{ e.preventDefault(); for(const t of e.changedTouches){ if(t.identifier===stickTouch) stickMove(t); } }, {passive:false});
+function stickEnd(e){ for(const t of e.changedTouches){ if(t.identifier===stickTouch){ stickTouch=null; touchInput.pitch=0; touchInput.roll=0; stickKnob.style.transform='translate(-50%,-50%)'; } } }
+stickZone.addEventListener('touchend', stickEnd, {passive:false});
+stickZone.addEventListener('touchcancel', stickEnd, {passive:false});
+
+// ---- throttle slider (right) ----
+const thrSlider = document.getElementById('thrSlider');
+const thrTrack  = document.getElementById('thrTrack');
+const thrFill2  = document.getElementById('thrFill2');
+const thrHandle = document.getElementById('thrHandle');
+let thrDragging = false;
+function thrSet(clientY){
+  const r = thrTrack.getBoundingClientRect();
+  let v = 1 - (clientY - r.top)/r.height;
+  v = THREE.MathUtils.clamp(v, 0, 1);
+  flight.throttle = v;
+  updateThrottleUI();
+}
+function updateThrottleUI(){
+  const pct = Math.round(flight.throttle*100);
+  thrFill2.style.height = pct+'%';
+  thrHandle.style.bottom = pct+'%';
+}
+thrSlider.addEventListener('touchstart', (e)=>{ e.preventDefault(); unlockAudio(); thrDragging=true; thrSet(e.changedTouches[0].clientY); }, {passive:false});
+thrSlider.addEventListener('touchmove', (e)=>{ e.preventDefault(); if(thrDragging) thrSet(e.changedTouches[0].clientY); }, {passive:false});
+const thrEndT = (e)=>{ thrDragging=false; };
+thrSlider.addEventListener('touchend', thrEndT, {passive:false});
+thrSlider.addEventListener('touchcancel', thrEndT, {passive:false});
+// mouse support for the slider (desktop)
+thrSlider.addEventListener('mousedown', (e)=>{ thrDragging=true; thrSet(e.clientY); });
+window.addEventListener('mousemove', (e)=>{ if(thrDragging) thrSet(e.clientY); });
+window.addEventListener('mouseup', ()=>{ thrDragging=false; });
+
+// ---- buttons ----
+const btnCam = document.getElementById('btnCam');
+const btnReset = document.getElementById('btnReset');
+const btnMute = document.getElementById('btnMute');
+btnCam.addEventListener('click', toggleCamera);
+btnReset.addEventListener('click', doReset);
+btnMute.addEventListener('click', toggleMute);
+
+function toggleCamera(){
+  camMode = (camMode+1)%2;
+  camInit = false; // snap camera to new view smoothly
+  btnCam.classList.toggle('on', camMode===1);
+  btnCam.textContent = camMode===1 ? 'NOSE' : 'CAM';
+}
+function doReset(){ resetFlight(); showToast('RELAUNCHED', 'Back to cruise', 1100); }
+function toggleMute(){
+  unlockAudio();
+  audio.setMute(!audio.muted);
+  btnMute.classList.toggle('on', !audio.muted);
+  btnMute.textContent = audio.muted ? 'MUTED' : 'SOUND';
+}
+
+/* ---- toast ---- */
+const elToast = document.getElementById('toast');
+let toastTimer = null;
+function showToast(title, sub, ms=1800){
+  elToast.innerHTML = title + (sub?`<small>${sub}</small>`:'');
+  elToast.classList.add('show');
+  if(toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>elToast.classList.remove('show'), ms);
+}
+
+/* ---- audio unlock (first gesture) ---- */
+let unlocked = false;
+function unlockAudio(){
+  if(unlocked) return;
+  unlocked = true;
+  audio.init();
+}
+window.addEventListener('pointerdown', unlockAudio, {once:false});
+window.addEventListener('keydown', unlockAudio, {once:false});
+
+/* ---- start button ---- */
+const startEl = document.getElementById('start');
+const startBtn = document.getElementById('startBtn');
+function begin(){
+  unlockAudio();
+  resetFlight();           // guarantee a clean, safe takeoff
+  startEl.classList.add('hide');
+  if(isTouch){ stickZone.classList.remove('hide'); }
+  else { stickZone.classList.add('hide'); }
+  showToast('SKY DRIFT', 'Fly free · thread the rings · R to reset', 2600);
+}
+startBtn.addEventListener('click', begin);
+startBtn.addEventListener('touchend', (e)=>{ e.preventDefault(); begin(); }, {passive:false});
+
+/* ---- show desktop vs touch hints ---- */
+if(isTouch){
+  document.body.classList.add('touch');
+  document.getElementById('keysDesktop').innerHTML =
+    '<b>LEFT STICK</b><span>Pitch &amp; bank</span>'+
+    '<b>THR SLIDER</b><span>Speed (right edge)</span>'+
+    '<b>CAM</b><span>Chase / nose view</span>'+
+    '<b>RESET</b><span>Relaunch mid-air</span>';
+  document.getElementById('foot').textContent = 'iPhone / iPad · touch controls active';
+}
+
+/* ---- resize ---- */
+function onResize(){
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+}
+window.addEventListener('resize', onResize);
+window.addEventListener('orientationchange', ()=>setTimeout(onResize, 200));
+
+/* ============================================================
+   MAIN LOOP
+   ============================================================ */
+const clock = new THREE.Clock();
+let elapsed = 0;
+
+function animate(){
+  requestAnimationFrame(animate);
+  let dt = clock.getDelta();
+  if(dt > 0.05) dt = 0.05;         // clamp big frame gaps (tab switch)
+  elapsed += dt;
+
+  // merge inputs
+  input.pitch = THREE.MathUtils.clamp(keyInput.pitch + touchInput.pitch, -1, 1);
+  input.roll  = THREE.MathUtils.clamp(keyInput.roll  + touchInput.roll,  -1, 1);
+  input.yaw   = THREE.MathUtils.clamp(keyInput.yaw, -1, 1);
+  input.thr   = THREE.MathUtils.clamp(keyInput.thr + touchInput.thr, -1, 1);
+
+  updateFlight(dt);
+  updateCamera(dt);
+  updateRings(dt, elapsed);
+
+  // gentle ocean waves
+  const op = oceanGeo.attributes.position;
+  for(let i=0;i<op.count;i++){
+    const x = oceanBase[i*3], z = oceanBase[i*3+2];
+    op.array[i*3+1] = Math.sin(x*0.02 + elapsed*1.1)*1.2 + Math.cos(z*0.018 + elapsed*0.8)*1.2;
+  }
+  op.needsUpdate = true;
+
+  clouds.userData.update(elapsed, dt);
+
+  if(audio.ready) audio.update(flight);
+
+  updateHUD(dt);
+  updateThrottleUI();
+
+  renderer.render(scene, camera);
+}
+
+/* ---- init ---- */
+onResize();
+resetFlight();
+updateRingsUI();
+updateThrottleUI();
+animate();
+
+console.log('%cSKY DRIFT loaded','color:#7fe7ff;font-weight:bold','· rings:', rings.length, '· touch:', isTouch);
+</script>
+</body>
+</html>

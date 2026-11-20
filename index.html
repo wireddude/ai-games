@@ -147,11 +147,144 @@
 /* Fallback manifest — used when the page is opened directly (file://) and the
    live manifest.json can't be fetched. Kept in sync with the files on disk. */
 const FALLBACK = [
-  { "name": "cat-simulator.html", "title": "Cat Simulator", "size": 2813, "modified": 1788821063 },
-  { "name": "deep-space-simulator.html", "title": "Deep Space — a tiny universe simulator", "size": 22792, "modified": 1791297275 },
-  { "name": "solar-system-1.html", "title": "Solar System Explorer — Learn the Planets", "size": 54299, "modified": 1788822509 },
-  { "name": "solar-system-offline.html", "title": "Solar System Explorer — Learn the Planets (Offline)", "size": 647509, "modified": 1788551403 },
-  { "name": "solar-system.html", "title": "Solar System — 3D Flyby", "size": 45842, "modified": 1791297350 }
+  {
+    "name": "breakout.html",
+    "title": "Breakout",
+    "size": 13004,
+    "modified": 1795115810
+  },
+  {
+    "name": "cat-simulator.html",
+    "title": "Cat Simulator — Chaos Mode",
+    "size": 45902,
+    "modified": 1795115576
+  },
+  {
+    "name": "city.html",
+    "title": "City Blocks — 3D City Builder",
+    "size": 82615,
+    "modified": 1795060756
+  },
+  {
+    "name": "cow.html",
+    "title": "Cow Abduction",
+    "size": 77232,
+    "modified": 1795062472
+  },
+  {
+    "name": "cube.html",
+    "title": "3D Rubik's Cube",
+    "size": 19226,
+    "modified": 1793831926
+  },
+  {
+    "name": "deep-space-simulator.html",
+    "title": "Deep Space — a tiny universe simulator",
+    "size": 22792,
+    "modified": 1791297275
+  },
+  {
+    "name": "eliza.html",
+    "title": "ELIZA — Weizenbaum's Therapist (1966)",
+    "size": 20469,
+    "modified": 1795063708
+  },
+  {
+    "name": "galaga.html",
+    "title": "GALAGA",
+    "size": 47942,
+    "modified": 1795049094
+  },
+  {
+    "name": "geometry-dash.html",
+    "title": "Geometry Dash Clone",
+    "size": 29043,
+    "modified": 1795128452
+  },
+  {
+    "name": "global-warming.html",
+    "title": "GLOBAL WARMING — Arcade",
+    "size": 13877,
+    "modified": 1795114604
+  },
+  {
+    "name": "pac-man.html",
+    "title": "Neon Maze",
+    "size": 26446,
+    "modified": 1793842035
+  },
+  {
+    "name": "pixel_blackjack.html",
+    "title": "PIXEL JACK - 1986",
+    "size": 23225,
+    "modified": 1774831576
+  },
+  {
+    "name": "road-rage.html",
+    "title": "Road Rage",
+    "size": 129707,
+    "modified": 1795062335
+  },
+  {
+    "name": "smb.html",
+    "title": "Super Mario Clone",
+    "size": 22220,
+    "modified": 1791303889
+  },
+  {
+    "name": "solar-system-1.html",
+    "title": "Solar System Explorer — Learn the Planets",
+    "size": 54299,
+    "modified": 1788822509
+  },
+  {
+    "name": "solar-system-offline.html",
+    "title": "Solar System Explorer — Learn the Planets (Offline)",
+    "size": 647509,
+    "modified": 1788551403
+  },
+  {
+    "name": "solar-system.html",
+    "title": "Solar System — 3D Flyby",
+    "size": 45842,
+    "modified": 1791297350
+  },
+  {
+    "name": "space-invaders.html",
+    "title": "Nova Invaders",
+    "size": 26948,
+    "modified": 1793840037
+  },
+  {
+    "name": "tetris.html",
+    "title": "Weird Al's Tetris 🎹👕",
+    "size": 18389,
+    "modified": 1795118830
+  },
+  {
+    "name": "treble-clef-trainer.html",
+    "title": "Treble Clef Trainer",
+    "size": 20890,
+    "modified": 1793931920
+  },
+  {
+    "name": "zaxxon.html",
+    "title": "ZAXXON — AEGIS DRIFT",
+    "size": 28706,
+    "modified": 1795113009
+  },
+  {
+    "name": "zelda.html",
+    "title": "Hero of Hyrule — 8-bit Adventure",
+    "size": 17632,
+    "modified": 1793895468
+  },
+  {
+    "name": "zen-garden.html",
+    "title": "Zen Garden &mdash; a breathing room",
+    "size": 35586,
+    "modified": 1790983699
+  }
 ];
 
 const grid = document.getElementById('grid');
@@ -175,6 +308,7 @@ function iconFor(name) {
   if (n.includes('planet')) return '🌍';
   if (n.includes('moon')) return '🌙';
   if (n.includes('rocket') || n.includes('launch')) return '🚀';
+  if (n.includes('tetris') || n.includes('block')) return '🧱';
   if (n.includes('game')) return '🎮';
   return '🚀';
 }

@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Treble Clef Trainer</title>
+<style>
+  :root {
+    --bg: #14161f;
+    --card: #1e2230;
+    --card2: #262b3d;
+    --text: #eef0f8;
+    --muted: #9aa1b8;
+    --accent: #6ee7b7;
+    --accent2: #60a5fa;
+    --good: #34d399;
+    --bad: #f87171;
+    --staff: #cfd3e1;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(1200px 700px at 50% 0%, #1c2030 0%, var(--bg) 60%);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text);
+  }
+  .app { width: min(560px, 94vw); }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; letter-spacing: .3px; }
+  h1 .clef { color: var(--accent); }
+  .subtitle { color: var(--muted); margin: 0 0 18px; font-size: .92rem; }
+  .card {
+    background: var(--card); border: 1px solid #2e3450; border-radius: 16px;
+    padding: 20px; box-shadow: 0 12px 40px rgba(0,0,0,.35);
+  }
+  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;}
+  .levelbadge {
+    background: var(--card2); border: 1px solid #343b5e; color: var(--text);
+    border-radius: 999px; padding: 6px 14px; font-size: .85rem;
+  }
+  .levelbadge b { color: var(--accent); }
+  .leveldesc { color: var(--muted); font-size: .8rem; margin: 0 0 14px; min-height: 1.2em;}
+  .staffwrap { display: flex; justify-content: center; }
+  svg text { user-select: none; }
+  #answerBox { margin: 16px 0 8px; text-align: center; }
+  #answerInput {
+    background: var(--card2); color: var(--text); border: 1px solid #3a4266; border-radius: 10px;
+    font-size: 1.3rem; letter-spacing: 2px; padding: 10px 14px; width: 180px;
+    text-align: center; outline: none; text-transform: uppercase;
+  }
+  #answerInput:focus { border-color: var(--accent2); }
+  .q { text-align: center; color: var(--muted); font-size: .9rem; margin-bottom: 6px;}
+  .buttons { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 14px 0; }
+  button.key {
+    min-width: 44px; padding: 9px 10px; font-size: 1.05rem; border-radius: 10px;
+    background: var(--card2); color: var(--text); border: 1px solid #3a4266; cursor: pointer;
+    transition: transform .06s ease, background .12s ease;
+  }
+  button.key:hover { background: #2f3654; }
+  button.key:active { transform: scale(.94); }
+  .rowlabel { color: var(--muted); font-size: .7rem; text-align: center; letter-spacing: 1px; margin: 10px 0 4px; text-transform: uppercase;}
+  .actions { display: flex; gap: 10px; justify-content: center; margin-top: 6px; flex-wrap: wrap;}
+  .btn {
+    padding: 10px 18px; border-radius: 10px; border: 1px solid #3a4266; cursor: pointer;
+    background: var(--card2); color: var(--text); font-size: .95rem;
+  }
+  .btn.primary { background: var(--accent); color: #06281c; border-color: transparent; font-weight: 700; }
+  .btn:active { transform: scale(.96); }
+  #feedback {
+    min-height: 58px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    margin-top: 14px; border-radius: 12px; text-align: center; padding: 10px;
+    background: transparent; transition: background .2s;
+  }
+  #feedback.show { background: var(--card2); border: 1px solid #343b5e; }
+  #feedback .big { font-size: 1.25rem; font-weight: 700; }
+  #feedback .sub { color: var(--muted); font-size: .85rem; margin-top: 4px;}
+  #feedback.good .big { color: var(--good); }
+  #feedback.bad .big { color: var(--bad); }
+  #feedback.close .big { color: #fbbf24; }
+  .stats { display: flex; justify-content: center; gap: 22px; margin-top: 14px; color: var(--muted); font-size: .82rem; flex-wrap: wrap;}
+  .stats b { color: var(--text); font-size: 1rem; display: block; text-align: center;}
+  .dots { display: flex; gap: 6px; justify-content: center; margin-top: 14px; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; background: #333a58; }
+  .dot.g { background: var(--good); }
+  .dot.r { background: var(--bad); }
+  .foot { text-align: center; margin-top: 14px; color: #59617e; font-size: .75rem;}
+  .foot a { color: #59617e; cursor: pointer; text-decoration: underline;}
+  .soundtoggle { cursor: pointer; font-size: .8rem; color: var(--muted); background: var(--card2); border:1px solid #3a4266; border-radius: 999px; padding: 6px 12px;}
+  .soundtoggle.on { color: var(--accent); border-color: #2f5c4a; }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1><span class="clef">𝄞</span> Treble Clef Trainer</h1>
+  <p class="subtitle">Identify each note. The game levels up as you improve, and eases back if it gets rough.</p>
+
+  <div class="card">
+    <div class="topbar">
+      <div class="levelbadge">Level <b id="levelNum">1</b> · <span id="levelName">—</span></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="soundtoggle on" id="soundToggle" title="Toggle sound">🔊 sound</button>
+      </div>
+    </div>
+    <p class="leveldesc" id="levelDesc"></p>
+
+    <div class="staffwrap">
+      <svg id="staff" width="360" height="240" viewBox="0 0 360 240" aria-label="musical staff"></svg>
+    </div>
+
+    <p class="q" id="question">What note is this?</p>
+    <div id="answerBox">
+      <input id="answerInput" autocomplete="off" spellcheck="false" maxlength="4" placeholder="type it" aria-label="Your answer, e.g. C#5">
+    </div>
+
+    <div class="rowlabel">note name</div>
+    <div class="buttons" id="letterBtns"></div>
+    <div class="rowlabel" id="accLabel" style="display:none">accidental</div>
+    <div class="buttons" id="accBtns" style="display:none"></div>
+
+    <div class="actions">
+      <button class="btn" id="playBtn" title="Hear the note again">▶ hear note</button>
+      <button class="btn primary" id="checkBtn">Check ⏎</button>
+      <button class="btn" id="clearBtn">clear</button>
+      <button class="btn" id="nextBtn" style="display:none">next ⏎</button>
+    </div>
+
+    <div id="feedback"></div>
+
+    <div class="dots" id="dots"></div>
+
+    <div class="stats">
+      <div><b id="stStreak">0</b>streak</div>
+      <div><b id="stAccuracy">–</b>accuracy</div>
+      <div><b id="stTotal">0</b>notes seen</div>
+    </div>
+    <div class="foot"><a id="resetLink">reset progress</a></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ---------- pitch helpers ---------- */
+const NAMES = ["C","D","E","F","G","A","B"];
+
+// diatonic step number where C4 = 0, D4 = 1, ... (one step = one line/space)
+function stepOf(note) {
+  const m = note.match(/^([A-G])([#b])?(\d)$/);
+  if (!m) return null;
+  return (parseInt(m[3],10) - 4) * 7 + NAMES.indexOf(m[1]);
+}
+function midiOf(note) {
+  const m = note.match(/^([A-G])([#b])?(\d)$/);
+  if (!m) return null;
+  const pc = NAMES.indexOf(m[1]);
+  const acc = m[2] === "#" ? 1 : m[2] === "b" ? -1 : 0;
+  return (parseInt(m[3],10) + 1) * 12 + pc + acc;
+}
+function freqOf(note) {
+  const midi = midiOf(note);
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+const LINE_NAMES = ["bottom line","2nd line","3rd line","4th line","top line"];
+function whereNoteSits(note) {
+  const step = stepOf(note);
+  if (step === 0) return "middle C, on a ledger line below the staff";
+  if (step === 1) return "1st space (just above the bottom line)";
+  if (step < 11) {
+    // 2..10 are on staff: even steps = lines (1..5), odd = spaces (1..4)
+    if (step % 2 === 0) return LINE_NAMES[(step - 2) / 2];
+    return spaceName(step);
+  }
+  if (step === 11) return "space above the top line";
+  if (step === 12) return "on the 1st ledger line above";
+  if (step === 13) return "space above the 1st ledger line";
+  if (step === 14) return "on the 2nd ledger line above";
+  return "up high";
+}
+function spaceName(step){ const s=(step-1)/2; return ["1st","2nd","3rd","4th"][s-1] + " space"; }
+
+/* ---------- difficulty levels ---------- */
+const L4 = ["D4","E4","F4","G4","A4","B4","C5"];
+const ALL = L4.concat(["C4","D5","E5","F5","G5","A5","B5","C6"]);
+const LEVELS = [
+  { name: "The line notes",    desc: "Three notes on the lines: E, G, B — \u201cEvery Good Boy.\u201d Tap the letter, then Check.",
+    pool: ["E4","G4","B4"]},
+  { name: "Lines & spaces",    desc: "Now mix in the spaces. Spaces spell \u201cFACE\u201d going up.",
+    pool: ["D4","E4","F4","G4","B4"]},
+  { name: "Inside the staff",  desc: "All 11 positions between the top and bottom lines.",
+    pool: L4},
+  { name: "Middle C",          desc: "C4 sits on a little ledger line below the staff.",
+    pool: L4.concat(["C4"])},
+  { name: "Up the staff",      desc: "D5 and E5 join the party — near the top of the staff.",
+    pool: L4.concat(["C4","D5","E5"])},
+  { name: "The full staff",    desc: "The full staff: all the way from C4 to F5.",
+    pool: ALL},
+  { name: "Above the staff",   desc: "G5, A5 and B5 live above the top line. A5 sits on a ledger line.",
+    pool: ALL.concat(["G5","A5","B5"])},
+  { name: "Double ledger",     desc: "C6 is on the 2nd ledger line above the staff.",
+    pool: ALL.concat(["G5","A5","B5","C6"])},
+  { name: "Accidentals",       desc: "Sharps \u266f and flats \u266d enter. Type the accidental too, e.g. F#4.",
+    pool: ALL.concat(["C4","G5","A5","B5","C6","F#4","C#5","Bb4","Eb4"]), needAcc: true },
+  { name: "More accidentals",  desc: "Even more sharps and flats across the staff.",
+    pool: ALL.concat(["C4","G5","A5","B5","C6","F#4","C#5","Bb4","Eb4","G#4","C#4","D#5","F#5","Ab5","Eb5"]), needAcc: true },
+  { name: "Accidental master", desc: "The whole neighborhood, sharps and flats included. You\u2019ve made it to the top level!",
+    pool: ALL.concat(["C4","G5","A5","B5","C6","F#4","C#5","Bb4","Eb4","G#4","C#4","D#5","F#5","Ab5","Eb5","Gb5","Db5","Bb5","C#6"]), needAcc: true },
+];
+const MAX_LEVEL = LEVELS.length;
+const WINDOW_SIZE = 8;
+const UP_RATE = 0.75, DOWN_RATE = 0.5;
+
+/* ---------- state ---------- */
+let state = { level: 1, window: [], streak: 0, total: 0, correct: 0, sound: true };
+try {
+  const saved = JSON.parse(localStorage.getItem("trebleTrainer") || "null");
+  if (saved && saved.level >= 1 && saved.level <= MAX_LEVEL) state = Object.assign(state, saved);
+} catch (e) {}
+function save() { try { localStorage.setItem("trebleTrainer", JSON.stringify(state)); } catch (e) {} }
+
+/* ---------- audio ---------- */
+let ctx = null;
+function audioCtx() {
+  if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state === "suspended") ctx.resume();
+  return ctx;
+}
+function playNote(note, quiet = false) {
+  if (!state.sound) return;
+  const ac = audioCtx();
+  const t = ac.currentTime;
+  const freq = freqOf(note);
+  const g = ac.createGain();
+  g.connect(ac.destination);
+  const peak = quiet ? 0.12 : 0.3;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(peak, t + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 1.1);
+  // a slightly richer voice: sine + soft 2nd harmonic
+  const o1 = ac.createOscillator(); o1.type = "sine"; o1.frequency.value = freq;
+  const o2 = ac.createOscillator(); o2.type = "sine"; o2.frequency.value = freq * 2;
+  const g2 = ac.createGain(); g2.gain.value = 0.18;
+  o1.connect(g); o2.connect(g2); g2.connect(g);
+  o1.start(t); o2.start(t);
+  o1.stop(t + 1.2); o2.stop(t + 1.2);
+}
+function playWrong() {
+  if (!state.sound) return;
+  const ac = audioCtx();
+  const t = ac.currentTime;
+  const g = ac.createGain(); g.connect(ac.destination);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.12, t + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+  const o = ac.createOscillator(); o.type = "triangle"; o.frequency.value = 110;
+  o.connect(g); o.start(t); o.stop(t + 0.3);
+}
+
+/* ---------- drawing ---------- */
+const svg = document.getElementById("staff");
+const NS = "http://www.w3.org/2000/svg";
+const STAFF_TOP = 106, STAFF_BOT = 194, LINE_SP = 22, MIDDLE_Y = 150, HALF = LINE_SP / 2;
+const NOTE_X = 205, STAFF_L = 55, STAFF_R = 305;
+
+function el(tag, attrs) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+function drawStaff() {
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  // staff lines
+  for (let y = STAFF_TOP; y <= STAFF_BOT + 0.1; y += LINE_SP) {
+    svg.appendChild(el("line", { x1: STAFF_L - 6, x2: STAFF_R, y1: y, y2: y, stroke: "var(--staff)", "stroke-width": 2 }));
+  }
+  // treble clef
+  const clef = el("text", { x: 30, y: 191, "font-size": 118, fill: "var(--staff)",
+    "font-family": "Savoye, 'Bravura Text', 'Noto Music', 'Segoe UI Symbol', serif" });
+  clef.textContent = "\u{1D11E}";
+  svg.appendChild(clef);
+}
+function drawNote(note) {
+  drawStaff();
+  const step = stepOf(note);
+  const y = MIDDLE_Y - (step - 6) * HALF;
+  const m = note.match(/^([A-G])([#b])?/);
+  const acc = m[2] || "";
+  // ledger lines
+  if (step < 2) {
+    const ly = STAFF_BOT + LINE_SP; // 216
+    svg.appendChild(el("line", { x1: NOTE_X - 16, x2: NOTE_X + 16, y1: ly, y2: ly, stroke: "var(--staff)", "stroke-width": 2 }));
+  }
+  if (step > 10) {
+    for (let k = 1; k <= 3; k++) {
+      const ly = STAFF_TOP - k * LINE_SP;
+      const through = Math.abs(ly - y) <= HALF + 3;
+      const belowHead = ly > y + HALF + 3 && ly < STAFF_TOP + 2;
+      if (through || belowHead) {
+        svg.appendChild(el("line", { x1: NOTE_X - 16, x2: NOTE_X + 16, y1: ly, y2: ly, stroke: "var(--staff)", "stroke-width": 2 }));
+      }
+    }
+  }
+  // accidental glyph
+  if (acc) {
+    const t = el("text", { x: NOTE_X - 34, y: y + 7, "font-size": 26, fill: "var(--staff)",
+      "font-family": "Savoye, 'Noto Music', serif" });
+    t.textContent = acc === "#" ? "\u266f" : "\u266d";
+    svg.appendChild(t);
+  }
+  // stem (up if at/below middle line, else down)
+  const stemUp = y >= MIDDLE_Y;
+  const stemX = stemUp ? NOTE_X + 9.5 : NOTE_X - 9.5;
+  const stemY2 = stemUp ? y - LINE_SP * 3.6 : y + LINE_SP * 3.6;
+  svg.appendChild(el("line", { x1: NOTE_X, x2: stemX, y1: y, y2: stemY2, stroke: "var(--staff)", "stroke-width": 2.4 }));
+  // notehead
+  svg.appendChild(el("ellipse", { cx: NOTE_X, cy: y, rx: 11.5, ry: 8, fill: "var(--staff)", transform: `rotate(-20 ${NOTE_X} ${y})` }));
+}
+
+/* ---------- UI refs ---------- */
+const $ = id => document.getElementById(id);
+const input = $("answerInput"), fb = $("feedback");
+let current = null;         // note string
+let answered = false;       // whether current question has been checked
+let recent = [];            // last few notes shown, to avoid rapid repeats
+
+/* ---------- buttons ---------- */
+function makeButtons(container, labels, onClick) {
+  labels.forEach(lab => {
+    const b = document.createElement("button");
+    b.className = "key"; b.textContent = lab;
+    b.addEventListener("click", () => { if (!answered) { audioCtx(); onClick(b); } });
+    container.appendChild(b);
+  });
+}
+makeButtons($("letterBtns"), NAMES, b => { input.value = b.textContent + input.value.replace(/^[A-G]/, "").replace(/[#b]/, ""); input.focus(); });
+makeButtons($("accBtns"), ["\u266f","#","\u266d","b"], b => {
+  const sharp = b.textContent === "#" || b.textContent === "\u266f";
+  const name = (input.value.match(/^[A-G]/) || ["C"])[0];
+  const oct = input.value.match(/[3-6]/);
+  input.value = name + (sharp ? "#" : "b") + (oct ? oct[0] : "");
+  input.focus();
+});
+
+$("playBtn").addEventListener("click", () => { audioCtx(); if (current) playNote(current, true); });
+$("clearBtn").addEventListener("click", () => { if (!answered) { input.value = ""; input.focus(); } });
+$("checkBtn").addEventListener("click", check);
+$("nextBtn").addEventListener("click", next);
+$("soundToggle").addEventListener("click", function () {
+  state.sound = !state.sound;
+  this.classList.toggle("on", state.sound);
+  this.textContent = state.sound ? "🔊 sound" : "🔇 silent";
+  save();
+});
+$("resetLink").addEventListener("click", () => {
+  if (confirm("Reset your progress back to level 1?")) {
+    state = { level: 1, window: [], streak: 0, total: 0, correct: 0, sound: state.sound };
+    save(); renderAll(); newQuestion();
+  }
+});
+
+document.addEventListener("keydown", e => {
+  if (document.activeElement !== input && e.key.length === 1) input.focus();
+  if (e.key === "Enter") {
+    e.preventDefault();
+    if (answered) next();
+    else check();
+  }
+});
+
+/* ---------- game flow ---------- */
+function level() { return LEVELS[state.level - 1]; }
+
+// pick a random note, avoiding the last few we already showed (up to pool size - 1)
+function pickNote(pool) {
+  const R = Math.max(1, Math.min(pool.length - 1, 3));
+  let candidates = pool.filter(n => !recent.includes(n));
+  if (!candidates.length) candidates = pool;
+  const note = candidates[Math.floor(Math.random() * candidates.length)];
+  recent.push(note);
+  while (recent.length > R) recent.shift();
+  return note;
+}
+function newQuestion() {
+  const lv = level();
+  current = pickNote(lv.pool);
+  answered = false;
+  input.value = "";
+  fb.className = ""; fb.innerHTML = "";
+  $("checkBtn").style.display = "";
+  $("nextBtn").style.display = "none";
+  // show/hide accidental row
+  $("accLabel").style.display = lv.needAcc ? "" : "none";
+  $("accBtns").style.display = lv.needAcc ? "" : "none";
+  input.placeholder = lv.needAcc ? "e.g. C#" : "e.g. C";
+  input.disabled = false;
+  renderAll();
+  drawNote(current);
+  input.focus();
+}
+
+function normalizeAnswer(raw) {
+  let s = raw.toLowerCase().replace(/\s+/g, "");
+  s = s.replace(/sharp/g, "#").replace(/flat/g, "b");
+  const m = s.match(/^([a-g])([#b]?)([3-6])?$/);
+  if (!m) return null;
+  const letter = m[1].toUpperCase();
+  if (!level().needAcc) return letter; // accidentals not in play yet; ignore any
+  return letter + (m[2] || "");
+}
+
+function compare(userRaw, note) {
+  const lv = level();
+  const norm = normalizeAnswer(userRaw);
+  if (!norm) return { hit: 0 };
+  if (lv.needAcc) {
+    const expected = note.replace(/\d$/, ""); // e.g. "F#"
+    if (norm === expected) return { hit: 2 };
+    // close: right letter, accidental missing or wrong
+    if (norm.length !== expected.length &&
+        norm.replace(/[#b]/, "") === expected.replace(/[#b]/, "")) return { hit: 1 };
+    return { hit: 0 };
+  }
+  return { hit: norm === note[0] ? 2 : 0 };
+}
+
+function check() {
+  if (answered || !current) return;
+  audioCtx();
+  const res = compare(input.value, current);
+  answered = true;
+  input.disabled = true;
+  $("checkBtn").style.display = "none";
+  $("nextBtn").style.display = "";
+  state.total++;
+
+  if (res.hit === 2) {
+    state.correct++;
+    state.streak++;
+    state.window.push(1);
+    fb.className = "show good";
+    fb.innerHTML = `<div class="big">✓ Correct — ${pretty(current)}!</div>
+      <div class="sub">${whereNoteSits(current)} · sounds like that ↑</div>`;
+    playNote(current);
+  } else if (res.hit === 1) {
+    state.streak = 0;
+    state.window.push(0);
+    fb.className = "show close";
+    fb.innerHTML = `<div class="big">Almost! It was ${pretty(current)}.</div>
+      <div class="sub">${whereNoteSits(current)}</div>`;
+    playWrong();
+  } else {
+    state.streak = 0;
+    state.window.push(0);
+    fb.className = "show bad";
+    fb.innerHTML = `<div class="big">✗ It was ${pretty(current)}.</div>
+      <div class="sub">${whereNoteSits(current)} — hear it again with the ▶ button</div>`;
+    playWrong();
+  }
+  // adapt
+  if (state.window.length > WINDOW_SIZE) state.window.shift();
+  if (state.window.length === WINDOW_SIZE) {
+    const rate = state.window.reduce((a, b) => a + b, 0) / WINDOW_SIZE;
+    if (rate >= UP_RATE && state.level < MAX_LEVEL) {
+      state.level++;
+      state.window = [];
+    } else if (rate <= DOWN_RATE && state.level > 1) {
+      state.level--;
+      state.window = [];
+    }
+  }
+  save();
+  renderAll();
+  $("nextBtn").focus();
+}
+
+function next() {
+  if (!answered) return;
+  newQuestion();
+}
+
+function pretty(note) {
+  const m = note.match(/^([A-G])([#b])?(\d)$/);
+  return m[1] + (m[2] === "#" ? "♯" : m[2] === "b" ? "♭" : "") + m[3];
+}
+
+function renderAll() {
+  const lv = level();
+  $("levelNum").textContent = state.level;
+  $("levelName").textContent = lv.name;
+  $("levelDesc").textContent = lv.desc;
+  $("stStreak").textContent = state.streak;
+  $("stTotal").textContent = state.total;
+  $("stAccuracy").textContent = state.total ? Math.round(100 * state.correct / state.total) + "%" : "–";
+  // window dots
+  const dots = $("dots");
+  dots.innerHTML = "";
+  for (let i = 0; i < WINDOW_SIZE; i++) {
+    const d = document.createElement("div");
+    d.className = "dot" + (i < state.window.length ? (state.window[i] ? " g" : " r") : "");
+    dots.appendChild(d);
+  }
+  $("soundToggle").classList.toggle("on", state.sound);
+  $("soundToggle").textContent = state.sound ? "🔊 sound" : "🔇 silent";
+}
+
+/* ---------- go ---------- */
+renderAll();
+newQuestion();
+</script>
+</body>
+</html>

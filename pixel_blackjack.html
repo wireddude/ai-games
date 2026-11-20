@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>PIXEL JACK - 1986</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Press Start 2P', monospace;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        #arcadeCabinet {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            height: 100vh;
+            max-height: 900px;
+            background: #1a1a1a;
+            border: 20px solid #333;
+            border-radius: 20px;
+            box-shadow: 0 0 50px rgba(0, 255, 100, 0.3), inset 0 0 100px rgba(0, 0, 0, 0.8);
+        }
+
+        #screen {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background: #0d1f0d;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #scanlines {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 0, 0, 0.15) 0px,
+                rgba(0, 0, 0, 0.15) 2px,
+                transparent 2px,
+                transparent 4px
+            );
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        #crtGlow {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(ellipse at center, transparent 50%, rgba(0, 20, 0, 0.4) 100%);
+            pointer-events: none;
+            z-index: 101;
+        }
+
+        #gameCanvas {
+            width: 100%;
+            height: 100%;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
+        .ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 50;
+        }
+
+        #titleScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 20, 0, 0.95);
+            z-index: 60;
+        }
+
+        .blink {
+            animation: blink 1s step-end infinite;
+        }
+
+        @keyframes blink {
+            50% { opacity: 0; }
+        }
+
+        .btn-retro {
+            background: #2a8a2a;
+            border: 4px solid #1a5a1a;
+            color: #aaffaa;
+            padding: 15px 30px;
+            font-family: 'Press Start 2P', monospace;
+            font-size: 12px;
+            cursor: pointer;
+            margin: 10px;
+            text-transform: uppercase;
+            box-shadow: 0 4px 0 #1a5a1a;
+            transition: transform 0.1s;
+        }
+
+        .btn-retro:active {
+            transform: translateY(4px);
+            box-shadow: 0 0 0 #1a5a1a;
+        }
+
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 70;
+            pointer-events: auto;
+        }
+
+        .control-btn {
+            background: #2a2a8a;
+            border: 3px solid #1a1a5a;
+            color: #aaaaff;
+            padding: 12px 20px;
+            font-family: 'Press Start 2P', monospace;
+            font-size: 10px;
+            cursor: pointer;
+            text-transform: uppercase;
+            box-shadow: 0 3px 0 #1a1a5a;
+            transition: transform 0.1s;
+        }
+
+        .control-btn:active {
+            transform: translateY(3px);
+            box-shadow: 0 0 0 #1a1a5a;
+        }
+
+        .control-btn:disabled {
+            background: #3a3a3a;
+            border-color: #2a2a2a;
+            color: #666;
+            box-shadow: 0 3px 0 #2a2a2a;
+            cursor: not-allowed;
+        }
+
+        #marquee {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: #ff6b35;
+            font-size: 8px;
+            text-shadow: 2px 2px 0 #000;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+
+        #marquee span {
+            display: inline-block;
+            animation: scroll 10s linear infinite;
+        }
+
+        @keyframes scroll {
+            0% { transform: translateX(100%); }
+            100% { transform: translateX(-100%); }
+        }
+    </style>
+</head>
+<body>
+    <div id="arcadeCabinet">
+        <div id="screen">
+            <canvas id="gameCanvas"></canvas>
+            <div id="scanlines"></div>
+            <div id="crtGlow"></div>
+
+            <div id="titleScreen">
+                <div style="color: #ff6b35; font-size: 24px; text-align: center; margin-bottom: 20px; text-shadow: 3px 3px 0 #000;">
+                    PIXEL JACK
+                </div>
+                <div style="color: #aaffaa; font-size: 10px; margin-bottom: 30px;">
+                    COPYRIGHT 1986
+                </div>
+                <div style="color: #ffff00; font-size: 12px; margin-bottom: 40px;" class="blink">
+                    INSERT COIN
+                </div>
+                <button class="btn-retro" id="startBtn">START GAME</button>
+                <div style="color: #888; font-size: 8px; margin-top: 30px; text-align: center; line-height: 2;">
+                    DEALER MUST STAND ON 17<br>
+                    BLACKJACK PAYS 3 TO 2
+                </div>
+            </div>
+
+            <div id="controls" style="display: none;">
+                <button class="control-btn" id="hitBtn">HIT</button>
+                <button class="control-btn" id="standBtn">STAND</button>
+                <button class="control-btn" id="doubleBtn">DOUBLE</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const titleScreen = document.getElementById('titleScreen');
+        const controls = document.getElementById('controls');
+
+        function resize() {
+            const screen = document.getElementById('screen');
+            const aspect = 320 / 400;
+            let w = screen.clientWidth;
+            let h = screen.clientHeight;
+
+            // Maintain aspect ratio
+            if (w / h > aspect) {
+                w = h * aspect;
+            } else {
+                h = w / aspect;
+            }
+
+            canvas.style.width = w + 'px';
+            canvas.style.height = h + 'px';
+        }
+
+        // Set internal resolution once
+        canvas.width = 320;
+        canvas.height = 400;
+        resize();
+        window.addEventListener('resize', resize);
+
+        // Disable anti-aliasing for pixel look
+        ctx.imageSmoothingEnabled = false;
+
+        // Game state
+        let gameState = 'title'; // title, playing, dealerTurn, gameOver
+        let playerChips = 1000;
+        let currentBet = 100;
+        let playerHand = [];
+        let dealerHand = [];
+        let deck = [];
+        let message = '';
+        let messageTimer = 0;
+
+        // Pixel font drawing
+        function drawPixelText(text, x, y, size = 8, color = '#aaffaa') {
+            ctx.fillStyle = color;
+            ctx.font = `${size}px 'Press Start 2P'`;
+            ctx.fillText(text, x, y);
+        }
+
+        // Card suits and values
+        const SUITS = ['♠', '♥', '♦', '♣'];
+        const VALUES = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+
+        function createDeck() {
+            const deck = [];
+            for (let suit of SUITS) {
+                for (let value of VALUES) {
+                    deck.push({ suit, value, color: (suit === '♥' || suit === '♦') ? '#ff6666' : '#ffffff' });
+                }
+            }
+            return shuffle(deck);
+        }
+
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        function getCardValue(card) {
+            if (card.value === 'A') return 11;
+            if (['J', 'Q', 'K'].includes(card.value)) return 10;
+            return parseInt(card.value);
+        }
+
+        function calculateHand(hand) {
+            let total = 0;
+            let aces = 0;
+            for (let card of hand) {
+                if (card.value === 'A') {
+                    aces++;
+                    total += 11;
+                } else if (['J', 'Q', 'K'].includes(card.value)) {
+                    total += 10;
+                } else {
+                    total += parseInt(card.value);
+                }
+            }
+            while (total > 21 && aces > 0) {
+                total -= 10;
+                aces--;
+            }
+            return total;
+        }
+
+        function isBlackjack(hand) {
+            return hand.length === 2 && calculateHand(hand) === 21;
+        }
+
+        // Pixel art card drawing - LARGER cards
+        function drawCard(card, x, y, faceDown = false) {
+            const cardWidth = 50;
+            const cardHeight = 70;
+
+            // Card shadow
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillRect(x + 3, y + 3, cardWidth, cardHeight);
+
+            // Card background
+            ctx.fillStyle = faceDown ? '#2a2a8a' : '#ffffff';
+            ctx.fillRect(x, y, cardWidth, cardHeight);
+
+            // Card border
+            ctx.strokeStyle = faceDown ? '#1a1a5a' : '#333';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, cardWidth, cardHeight);
+
+            // Inner border
+            ctx.strokeStyle = faceDown ? '#3a3aaa' : '#ccc';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x + 3, y + 3, cardWidth - 6, cardHeight - 6);
+
+            if (!faceDown) {
+                // Card value and suit - TOP LEFT
+                ctx.fillStyle = card.color;
+                ctx.font = 'bold 12px monospace';
+                ctx.fillText(card.value, x + 5, y + 15);
+                ctx.font = '14px monospace';
+                ctx.fillText(card.suit, x + 5, y + 30);
+
+                // Center suit - LARGER
+                ctx.font = 'bold 20px monospace';
+                ctx.fillText(card.suit, x + cardWidth/2 - 6, y + cardHeight/2 + 6);
+
+                // Inverted value at bottom right
+                ctx.save();
+                ctx.translate(x + cardWidth - 5, y + cardHeight - 5);
+                ctx.rotate(Math.PI);
+                ctx.font = 'bold 12px monospace';
+                ctx.fillText(card.value, 0, 0);
+                ctx.restore();
+            } else {
+                // Card back pattern - diagonal stripes
+                ctx.fillStyle = '#1a1a5a';
+                ctx.fillRect(x + 5, y + 5, cardWidth - 10, cardHeight - 10);
+                ctx.fillStyle = '#3a3aaa';
+                for (let i = 0; i < 5; i++) {
+                    ctx.fillRect(x + 8 + i * 10, y + 5, 4, cardHeight - 10);
+                }
+            }
+        }
+
+        // Pixel dealer
+        function drawDealer() {
+            const x = 160;
+            const y = 30;
+
+            // Dealer pixel art
+            const pixels = [
+                "   ████   ",
+                "  ██████  ",
+                " ██░░░░██ ",
+                " ██░░░░██ ",
+                "  ██████  ",
+                "   ████   ",
+                "  ██████  ",
+                " ████████ ",
+                "██████████",
+                "██████████",
+                " ██    ██ ",
+                " ██    ██ "
+            ];
+
+            ctx.fillStyle = '#ffdbac';
+            for (let row = 0; row < pixels.length; row++) {
+                for (let col = 0; col < pixels[row].length; col++) {
+                    if (pixels[row][col] === '█') {
+                        ctx.fillRect(x + col * 3 - 15, y + row * 3, 3, 3);
+                    } else if (pixels[row][col] === '░') {
+                        ctx.fillStyle = '#4a3728';
+                        ctx.fillRect(x + col * 3 - 15, y + row * 3, 3, 3);
+                        ctx.fillStyle = '#ffdbac';
+                    }
+                }
+            }
+
+            // Sunglasses
+            ctx.fillStyle = '#000';
+            ctx.fillRect(x - 12, y + 12, 10, 4);
+            ctx.fillRect(x + 2, y + 12, 10, 4);
+            ctx.fillRect(x - 2, y + 13, 4, 2);
+
+            // Dealer label
+            drawPixelText('DEALER', x - 28, y + 50, 8, '#ffff00');
+        }
+
+        // Draw table
+        function drawTable() {
+            // Green felt
+            ctx.fillStyle = '#0d4a0d';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Table border
+            ctx.strokeStyle = '#8b4513';
+            ctx.lineWidth = 8;
+            ctx.strokeRect(10, 80, 300, 300);
+
+            // Betting circle
+            ctx.strokeStyle = '#ffd700';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.ellipse(160, 320, 40, 20, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            drawPixelText('BET', 145, 325, 8, '#ffd700');
+
+            // Chip stack
+            if (currentBet > 0) {
+                const chipColors = ['#ff0000', '#0000ff', '#00ff00', '#000000'];
+                const chipValues = [500, 100, 25, 5];
+                let cx = 160;
+                let cy = 310;
+                let remaining = currentBet;
+
+                for (let i = 0; i < chipValues.length; i++) {
+                    while (remaining >= chipValues[i]) {
+                        ctx.fillStyle = chipColors[i];
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, 8, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.strokeStyle = '#fff';
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                        cy -= 3;
+                        remaining -= chipValues[i];
+                    }
+                }
+            }
+        }
+
+        // Draw hands
+        function drawHands() {
+            const CARD_SPACING = 55;
+
+            // Dealer hand - centered
+            const dealerY = 75;
+            const dealerTotalWidth = dealerHand.length * CARD_SPACING - 5;
+            const dealerX = (canvas.width - dealerTotalWidth) / 2;
+
+            for (let i = 0; i < dealerHand.length; i++) {
+                drawCard(dealerHand[i], dealerX + i * CARD_SPACING, dealerY, i === 0 && gameState === 'playing');
+            }
+
+            // Show dealer total when appropriate
+            if (gameState !== 'playing') {
+                const dealerTotal = calculateHand(dealerHand);
+                drawPixelText(dealerTotal.toString(), 10, dealerY + 30, 10, '#ffff00');
+            }
+
+            // Player hand - centered
+            const playerY = 210;
+            const playerTotalWidth = playerHand.length * CARD_SPACING - 5;
+            const playerX = (canvas.width - playerTotalWidth) / 2;
+
+            for (let i = 0; i < playerHand.length; i++) {
+                drawCard(playerHand[i], playerX + i * CARD_SPACING, playerY);
+            }
+
+            const playerTotal = calculateHand(playerHand);
+            drawPixelText('YOU: ' + playerTotal.toString(), 10, playerY + 30, 10, '#00ff00');
+        }
+
+        // Draw chips
+        function drawChips() {
+            drawPixelText('CHIPS: $' + playerChips, 10, 390, 8, '#ffd700');
+        }
+
+        // Draw message
+        function drawMessage() {
+            if (messageTimer > 0) {
+                messageTimer--;
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.fillRect(20, 170, 280, 40);
+                drawPixelText(message, 40, 195, 10, '#ffff00');
+            }
+        }
+
+        function showMessage(text) {
+            message = text;
+            messageTimer = 180;
+        }
+
+        // Main draw function
+        function draw() {
+            drawTable();
+            drawDealer();
+            drawHands();
+            drawChips();
+            drawMessage();
+        }
+
+        // Deal initial cards
+        function deal() {
+            playerHand = [];
+            dealerHand = [];
+
+            playerHand.push(deck.pop());
+            dealerHand.push(deck.pop());
+            playerHand.push(deck.pop());
+            dealerHand.push(deck.pop());
+
+            // Check for blackjacks
+            if (isBlackjack(dealerHand)) {
+                if (isBlackjack(playerHand)) {
+                    showMessage('PUSH!');
+                    playerChips += currentBet;
+                } else {
+                    showMessage('DEALER BLACKJACK!');
+                }
+                gameState = 'waitingForNewHand';
+                setTimeout(() => showMessage('TAP TO PLAY AGAIN'), 1500);
+                updateControls();
+                return;
+            }
+
+            if (isBlackjack(playerHand)) {
+                showMessage('BLACKJACK! +$' + Math.floor(currentBet * 1.5));
+                playerChips += currentBet + Math.floor(currentBet * 1.5);
+                gameState = 'waitingForNewHand';
+                setTimeout(() => showMessage('TAP TO PLAY AGAIN'), 1500);
+                updateControls();
+                return;
+            }
+
+            gameState = 'playing';
+            updateControls();
+        }
+
+        // Player hit
+        function hit() {
+            if (gameState !== 'playing') return;
+
+            playerHand.push(deck.pop());
+            const total = calculateHand(playerHand);
+
+            if (total > 21) {
+                showMessage('BUST! YOU LOSE');
+                gameState = 'waitingForNewHand';
+                setTimeout(() => showMessage('TAP TO PLAY AGAIN'), 1500);
+            } else if (total === 21) {
+                dealerPlay();
+                return;
+            }
+
+            updateControls();
+        }
+
+        // Player stand
+        function stand() {
+            if (gameState !== 'playing') return;
+            dealerPlay();
+        }
+
+        // Player double
+        function double() {
+            if (gameState !== 'playing' || playerHand.length > 2) return;
+            if (playerChips < currentBet) {
+                showMessage('NOT ENOUGH CHIPS!');
+                return;
+            }
+
+            playerChips -= currentBet;
+            currentBet *= 2;
+            playerHand.push(deck.pop());
+
+            const total = calculateHand(playerHand);
+            if (total > 21) {
+                showMessage('BUST! YOU LOSE');
+                gameState = 'waitingForNewHand';
+                setTimeout(() => showMessage('TAP TO PLAY AGAIN'), 1500);
+            } else {
+                dealerPlay();
+                return;
+            }
+            updateControls();
+        }
+
+        // Dealer's turn
+        async function dealerPlay() {
+            gameState = 'dealerTurn';
+            updateControls();
+
+            while (calculateHand(dealerHand) < 17) {
+                await new Promise(r => setTimeout(r, 500));
+                dealerHand.push(deck.pop());
+                draw();
+            }
+
+            const playerTotal = calculateHand(playerHand);
+            const dealerTotal = calculateHand(dealerHand);
+
+            if (dealerTotal > 21) {
+                showMessage('DEALER BUST! YOU WIN $' + currentBet);
+                playerChips += currentBet * 2;
+            } else if (dealerTotal > playerTotal) {
+                showMessage('DEALER WINS!');
+            } else if (dealerTotal < playerTotal) {
+                showMessage('YOU WIN $' + currentBet);
+                playerChips += currentBet * 2;
+            } else {
+                showMessage('PUSH!');
+                playerChips += currentBet;
+            }
+
+            gameState = 'waitingForNewHand';
+            setTimeout(() => showMessage('TAP TO PLAY AGAIN'), 1500);
+            updateControls();
+        }
+
+        // Update control buttons
+        function updateControls() {
+            const hitBtn = document.getElementById('hitBtn');
+            const standBtn = document.getElementById('standBtn');
+            const doubleBtn = document.getElementById('doubleBtn');
+
+            const controls = document.getElementById('controls');
+
+            const playing = gameState === 'playing';
+
+            if (gameState === 'waitingForNewHand') {
+                controls.style.display = 'none';
+            } else {
+                controls.style.display = 'flex';
+                hitBtn.disabled = !playing;
+                standBtn.disabled = !playing;
+                doubleBtn.disabled = !playing || playerHand.length > 2;
+            }
+        }
+
+        // Start new hand
+        function newHand() {
+            if (playerChips < 100) {
+                showMessage('GAME OVER - OUT OF CHIPS!');
+                setTimeout(() => location.reload(), 3000);
+                return;
+            }
+
+            currentBet = 100;
+            playerChips -= currentBet;
+            deck = createDeck();
+            gameState = 'playing';
+            deal();
+        }
+
+        // Start game
+        function startGame() {
+            titleScreen.style.display = 'none';
+            controls.style.display = 'flex';
+            newHand();
+        }
+
+        // Event listeners
+        document.getElementById('startBtn').addEventListener('click', startGame);
+        document.getElementById('hitBtn').addEventListener('click', hit);
+        document.getElementById('standBtn').addEventListener('click', stand);
+        document.getElementById('doubleBtn').addEventListener('click', double);
+
+        // Keyboard controls
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'KeyH') hit();
+            if (e.code === 'KeyS') stand();
+            if (e.code === 'KeyD') double();
+        });
+
+        // Tap anywhere to continue after game over
+        canvas.addEventListener('click', () => {
+            if (gameState === 'waitingForNewHand') {
+                newHand();
+            }
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            if (gameState === 'waitingForNewHand') {
+                e.preventDefault();
+                newHand();
+            }
+        }, { passive: false });
+
+        // Game loop
+        function gameLoop() {
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Start
+        gameLoop();
+    </script>
+</body>
+</html>

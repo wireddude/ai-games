@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><title>Hero of Hyrule — 8-bit Adventure</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;background:#101820;color:#f5e7b2;font-family:monospace;display:grid;place-items:center;overflow:hidden}#shell{padding:12px;background:#353b46;border:4px solid #69717a;border-radius:13px;box-shadow:0 18px 60px #000b, inset 0 0 0 3px #20252c}canvas{display:block;width:min(96vw,calc(92vh * 4/3));height:auto;max-height:92vh;image-rendering:pixelated;image-rendering:crisp-edges;border:3px solid #111;background:#182b39}#help{font-size:11px;text-align:center;color:#c5c6bd;padding-top:8px;letter-spacing:.3px}@media(max-width:600px){#shell{padding:5px;border-width:2px}#help{font-size:9px}}
+#touch{position:fixed;inset:0;pointer-events:none;display:none;z-index:10}
+#touch.on{display:block}
+.tb{position:fixed;pointer-events:auto;display:grid;place-items:center;background:#1118;border:2px solid #69717a;border-radius:12px;color:#f5e7b2;font-weight:bold;user-select:none;-webkit-user-select:none;touch-action:none;box-shadow:0 4px 14px #0008}
+.tb:active{background:#2a3540;transform:scale(.95)}
+#dpad{left:14px;bottom:14px;width:132px;height:132px;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);background:none;border:none;box-shadow:none}
+#dpad .tb{border-radius:9px;background:#1118;border-color:#555f68}
+.dp-u{grid-column:2;grid-row:1}.dp-l{grid-column:1;grid-row:2}.dp-r{grid-column:3;grid-row:2}.dp-d{grid-column:2;grid-row:3}
+#acts{right:14px;bottom:14px;display:flex;gap:12px;align-items:flex-end}
+#acts .tb{width:62px;height:62px;border-radius:50%;font-size:11px;line-height:1.05;text-align:center}
+#acts .tb.big{width:76px;height:76px;font-size:12px}
+#acts .tb.sm{width:46px;height:46px;font-size:10px}
+</style></head><body><main id="shell"><canvas id="game" width="320" height="240" aria-label="A pixel-art adventure game"></canvas><div id="help">MOVE: WASD / ARROWS &nbsp; • &nbsp; SWORD: SPACE / Z &nbsp; • &nbsp; TALK / OPEN: E / ENTER &nbsp; • &nbsp; MUSIC: N</div></main>
+<div id="touch">
+<div id="dpad"><div class="tb dp-u">▲</div><div class="tb dp-l">◀</div><div class="tb dp-r">▶</div><div class="tb dp-d">▼</div></div>
+<div id="acts"><div class="tb sm" data-act="music">♪</div><div class="tb" data-act="talk">TALK</div><div class="tb big" data-act="sword">⚔ SWORD</div></div>
+</div>
+<script>
+'use strict';
+const c=document.querySelector('#game'),g=c.getContext('2d');g.imageSmoothingEnabled=false;
+const T=16, COLS=20, ROWS=13, TOP=32;
+const keys={};let last=0,dialog=null,toast='',toastTime=0,roomX=1,roomY=1,win=false,paused=false;
+const player={x:152,y:146,w:11,h:13,dir:'down',speed:94,hp:6,maxHp:6,rupees:0,attack:0,invuln:0,hasKey:false};
+const rooms={};
+function makeRoom(x,y){let a=Array.from({length:ROWS},()=>Array(COLS).fill('grass'));for(let i=0;i<COLS;i++){a[0][i]=a[ROWS-1][i]='wall'}for(let j=0;j<ROWS;j++){a[j][0]=a[j][COLS-1]='wall'}
+// Connected paths through the overworld; openings line up at every room edge.
+if(x>0)a[6][0]='grass';if(x<2)a[6][COLS-1]='grass';if(y>0)a[0][10]='grass';if(y<2)a[ROWS-1][10]='grass';
+if(x===1&&y===1){for(let j=3;j<8;j++)for(let i=3;i<6;i++)a[j][i]='tree';for(let j=2;j<5;j++)for(let i=14;i<17;i++)a[j][i]='tree';for(let j=8;j<10;j++)for(let i=8;i<12;i++)a[j][i]='water';}
+if(x===0&&y===1){for(let i=3;i<8;i++)a[4][i]='water';for(let i=12;i<17;i++)a[8][i]='tree';}
+if(x===2&&y===1){for(let j=3;j<9;j++)a[j][5]='tree';for(let i=10;i<16;i++)a[4][i]='water';}
+if(x===1&&y===0){for(let i=4;i<8;i++)a[7][i]='tree';for(let i=12;i<16;i++)a[5][i]='water';}
+if(x===1&&y===2){for(let j=3;j<8;j++)a[j][15]='tree';for(let i=4;i<9;i++)a[5][i]='water';}
+return a}
+for(let y=0;y<3;y++)for(let x=0;x<3;x++)rooms[`${x},${y}`]=makeRoom(x,y);
+const npcs=[{x:160,y:108,name:'elder',said:false}];
+let enemies=[];function spawnRoom(){enemies=[];let spots=[];if(roomX===0&&roomY===1)spots=[[140,100,'slime'],[230,150,'slime']];else if(roomX===2&&roomY===1)spots=[[118,92,'bat'],[206,120,'slime'],[230,174,'bat']];else if(roomX===1&&roomY===0)spots=[[100,120,'slime'],[220,170,'slime']];else if(roomX===1&&roomY===2)spots=[[105,100,'bat'],[205,150,'bat']];else if(roomX===2&&roomY===2)spots=[[150,105,'boss']];
+spots.forEach(([x,y,type],i)=>enemies.push({x,y,type,hp:type==='boss'?6:type==='slime'?2:1,alive:true,phase:Math.random()*8,hit:0,shot:2+i*.5}));}
+spawnRoom();
+function tileAt(px,py){let tx=Math.floor(px/T),ty=Math.floor((py-TOP)/T);if(ty<0||ty>=ROWS||tx<0||tx>=COLS)return'wall';return rooms[`${roomX},${roomY}`][ty][tx]}
+function blocked(x,y){let pts=[[x+2,y+3],[x+player.w-2,y+3],[x+2,y+player.h-1],[x+player.w-2,y+player.h-1]];return pts.some(([a,b])=>['wall','tree','water'].includes(tileAt(a,b)))}
+function settle(x,y){for(let k=0;k<40;k++){if(!blocked(x,y))break;let ok=false;for(const[ox,oy]of[[0,-T],[0,T],[-T,0],[T,0],[0,-2*T],[0,2*T],[-2*T,0],[2*T,0]]){if(!blocked(x+ox,y+oy)){x+=ox;y+=oy;ok=true;break}}if(!ok)break}return[x,y]}
+function say(lines){dialog=Array.isArray(lines)?lines:[lines]}
+function interact(){if(dialog){dialog=null;return}let n=(roomX===1&&roomY===1)?npcs[0]:null;if(n&&Math.hypot(player.x-n.x,player.y-n.y)<35){n.said=true;say(['Elder: The forest has gone dark.','Find the hidden key in the eastern woods,','then face the beast beyond the southern path!']);return}
+if(roomX===2&&roomY===2&&Math.hypot(player.x-160,player.y-95)<60){if(enemies.some(e=>e.alive&&e.type==='boss'))say(player.hasKey?['The Shadow Beast blocks the shrine!','Strike when its eye glows.']:['The shrine is sealed by old magic.','Find the key in the eastern woods!']);else if(!win){win=true;say(['The Shadow Beast is vanquished!','Peace returns to Hyrule. You are a hero!']);}return}
+say(['The old stone is covered in moss.']);}
+function attack(){if(dialog||player.attack>0)return;player.attack=.22;A.tone(520,.07,.06);}
+const A={ac:null,tone(f,d,v=.04,type='square'){try{this.ac=this.ac||new(window.AudioContext||window.webkitAudioContext)();let o=this.ac.createOscillator(),a=this.ac.createGain();o.type=type;o.frequency.value=f;a.gain.value=v;o.connect(a);a.connect(this.ac.destination);o.start();a.gain.exponentialRampToValueAtTime(.001,this.ac.currentTime+d);o.stop(this.ac.currentTime+d)}catch(e){}}};
+// ---- NES-style chiptune soundtrack (Web Audio, no assets) ----
+const N={C4:261.63,D4:293.66,E4:329.63,F4:349.23,G4:392,A4:440,B4:493.88,C5:523.25,D5:587.33,E5:659.26,F5:698.46,G5:784,A5:880,B5:987.77};
+const SE={muted:false,started:false,timer:null,step:0,bar:0,
+// Overture-style original in E minor: 8 bars, looped. Melody in 16ths (null = rest).
+me:[N.E5,N.G5,N.B4,N.D5,N.G5,N.E5,N.D5,N.C5, N.D5,N.E5,N.F5,N.G5,N.E5,null,N.D5,null,
+    N.E5,N.G5,N.B4,N.D5,N.G5,N.E5,N.D5,N.C5, N.D5,N.F5,N.A5,N.G5,N.F5,N.E5,N.D5,N.C5,
+    N.D5,N.F5,N.A4,N.C5,N.F5,N.D5,N.C5,N.B4, N.C5,N.D4,N.C5,N.D4,N.C5,null,null,null,
+    N.E5,N.G5,N.E5,N.G5,N.A5,N.G5,N.E5,N.G5, N.A5,N.B5,N.A5,N.G5,N.E5,N.D5,N.C5,null,
+    N.D5,N.F5,N.A4,N.C5,N.F5,N.D5,N.C5,N.B4, N.C5,N.D4,N.E4,N.G4,N.A4,N.G4,N.E4,N.D5,
+    N.C5,N.D5,N.E5,N.G5,N.A5,N.G5,N.E5,N.D5, N.C5,N.D4,N.C5,null,null,null,null,null],
+ba:[N.E4,null,N.E4,null,N.G4,null,N.G4,null,N.E4,null,N.E4,null,N.G4,null,N.G4,null,
+    N.A4,null,N.A4,null,N.C5,null,N.C5,null,N.A4,null,N.G4,null,N.G4,null,null,null,
+    N.E4,null,N.E4,null,N.G4,null,N.G4,null,N.E4,null,N.E4,null,N.G4,null,N.G4,null,
+    N.A4,null,N.A4,null,N.E4,null,N.E4,null,N.B4,null,N.B4,null,N.C5,null,N.D5,null,
+    N.E4,null,N.E4,null,N.G4,null,N.G4,null,N.E4,null,N.E4,null,N.G4,null,N.G4,null,
+    N.A4,null,N.A4,null,N.E4,null,N.E4,null,N.B4,null,N.B4,null,N.C5,null,N.D5,null,
+    N.E4,null,N.E4,null,N.G4,null,N.G4,null,N.E4,null,N.E4,null,N.E4,null,N.E4,null,
+    N.C4,null,N.D4,null,N.E4,null,N.G4,null,N.E4,null,N.D4,null,N.C4,null,null,null],
+start(){if(this.started)return;this.started=true;this.step=0;this.bar=0;
+try{this.ac=this.ac||new(window.AudioContext||window.webkitAudioContext)();if(this.ac.state==='suspended')this.ac.resume();}catch(e){return}
+const beat=60/126/4;this.timer=setInterval(()=>this.tick(),beat*1000);this.tick()},
+tick(){if(this.muted||!this.ac)return;let t=this.ac.currentTime+.02;
+let m=this.me[this.step],b=this.ba[this.step];
+if(m){let o=this.ac.createOscillator(),ga=this.ac.createGain();o.type='square';o.frequency.value=m;ga.gain.setValueAtTime(.045,t);ga.gain.exponentialRampToValueAtTime(.001,t+.19);o.connect(ga);ga.connect(this.ac.destination);o.start(t);o.stop(t+.2)}
+if(b){let o=this.ac.createOscillator(),gb=this.ac.createGain();o.type='triangle';o.frequency.value=b;gb.gain.setValueAtTime(.1,t);gb.gain.exponentialRampToValueAtTime(.001,t+.4);o.connect(gb);gb.connect(this.ac.destination);o.start(t);o.stop(t+.45)}
+this.step++;if(this.step>=128)this.step=0},
+toggle(){if(!this.started){this.start();return false}this.muted=!this.muted;return this.muted}};
+function input(e,down){let k=e.key.toLowerCase();if(['arrowup','arrowdown','arrowleft','arrowright',' ','enter'].includes(k))e.preventDefault();keys[k]=down;if(!down)return;if(k===' '||k==='z')attack();if(k==='e'||k==='enter')interact();if(k==='m'){paused=!paused}if(k==='n'){if(!SE.started)SE.start();SE.muted=!SE.muted;toast=SE.muted?'Music off':'Music on';toastTime=1.2}}
+addEventListener('keydown',e=>input(e,true));addEventListener('keyup',e=>input(e,false));
+// ---- Touch controls (D-pad + action buttons) for phones/tablets ----
+const touchEl=document.querySelector('#touch');
+if(matchMedia('(pointer:coarse)').matches||'ontouchstart'in window)touchEl.classList.add('on');
+function bindHold(el,key){const on=e=>{e.preventDefault();keys[key]=true};const off=e=>{e.preventDefault();keys[key]=false};el.addEventListener('pointerdown',on);el.addEventListener('pointerup',off);el.addEventListener('pointercancel',off);el.addEventListener('pointerleave',off);el.addEventListener('contextmenu',e=>e.preventDefault())}
+const dp=document.querySelector('#dpad');if(dp){bindHold(dp.querySelector('.dp-u'),'arrowup');bindHold(dp.querySelector('.dp-d'),'arrowdown');bindHold(dp.querySelector('.dp-l'),'arrowleft');bindHold(dp.querySelector('.dp-r'),'arrowright')}
+function bindTap(el,fn){el.addEventListener('pointerdown',e=>{e.preventDefault();fn()});el.addEventListener('contextmenu',e=>e.preventDefault())}
+document.querySelectorAll('#acts .tb').forEach(el=>{const a=el.dataset.act;if(a==='sword')bindTap(el,attack);else if(a==='talk')bindTap(el,interact);else if(a==='music')bindTap(el,()=>{if(!SE.started)SE.start();SE.muted=!SE.muted;toast=SE.muted?'Music off':'Music on';toastTime=1.2})})
+addEventListener('touchmove',e=>{if(e.target.closest('#touch'))e.preventDefault()},{passive:false});
+function move(dt){if(dialog||paused)return;let dx=0,dy=0;if(keys.arrowleft||keys.a)dx--;if(keys.arrowright||keys.d)dx++;if(keys.arrowup||keys.w)dy--;if(keys.arrowdown||keys.s)dy++;if(dx&&dy){dx*=.707;dy*=.707}if(dx||dy){if(Math.abs(dx)>Math.abs(dy))player.dir=dx>0?'right':'left';else player.dir=dy>0?'down':'up'}
+let nx=player.x+dx*player.speed*dt,ny=player.y+dy*player.speed*dt;if(!blocked(nx,player.y))player.x=nx;if(!blocked(player.x,ny))player.y=ny;
+// room gates at the center of each edge
+if(player.x<2&&roomX>0){roomX--;let[sx,sy]=settle(COLS*T-player.w-4,player.y);player.x=sx;player.y=sy;spawnRoom()}else if(player.x>COLS*T-player.w-2&&roomX<2){roomX++;let[sx,sy]=settle(4,player.y);player.x=sx;player.y=sy;spawnRoom()}else if(player.y<TOP+1&&roomY>0){roomY--;let[sx,sy]=settle(player.x,TOP+T+4);player.x=sx;player.y=sy;spawnRoom()}else if(player.y>TOP+ROWS*T-player.h-1&&roomY<2){roomY++;let[sx,sy]=settle(player.x,TOP+(ROWS-2)*T-player.h);player.x=sx;player.y=sy;spawnRoom()}
+}
+function hurt(){if(player.invuln>0)return;player.hp--;player.invuln=1;A.tone(130,.18,.07);if(player.hp<=0){player.hp=player.maxHp;say(['You were knocked out, but the fairy','restored your hearts. Try again, hero!']);player.x=152;player.y=146;roomX=1;roomY=1;spawnRoom()}}
+function update(dt){if(paused||dialog)return;player.attack=Math.max(0,player.attack-dt);player.invuln=Math.max(0,player.invuln-dt);for(const e of enemies){if(!e.alive)continue;e.phase+=dt;e.hit=Math.max(0,e.hit-dt);let dx=player.x-e.x,dy=player.y-e.y,dist=Math.hypot(dx,dy);if(e.type==='boss'){e.shot-=dt;if(e.shot<=0&&dist<160){e.shot=1.5;let a=Math.atan2(dy,dx);e.bolt={x:e.x,y:e.y,vx:Math.cos(a)*100,vy:Math.sin(a)*100};A.tone(240,.06)}}else if(dist>28){let speed=e.type==='bat'?35:22;e.x+=dx/dist*speed*dt;e.y+=dy/dist*speed*dt}
+if(e.bolt){e.bolt.x+=e.bolt.vx*dt;e.bolt.y+=e.bolt.vy*dt;if(Math.hypot(player.x-e.bolt.x,player.y-e.bolt.y)<12){hurt();e.bolt=null}if(e.bolt&&(e.bolt.x<0||e.bolt.x>320||e.bolt.y<TOP||e.bolt.y>240))e.bolt=null}
+if(dist<15)hurt();if(player.attack>0){let ax=player.x+5,ay=player.y+6;if(player.dir==='up')ay-=18;if(player.dir==='down')ay+=18;if(player.dir==='left')ax-=18;if(player.dir==='right')ax+=18;if(Math.hypot(ax-e.x,ay-e.y)<23&&e.hit===0){if(e.type==='boss'&&!player.hasKey){e.hit=.35;toast='The shrine key is needed!';toastTime=1.5;continue}e.hp--;e.hit=.35;A.tone(190,.08);if(e.hp<=0){e.alive=false;if(e.type==='boss'){player.rupees+=10;A.tone(780,.4)}else if(Math.random()<.55)player.rupees++;else if(player.hp<player.maxHp)player.hp++;}}}
+}
+// The key appears after clearing the east woods.
+if(roomX===2&&roomY===1&&!player.hasKey&&!enemies.some(e=>e.alive)){player.hasKey=true;toast='You found the shrine key!';toastTime=3;A.tone(880,.3)} }
+function box(x,y,w,h,color){g.fillStyle=color;g.fillRect(Math.round(x),Math.round(y),w,h)}
+function drawTile(type,x,y){if(type==='grass'){box(x,y,16,16,'#358746');if((x*3+y*5)%7===0){box(x+4,y+5,2,2,'#69b94d');box(x+11,y+12,2,1,'#286b3d')}}else if(type==='wall'){box(x,y,16,16,'#304b34');box(x+1,y+2,14,12,'#496044');box(x+2,y+3,5,2,'#61704a');box(x+8,y+9,6,2,'#384c38')}else if(type==='tree'){box(x+2,y+7,12,9,'#70472e');box(x,y+2,16,10,'#145a37');box(x+2,y,12,9,'#1e783e');box(x+4,y+2,3,2,'#49a34b')}else if(type==='water'){box(x,y,16,16,'#185e9b');box(x+2,y+4,5,1,'#56b5ca');box(x+9,y+10,5,1,'#3986b4')}}
+function drawHero(){let x=Math.round(player.x),y=Math.round(player.y),flash=player.invuln>0&&Math.floor(player.invuln*12)%2;if(flash)return; // shadow
+box(x+2,y+11,9,3,'#17462e');box(x+3,y+2,7,4,'#efc89a');box(x+2,y+1,8,3,'#c93437');box(x+1,y+4,9,6,'#2673c2');box(x+3,y+5,2,2,'#fff');box(x+7,y+5,2,2,'#fff');box(x+4,y+9,2,4,'#75442b');box(x+8,y+9,2,4,'#75442b');
+if(player.attack>0){if(player.dir==='up')box(x+4,y-10,3,13,'#e9e9d0');if(player.dir==='down')box(x+5,y+12,3,13,'#e9e9d0');if(player.dir==='left')box(x-10,y+5,13,3,'#e9e9d0');if(player.dir==='right')box(x+10,y+5,13,3,'#e9e9d0')}}
+function drawEnemy(e){let x=Math.round(e.x),y=Math.round(e.y),c1=e.hit?'#fff':e.type==='boss'?'#641f83':e.type==='bat'?'#353359':'#b7433c';if(e.type==='bat'){box(x-7,y-2,14,8,c1);box(x-11,y-5,5,8,c1);box(x+6,y-5,5,8,c1);box(x-3,y,2,2,'#ffdf59');box(x+3,y,2,2,'#ffdf59')}else if(e.type==='boss'){box(x-10,y-11,20,23,c1);box(x-13,y-15,7,6,'#a74252');box(x+6,y-15,7,6,'#a74252');box(x-6,y-5,4,4,'#ffdf45');box(x+3,y-5,4,4,'#ffdf45');box(x-3,y+5,7,2,'#201323')}else{box(x-7,y-6,14,12,c1);box(x-4,y-2,2,2,'#fff');box(x+3,y-2,2,2,'#fff')} }
+function render(){g.fillStyle='#16232d';g.fillRect(0,0,320,240);g.fillStyle='#171b24';g.fillRect(0,0,320,32);g.fillStyle='#d9c88c';g.fillRect(5,5,310,1);g.fillRect(5,27,310,1);g.fillStyle='#f6e7b8';g.font='bold 9px monospace';g.fillText('H Y R U L E',9,16);g.fillStyle='#cf4242';g.fillText('♥'.repeat(player.hp)+'♡'.repeat(player.maxHp-player.hp),105,16);g.fillStyle='#f5d64e';g.fillText('♦ '+String(player.rupees).padStart(2,'0'),235,16);g.fillStyle='#a8c4ad';g.font='7px monospace';g.fillText(`AREA ${roomX+1}-${roomY+1}`,9,25);if(player.hasKey){g.fillStyle='#f5d64e';g.fillText('KEY ◆',246,25)}
+let map=rooms[`${roomX},${roomY}`];for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++)drawTile(map[y][x],x*T,TOP+y*T);
+// paths/gates
+if(roomX>0)box(0,TOP+6*T,3,16,'#358746');if(roomX<2)box(317,TOP+6*T,3,16,'#358746');if(roomY>0)box(160,TOP,16,3,'#358746');if(roomY<2)box(160,TOP+208-3,16,3,'#358746');
+if(roomX===1&&roomY===1){box(154,TOP+73,13,5,'#17653a');box(155,TOP+62,11,13,'#eed19a');box(153,TOP+60,15,5,'#b83338');box(156,TOP+67,2,2,'#222');}
+if(roomX===2&&roomY===2){box(143,TOP+47,34,4,'#c1a659');box(143,TOP+47,4,26,'#c1a659');box(173,TOP+47,4,26,'#c1a659');box(147,TOP+53,26,20,'#503051')}
+for(const e of enemies)if(e.alive){drawEnemy(e);if(e.bolt){box(e.bolt.x-3,e.bolt.y-3,6,6,'#ff7744')}}
+if(roomX===1&&roomY===1){box(157,103,8,3,'#17462e');box(156,91,10,12,'#e2bd91');box(155,89,12,4,'#b83b35');box(158,95,2,2,'#fff');box(163,95,2,2,'#fff')}
+drawHero();if(toastTime>0){g.fillStyle='#172027dd';g.fillRect(65,190,190,20);g.fillStyle='#ffe97a';g.font='8px monospace';g.fillText(toast,74,203)}
+if(dialog){g.fillStyle='#121827';g.fillRect(15,177,290,51);g.strokeStyle='#f0d99b';g.lineWidth=2;g.strokeRect(16,178,288,49);g.fillStyle='#fff0bd';g.font='10px monospace';dialog.slice(0,3).forEach((s,i)=>g.fillText(s,25,193+i*12));g.fillStyle='#a8c4ad';g.font='7px monospace';g.fillText('PRESS E',263,219)}if(paused){g.fillStyle='#101820dd';g.fillRect(0,32,320,208);g.fillStyle='#fff';g.font='16px monospace';g.fillText('PAUSED',127,130)}g.fillStyle='#8fa5a0';g.font='7px monospace';g.fillText('N: MUSIC '+(SE.muted?'OFF':'ON'),258,238)}
+function loop(t){let dt=Math.min((t-last)/1000||0,.05);last=t;if(!paused){move(dt);update(dt);toastTime=Math.max(0,toastTime-dt)}render();requestAnimationFrame(loop)}requestAnimationFrame(loop);
+</script></body></html>

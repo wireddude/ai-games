@@ -1,0 +1,1440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#000000">
+<title>GALAGA</title>
+<style>
+  :root {
+    /* Controls the size of the touch control bar (also reserves layout space). */
+    --bar: 96px;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    width: 100%;
+    background: #000;
+    overflow: hidden;
+    font-family: 'Courier New', monospace;
+    /* Full-viewport column: play area on top, control bar at the bottom. */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    /* Stop iOS rubber-banding / double-tap zoom / text selection. */
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* Play area: flexes to fill space left by the control bar. */
+  #stage {
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #game {
+    /* Crisp pixel look. Backing store is 448x512 (2x the original 224x256,
+       portrait) and we draw sprites at integer coordinates. CSS scales the
+       element to fit the screen while keeping the aspect ratio. */
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    background: #000;
+    aspect-ratio: 448 / 512;
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    box-shadow: 0 0 40px rgba(0, 200, 255, 0.15);
+  }
+  /* ---- Touch controls -------------------------------------------------- */
+  #controls {
+    flex: 0 0 auto;
+    width: 100%;
+    height: var(--bar);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px calc(12px + env(safe-area-inset-bottom)) 12px;
+    box-sizing: border-box;
+    gap: 12px;
+  }
+  .pad {
+    display: flex;
+    gap: 12px;
+  }
+  .btn {
+    appearance: none;
+    border: 2px solid #2a6a8a;
+    background: rgba(20, 40, 60, 0.55);
+    color: #bfe9ff;
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
+    font-size: 20px;
+    border-radius: 14px;
+    height: 72px;
+    min-width: 72px;
+    padding: 0 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    cursor: pointer;
+    transition: background 0.05s, transform 0.05s;
+  }
+  .btn:active, .btn.on {
+    background: rgba(55, 224, 255, 0.35);
+    border-color: #37e0ff;
+    color: #fff;
+    transform: scale(0.96);
+  }
+  #btnFire {
+    border-color: #8a2a2a;
+    background: rgba(60, 20, 20, 0.55);
+    color: #ffd0d0;
+    min-width: 96px;
+  }
+  #btnFire:active, #btnFire.on {
+    background: rgba(255, 59, 59, 0.4);
+    border-color: #ff3b3b;
+  }
+  /* Hide the touch bar on devices with a real keyboard (desktop). */
+  @media (hover: hover) and (pointer: fine) {
+    #controls { display: none; }
+  }
+</style>
+</head>
+<body>
+  <div id="stage">
+    <canvas id="game" width="448" height="512"></canvas>
+  </div>
+  <div id="controls">
+    <div class="pad">
+      <button class="btn" id="btnLeft"  aria-label="Move left">&#9664;</button>
+      <button class="btn" id="btnRight" aria-label="Move right">&#9654;</button>
+    </div>
+    <button class="btn" id="btnFire" aria-label="Fire">FIRE</button>
+  </div>
+
+<script>
+"use strict";
+/* ============================================================================
+ * GALAGA — single-file arcade shooter
+ * Vanilla JS + Canvas 2D, procedural sprites, WebAudio-synthesized sound.
+ *
+ * Modules (plain objects / classes):
+ *   Audio      - WebAudio synth (no asset files)
+ *   Starfield  - two-layer parallax background
+ *   Player     - "Beam Shark"
+ *   Bullet     - player + enemy projectiles
+ *   Enemy      - bee / galaga / boss, entry + dive behaviour
+ *   Formation  - the swaying grid + entry scheduling + dive scheduling
+ *   Game       - state machine (menu / playing / gameover / paused) + main loop
+ * ==========================================================================*/
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = canvas.width;   // 448 (2x original 224, portrait)
+const H = canvas.height;  // 512 (2x original 256)
+ctx.imageSmoothingEnabled = false;
+
+/* ---------------------------------------------------------------------------
+ * 1. PROCEDURAL SPRITES
+ * Each sprite is an array of strings. Each character maps to a palette colour;
+ * '.' (or space) is transparent. They are drawn at integer coords and scaled
+ * up by `scale` to get the chunky pixel look.
+ * -------------------------------------------------------------------------*/
+const PALETTE = {
+  'W': '#ffffff', // white
+  'C': '#37e0ff', // cyan
+  'B': '#1a86ff', // blue
+  'Y': '#ffe000', // yellow
+  'G': '#33e033', // green
+  'g': '#0a7a0a', // dark green
+  'R': '#ff3b3b', // red
+  'r': '#a01010', // dark red
+  'O': '#ff8a00', // orange
+  'P': '#ff5fd0', // pink
+  'K': '#7a7a7a', // grey
+  'k': '#3a3a3a', // dark grey
+};
+
+// Player "Beam Shark": white hull, cyan wings, yellow cockpit.
+const SPRITE_PLAYER = [
+  "......W......",
+  "......W......",
+  ".....WWW.....",
+  ".....WWW.....",
+  "..W..CCC..W..",
+  "..WW.CCC.WW..",
+  ".WWWCYCYCWWW.",
+  "WWWWCCCCCWWWW",
+  "WWWWYYYYYWWWW",
+  ".W.WWCCCWW.W.",
+  ".W..WWWWWW.W.",
+  "......KK.....",
+];
+
+// Bee: green body, yellow wings (classic "bee" look).
+const SPRITE_BEE = [
+  "....GGGG....",
+  "...GGGGGG...",
+  ".Y.GGYYGG.Y.",
+  "Y.GGGGGGGG.Y",
+  "Y.GGYYYYGG.Y",
+  ".G.GYYYYG.G.",
+  "..GGGGGGGG..",
+  "...GGGGGG...",
+  "....GGGG....",
+];
+
+// Galaga: white body, red accents.
+const SPRITE_GALAGA = [
+  "....WWWW....",
+  "...WWWWWW...",
+  ".R.WWRRWW.R.",
+  "R.WWWRRWWW.R",
+  "R.WWRRRRWW.R",
+  ".R.WWRRWW.R.",
+  "..WWWWWWWW..",
+  "...WWWWWW...",
+  "....W..W....",
+];
+
+// Boss Galaga: larger, red, menacing.
+const SPRITE_BOSS = [
+  "....RRRR....",
+  "...RRRRRR...",
+  ".W.RRYYRR.W.",
+  "W.RRRYYRRR.W",
+  "W.RRYYYYRR.W",
+  ".R.RRYYRR.R.",
+  "RR.RRRRRRR.RR",
+  "RR.RRRRRRR.RR",
+  ".R.RRRRRRR.R.",
+  "..RR.RR.RR..",
+  "...R.RR.R...",
+  "....RR.RR...",
+];
+
+// Explosion frames (drawn as expanding pixel burst). We procedurally build a
+// few frames rather than hand-authoring them for a lively burst.
+function makeExplosionFrames() {
+  const frames = [];
+  const N = 4;
+  for (let f = 0; f < N; f++) {
+    const size = 3 + f * 2;               // grows each frame
+    const half = Math.ceil(size / 2);
+    const grid = [];
+    for (let y = 0; y < size; y++) {
+      let row = "";
+      for (let x = 0; x < size; x++) {
+        const dx = x - (size - 1) / 2;
+        const dy = y - (size - 1) / 2;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        // Ring of light that expands and thins out.
+        if (d <= half * (0.35 + f * 0.28)) {
+          const t = d / half;
+          if (t < 0.35) row += "Y";        // hot core
+          else if (t < 0.7) row += "O";    // orange mid
+          else row += (f % 2 ? "R" : "W"); // outer flicker
+        } else {
+          row += ".";
+        }
+      }
+      grid.push(row);
+    }
+    frames.push(grid);
+  }
+  return frames;
+}
+const SPRITE_EXPLOSION = makeExplosionFrames();
+
+// Tiny player icon used for the life counter (bottom-left).
+const SPRITE_PLAYER_ICON = [
+  "..W..",
+  "..W..",
+  ".WWW.",
+  "WCWCW",
+  "WWWWW",
+  ".W.W.",
+];
+
+/* Draw a sprite grid at integer (x, y) with the given scale. (x, y) is the
+ * top-left of the sprite's bounding box. */
+function drawSprite(sprite, x, y, scale, flipX) {
+  x = Math.round(x);
+  y = Math.round(y);
+  for (let r = 0; r < sprite.length; r++) {
+    const row = sprite[r];
+    for (let c = 0; c < row.length; c++) {
+      const ch = row[c];
+      if (ch === '.' || ch === ' ') continue;
+      const col = PALETTE[ch];
+      if (!col) continue;
+      const px = flipX ? (row.length - 1 - c) : c;
+      ctx.fillStyle = col;
+      ctx.fillRect(x + px * scale, y + r * scale, scale, scale);
+    }
+  }
+}
+
+/* Centre a sprite horizontally on `cx`, top at `y`. */
+function drawSpriteCentered(sprite, cx, y, scale, flipX) {
+  const w = sprite[0].length * scale;
+  drawSprite(sprite, cx - w / 2, y, scale, flipX);
+}
+
+/* ---------------------------------------------------------------------------
+ * 2. AUDIO  (WebAudio, fully synthesized)
+ * A single AudioContext is created lazily on first user gesture (required by
+ * browser autoplay policies). All effects are short envelopes on oscillators
+ * or filtered noise.
+ * -------------------------------------------------------------------------*/
+const Audio = (() => {
+  let ac = null;
+  let master = null;
+  let bgmTimer = null;
+  let bgmStep = 0;
+
+  function ensure() {
+    if (ac) return;
+    try {
+      ac = new (window.AudioContext || window.webkitAudioContext)();
+      master = ac.createGain();
+      master.gain.value = 0.5;
+      master.connect(ac.destination);
+    } catch (e) {
+      ac = null;
+    }
+  }
+  function resume() {
+    ensure();
+    if (ac && ac.state === 'suspended') ac.resume();
+  }
+
+  // A single oscillator tone with an envelope.
+  function tone(freq, dur, type, vol, slideTo) {
+    if (!ac) return;
+    const t0 = ac.currentTime;
+    const osc = ac.createOscillator();
+    const g = ac.createGain();
+    osc.type = type || 'square';
+    osc.frequency.setValueAtTime(freq, t0);
+    if (slideTo != null) {
+      osc.frequency.exponentialRampToValueAtTime(Math.max(1, slideTo), t0 + dur);
+    }
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol, t0 + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(g); g.connect(master);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.02);
+  }
+
+  // A filtered noise burst (for explosions / death).
+  function noise(dur, vol, filterFreq, slideTo) {
+    if (!ac) return;
+    const t0 = ac.currentTime;
+    const len = Math.floor(ac.sampleRate * dur);
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    const src = ac.createBufferSource();
+    src.buffer = buf;
+    const filter = ac.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(filterFreq || 1200, t0);
+    if (slideTo != null) filter.frequency.exponentialRampToValueAtTime(Math.max(40, slideTo), t0 + dur);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    src.connect(filter); filter.connect(g); g.connect(master);
+    src.start(t0);
+    src.stop(t0 + dur + 0.02);
+  }
+
+  // A small arpeggio helper.
+  function arp(notes, step, type, vol) {
+    notes.forEach((n, i) => {
+      setTimeout(() => tone(n, step * 1.4, type || 'square', vol || 0.3), i * step * 1000);
+    });
+  }
+
+  return {
+    resume,
+    fire()    { tone(880, 0.12, 'square', 0.25, 1600); },
+    enemyFire(){ tone(220, 0.10, 'square', 0.18, 120); },
+    explosion(){ noise(0.25, 0.35, 1600, 200); tone(160, 0.18, 'sawtooth', 0.2, 40); },
+    capture() { arp([440, 660, 880, 1320], 0.07, 'square', 0.28); },
+    rescue()  { arp([523, 659, 784], 0.10, 'square', 0.32); },
+    death()   { noise(0.8, 0.5, 900, 60); tone(300, 0.8, 'sawtooth', 0.3, 40); },
+    waveClear(){ arp([523, 659, 784, 1047, 1319], 0.09, 'square', 0.3); },
+    extraShip(){ arp([784, 1047, 1568, 2093], 0.08, 'square', 0.3); },
+    // Subtle looping background pulse while playing.
+    bgmStart() {
+      if (bgmTimer) return;
+      const notes = [110, 110, 146, 110, 164, 110, 146, 130];
+      bgmStep = 0;
+      bgmTimer = setInterval(() => {
+        const n = notes[bgmStep % notes.length];
+        tone(n, 0.18, 'triangle', 0.06, n * 0.98);
+        bgmStep++;
+      }, 220);
+    },
+    bgmStop() {
+      if (bgmTimer) { clearInterval(bgmTimer); bgmTimer = null; }
+    },
+  };
+})();
+
+/* ---------------------------------------------------------------------------
+ * 3. STARFIELD  (two-layer parallax, scrolls downward)
+ * -------------------------------------------------------------------------*/
+const Starfield = (() => {
+  const FAR = [];
+  const NEAR = [];
+  function seed() {
+    FAR.length = 0; NEAR.length = 0;
+    for (let i = 0; i < 90; i++) FAR.push({ x: Math.random() * W, y: Math.random() * H, s: 1 });
+    for (let i = 0; i < 40; i++) NEAR.push({ x: Math.random() * W, y: Math.random() * H, s: 2 });
+  }
+  seed();
+  function update(dt) {
+    // Far stars: small + slow. Near stars: larger + faster.
+    for (const st of FAR)  { st.y += 20 * dt;  if (st.y > H) { st.y = -2; st.x = Math.random() * W; } }
+    for (const st of NEAR) { st.y += 55 * dt;  if (st.y > H) { st.y = -2; st.x = Math.random() * W; } }
+  }
+  function draw() {
+    for (const st of FAR) {
+      ctx.fillStyle = st.y % 2 < 1 ? '#5a5a7a' : '#3a3a55';
+      ctx.fillRect(Math.round(st.x), Math.round(st.y), st.s, st.s);
+    }
+    for (const st of NEAR) {
+      ctx.fillStyle = '#c8c8ff';
+      ctx.fillRect(Math.round(st.x), Math.round(st.y), st.s, st.s);
+    }
+  }
+  return { update, draw, seed };
+})();
+
+/* ---------------------------------------------------------------------------
+ * 4. BULLETS
+ * Player bolts (white, single-at-a-time) and enemy bolts (red, aimed).
+ * -------------------------------------------------------------------------*/
+const playerBullets = [];
+const enemyBullets = [];
+
+function firePlayerBullet(p) {
+  if (p.bulletInFlight) return;          // one shot at a time
+  playerBullets.push({ x: p.x, y: p.y - 8, vy: -600, w: 3, h: 10 });
+  p.bulletInFlight = true;
+  Audio.fire();
+}
+
+function fireEnemyBullet(e, aimedAtPlayer) {
+  // Speed ramps with wave; aimed at the player's position at fire time.
+  const speed = 300 + (Game.wave - 1) * 15;
+  let vx = 0, vy = speed;
+  if (aimedAtPlayer) {
+    const dx = Game.player.x - e.x;
+    const dy = (Game.player.y) - e.y;
+    const d = Math.hypot(dx, dy) || 1;
+    vx = (dx / d) * speed;
+    vy = (dy / d) * speed;
+  }
+  enemyBullets.push({ x: e.x, y: e.y + 6, vx, vy, w: 3, h: 8 });
+  Audio.enemyFire();
+}
+
+function updateBullets(dt) {
+  // Player bullets.
+  for (let i = playerBullets.length - 1; i >= 0; i--) {
+    const b = playerBullets[i];
+    b.y += b.vy * dt;
+    if (b.y < -12) {
+      playerBullets.splice(i, 1);
+      if (Game.player) Game.player.bulletInFlight = false; // bolt left the screen
+    }
+  }
+  // Enemy bullets.
+  for (let i = enemyBullets.length - 1; i >= 0; i--) {
+    const b = enemyBullets[i];
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+    if (b.y > H + 12 || b.x < -12 || b.x > W + 12) enemyBullets.splice(i, 1);
+  }
+}
+
+function drawBullets() {
+  // Player: white bolt.
+  ctx.fillStyle = '#ffffff';
+  for (const b of playerBullets) ctx.fillRect(Math.round(b.x - b.w / 2), Math.round(b.y), b.w, b.h);
+  // Enemy: red bolt.
+  ctx.fillStyle = '#ff5a5a';
+  for (const b of enemyBullets) ctx.fillRect(Math.round(b.x - b.w / 2), Math.round(b.y), b.w, b.h);
+}
+
+/* ---------------------------------------------------------------------------
+ * 5. PLAYER
+ * -------------------------------------------------------------------------*/
+class Player {
+  constructor() {
+    this.x = W / 2;
+    this.y = H - 46;
+    this.w = 13 * 2;   // sprite scale 2
+    this.h = 12 * 2;
+    this.speed = 250;
+    this.lives = 3;
+    this.bulletInFlight = false;
+    this.invuln = 0;      // seconds of respawn invulnerability remaining
+    this.alive = true;
+    this.respawnTimer = 0;
+    this.nextExtraAt = 20000;
+  }
+  get left()  { return this.x - this.w / 2; }
+  get right() { return this.x + this.w / 2; }
+  update(dt) {
+    if (!this.alive) {
+      // Wait, then respawn with a brief invulnerability blink.
+      this.respawnTimer -= dt;
+      if (this.respawnTimer <= 0) {
+        this.alive = true;
+        this.invuln = 2.2;
+        this.x = W / 2;
+        this.bulletInFlight = false;
+      }
+      return;
+    }
+    // Horizontal movement, clamped to margins.
+    let dir = 0;
+    if (Game.keys['ArrowLeft'] || Game.keys['a'] || Game.keys['A']) dir -= 1;
+    if (Game.keys['ArrowRight'] || Game.keys['d'] || Game.keys['D']) dir += 1;
+    this.x += dir * this.speed * dt;
+    const margin = this.w / 2 + 4;
+    if (this.x < margin) this.x = margin;
+    if (this.x > W - margin) this.x = W - margin;
+    if (this.invuln > 0) this.invuln -= dt;
+  }
+  hit() {
+    if (!this.alive || this.invuln > 0) return false;
+    this.alive = false;
+    this.lives--;
+    this.respawnTimer = 1.4;
+    spawnExplosion(this.x, this.y, 3);
+    Audio.death();
+    Game.shake = 10; // screen shake on death
+    if (this.lives < 0) Game.gameOver();
+    return true;
+  }
+  draw() {
+    if (!this.alive) return;
+    // Blink during invulnerability.
+    if (this.invuln > 0 && Math.floor(this.invuln * 12) % 2 === 0) return;
+    drawSpriteCentered(SPRITE_PLAYER, this.x, this.y - this.h / 2, 2);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * 6. ENEMY
+ * Handles three behaviours:
+ *   - 'enter' : flying along a Bezier/spline path from a top corner into its
+ *               formation slot (spiralling/curving as it settles). No firing.
+ *   - 'form'  : sitting in the swaying formation; periodically dives.
+ *   - 'dive'  : peeling off along a curved (or boss figure-8) path toward the
+ *               player, firing red bullets, then exiting and re-entering.
+ * -------------------------------------------------------------------------*/
+class Enemy {
+  constructor(type, slot) {
+    this.type = type; // 'bee' | 'galaga' | 'boss'
+    this.slot = slot; // formation slot index (for re-entry)
+    this.state = 'enter';
+    this.x = 0; this.y = -40;
+    this.scale = type === 'boss' ? 2 : 2;
+    this.w = (type === 'boss' ? SPRITE_BOSS[0].length : SPRITE_BEE[0].length) * this.scale;
+    this.h = (type === 'boss' ? SPRITE_BOSS.length : SPRITE_BEE.length) * this.scale;
+    this.basePoints = type === 'bee' ? 50 : type === 'galaga' ? 80 : 150;
+    this.diveFired = 0;   // bullets fired this dive
+    this.diveTimer = 0;
+    this.t = 0;           // path parameter 0..1
+    this.path = null;
+    this.enterDur = 0;
+    this.diveDur = 0;
+    this.dead = false;
+    // For 'form' state: offset from formation centre (set by Formation).
+    this.homeX = 0; this.homeY = 0;
+    this.swayPhase = 0;
+  }
+
+  points() {
+    // Point value rises ~10% per wave, capped at 3x base.
+    const mult = Math.min(3, 1 + (Game.wave - 1) * 0.1);
+    return Math.round(this.basePoints * mult / 10) * 10;
+  }
+
+  /* Begin the entry animation: build a Bezier path from a top corner to the
+   * slot's home position, with a curved/spiralling feel. */
+  beginEnter() {
+    this.state = 'enter';
+    this.t = 0;
+    // Entry paths are the signature mechanic, so this is worth tuning:
+    //
+    //  P0 = start (top corner, just off-screen)
+    //  P3 = end   (formation slot home position)
+    //  P1, P2 = control points that make the path curve/spiral.
+    //
+    // We start from the top-left or top-right corner depending on the slot's
+    // side, then pull the control points inward and downward so the enemy
+    // swoops across the screen before settling. A small perpendicular offset
+    // on P2 gives the "spiral into slot" look.
+    const side = this.slot.side;            // -1 left, +1 right
+    const sx = side < 0 ? -30 : W + 30;
+    const sy = -30;
+    const ex = this.slot.homeX;
+    const ey = this.slot.homeY;
+
+    // Control point 1: out near the corner, high up — sets initial approach.
+    const p1x = side < 0 ? W * 0.55 : W * 0.45;
+    const p1y = H * 0.12;
+    // Control point 2: near the destination but offset to create a curve.
+    const p2x = ex + side * 60;
+    const p2y = ey - 120;
+
+    this.path = { p0: { x: sx, y: sy }, p1: { x: p1x, y: p1y }, p2: { x: p2x, y: p2y }, p3: { x: ex, y: ey } };
+    this.enterDur = 1.6; // seconds to traverse the path
+  }
+
+  /* Begin a dive. Bosses use a looping figure-8; others use a curved path
+   * that aims at the player. */
+  beginDive() {
+    this.state = 'dive';
+    this.t = 0;
+    this.diveFired = 0;
+    // Difficulty ramps per wave: more bullets, faster dives.
+    const wave = Game.wave;
+    this.diveDur = Math.max(1.1, 2.4 - wave * 0.12);
+
+    const px = Game.player.x;
+    const py = Game.player.y;
+
+    if (this.type === 'boss') {
+      // Boss: distinctive wide figure-8 / looping path. We model it as a
+      // parametric loop: horizontal Lissajous (x = sin, y = sin^2-ish) that
+      // drifts downward toward the player over the dive duration.
+      this.dive = { kind: 'boss' };
+    } else {
+      // Standard dive: a Bezier that starts at the slot, swings out to a
+      // "shoulder" point, then curves down toward the player's current x.
+      const sx = this.x, sy = this.y;
+      const ex = px + (Math.random() * 40 - 20); // slight scatter
+      const ey = py + 30;                        // pass slightly below player
+      // Shoulder: pull out to the side then back — gives the swoop.
+      const side = Math.random() < 0.5 ? -1 : 1;
+      const p1x = sx + side * 80;
+      const p1y = sy + 40;
+      const p2x = ex + side * 30;
+      const p2y = sy + 180;
+      this.dive = { kind: 'curve', p0: { x: sx, y: sy }, p1: { x: p1x, y: p1y }, p2: { x: p2x, y: p2y }, p3: { x: ex, y: ey } };
+    }
+  }
+
+  /* Bezier helper (cubic). */
+  static bezier(a, b, c, d, t) {
+    const mt = 1 - t;
+    return {
+      x: mt * mt * mt * a.x + 3 * mt * mt * t * b.x + 3 * mt * t * t * c.x + t * t * t * d.x,
+      y: mt * mt * mt * a.y + 3 * mt * mt * t * b.y + 3 * mt * t * t * c.y + t * t * t * d.y,
+    };
+  }
+
+  update(dt) {
+    if (this.dead) return;
+    const p = Game.player;
+
+    if (this.state === 'enter') {
+      this.t += dt / this.enterDur;
+      if (this.t >= 1) {
+        this.t = 1;
+        this.state = 'form';
+        this.x = this.slot.homeX; this.y = this.slot.homeY;
+      } else {
+        const b = Enemy.bezier(this.path.p0, this.path.p1, this.path.p2, this.path.p3, easeOut(this.t));
+        this.x = b.x; this.y = b.y;
+      }
+      return;
+    }
+
+    if (this.state === 'form') {
+      // Ride the formation sway (handled by Formation via homeX/homeY).
+      this.x = this.slot.homeX;
+      this.y = this.slot.homeY;
+      return;
+    }
+
+    if (this.state === 'dive') {
+      this.t += dt / this.diveDur;
+      const tt = Math.min(1, this.t);
+      if (this.dive.kind === 'boss') {
+        // Figure-8: x oscillates (sin), y descends. The loop reads as the
+        // classic boss "double helix". Amplitude widens then tightens.
+        const prog = tt;
+        const amp = 90 * (1 - prog * 0.4);
+        this.x = this.startX + Math.sin(prog * Math.PI * 2) * amp;
+        this.y = this.startY + prog * (p.y - this.startY + 40);
+      } else {
+        const b = Enemy.bezier(this.dive.p0, this.dive.p1, this.dive.p2, this.dive.p3, easeIn(tt));
+        this.x = b.x; this.y = b.y;
+      }
+
+      // Fire 1-3 red bullets during the dive, aimed at the player.
+      const maxShots = 1 + Math.floor(Math.random() * 3);
+      if (this.diveFired < maxShots && tt > 0.2 && Math.random() < dt * 4) {
+        fireEnemyBullet(this, true);
+        this.diveFired++;
+      }
+
+      // Capture check: a diving galaga/bee passing over the player can
+      // "capture" it (low probability). Bosses never capture.
+      if (this.type !== 'boss' && Math.random() < dt * 0.4 &&
+          Math.abs(this.x - p.x) < 14 && Math.abs(this.y - p.y) < 14 && p.alive) {
+        Game.tryCapture(this);
+      }
+
+      // Dive finished: exit off-screen then re-enter to (a) slot.
+      if (tt >= 1) {
+        // If it went past the bottom, wrap to top and re-enter.
+        this.state = 'enter';
+        this.t = 0;
+        this.y = -30;
+        this.beginEnter();
+      }
+    }
+  }
+
+  draw() {
+    if (this.dead) return;
+    const sprite = this.type === 'bee' ? SPRITE_BEE : this.type === 'galaga' ? SPRITE_GALAGA : SPRITE_BOSS;
+    // Galagas weave slightly during dives.
+    let x = this.x;
+    if (this.type === 'galaga' && this.state === 'dive') x += Math.sin(this.t * 20) * 4;
+    drawSpriteCentered(sprite, x, this.y - this.h / 2, this.scale);
+  }
+}
+
+/* Easing helpers for entry/dive paths. */
+function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+function easeIn(t)  { return t * t * t; }
+
+/* Return a symmetric centre-outward ordering of indices 0..n-1.
+ * e.g. n=8 -> [3,4,2,5,1,6,0,7]  (centre pair first, then outward). */
+function symmetricOrder(n) {
+  const out = [];
+  const mid = n / 2;
+  for (let d = 0; d < mid; d++) {
+    out.push(mid - 1 - d); // left side, moving outward
+    out.push(mid + d);     // right side, moving outward
+  }
+  return out;
+}
+
+/* ---------------------------------------------------------------------------
+ * 7. FORMATION
+ * Owns the grid of slots, the sway, and schedules entries + dives.
+ * -------------------------------------------------------------------------*/
+const Formation = (() => {
+  const slots = [];       // { homeX, homeY, side, enemy }
+  let sway = 0;           // current sway offset (px)
+  let swayT = 0;
+  const SWAY_AMP = 20;
+  const SWAY_PERIOD = 4;  // seconds
+
+  let entryQueue = [];    // enemies waiting to enter (staggered)
+  let entryTimer = 0;
+  let allEntered = false;
+
+  let diveTimer = 0;      // time until next dive
+  let diving = 0;         // number of enemies currently diving
+
+  function buildSlots() {
+    slots.length = 0;
+    // 4 rows in the top third:
+    //  row 1: 8 bees
+    //  row 2: 8 galagas
+    //  row 3: 4 galagas
+    //  row 4: 4 bosses
+    const rows = [
+      { type: 'bee',    count: 8, y: 70 },
+      { type: 'galaga', count: 8, y: 100 },
+      { type: 'galaga', count: 4, y: 130 },
+      { type: 'boss',   count: 4, y: 165 },
+    ];
+    let idx = 0;
+    for (const row of rows) {
+      const totalW = (row.count - 1) * 34; // 34px spacing
+      const startX = W / 2 - totalW / 2;
+      for (let i = 0; i < row.count; i++) {
+        const hx = startX + i * 34;
+        const side = hx < W / 2 ? -1 : 1;
+        slots.push({ homeX: hx, homeY: row.y, side, enemy: null, row: row.type });
+        idx++;
+      }
+    }
+  }
+
+  function populate(wave) {
+    buildSlots();
+    entryQueue = [];
+    // Assign enemies to slots in a pleasing symmetric order (centre-outward
+    // per row) so the formation fills in from the middle outward.
+    const rows = ['bee','galaga','galaga','boss'];
+    for (let r = 0; r < rows.length; r++) {
+      const rowSlots = slots.filter(s => s.row === rows[r]);
+      const order = symmetricOrder(rowSlots.length);
+      for (const idx of order) {
+        const s = rowSlots[idx];
+        const e = new Enemy(s.row, s);
+        s.enemy = e;
+        entryQueue.push(e);
+      }
+    }
+    // Shuffle a little for variety but keep rows roughly ordered.
+    entryTimer = 0.4;
+    allEntered = false;
+    diveTimer = 1.5;
+    diving = 0;
+  }
+
+  function update(dt) {
+    // Sway the whole formation sinusoidally.
+    swayT += dt;
+    sway = Math.sin((swayT / SWAY_PERIOD) * Math.PI * 2) * SWAY_AMP;
+
+    // Staggered entry: one enemy begins entering every ~0.3s.
+    if (entryQueue.length > 0) {
+      entryTimer -= dt;
+      if (entryTimer <= 0) {
+        const e = entryQueue.shift();
+        e.slot.homeX = e.slot.baseHomeX + sway; // will be re-set below each frame
+        e.beginEnter();
+        entryTimer = 0.3; // ~0.3s stagger
+      }
+    } else {
+      allEntered = true;
+    }
+
+    // Keep each slot's homeX swaying (formation slots move together).
+    for (const s of slots) {
+      s.homeX = s.baseHomeX + sway;
+      if (s.enemy && s.enemy.state === 'form') {
+        s.enemy.x = s.homeX;
+        s.enemy.y = s.homeY;
+      }
+    }
+
+    // Dive scheduling (only once everyone has entered, and not mid-clear).
+    if (allEntered && !Game.clearing && !Game.betweenWaves) {
+      diveTimer -= dt;
+      if (diveTimer <= 0 && diving < maxDivers()) {
+        const n = 1 + Math.floor(Math.random() * Math.min(3, 1 + Game.wave * 0.4));
+        startDiveBatch(Math.min(n, 3));
+        // Next dive sooner as waves progress.
+        const base = Math.max(1.0, 3.5 - Game.wave * 0.2);
+        diveTimer = base + Math.random() * 2.5;
+      }
+    }
+
+    // Update enemies.
+    for (const s of slots) if (s.enemy) s.enemy.update(dt);
+
+    // Re-tally diving count + detect cleared formation.
+    diving = 0;
+    let alive = 0;
+    for (const s of slots) {
+      if (s.enemy && !s.enemy.dead) {
+        alive++;
+        if (s.enemy.state === 'dive') diving++;
+      }
+    }
+    if (alive === 0 && Game.state === 'playing' && !Game.clearing) {
+      Game.startClear();
+    }
+  }
+
+  function maxDivers() { return Math.min(3, 1 + Math.floor(Game.wave / 2)); }
+
+  function startDiveBatch(n) {
+    // Pick up to n enemies that are currently in formation (not already
+    // diving, not entering).
+    const candidates = slots.filter(s => s.enemy && s.enemy.state === 'form');
+    for (let i = candidates.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+    }
+    for (let i = 0; i < n && i < candidates.length; i++) {
+      const e = candidates[i].enemy;
+      e.startX = e.x; e.startY = e.y; // anchor for boss figure-8
+      e.beginDive();
+    }
+  }
+
+  function enemies() {
+    const out = [];
+    for (const s of slots) if (s.enemy) out.push(s.enemy);
+    return out;
+  }
+
+  function draw() {
+    for (const s of slots) if (s.enemy) s.enemy.draw();
+  }
+
+  // Expose a reset of base home X (set when building slots).
+  function init() {
+    for (const s of slots) s.baseHomeX = s.homeX;
+  }
+
+  return {
+    populate, update, draw, enemies, init,
+    get slots() { return slots; },
+    get allEntered() { return allEntered; },
+    get diving() { return diving; },
+  };
+})();
+
+/* ---------------------------------------------------------------------------
+ * 8. EXPLOSIONS
+ * -------------------------------------------------------------------------*/
+const explosions = [];
+function spawnExplosion(x, y, scale) {
+  explosions.push({ x, y, scale, t: 0, dur: 0.4 });
+  Audio.explosion();
+}
+function updateExplosions(dt) {
+  for (let i = explosions.length - 1; i >= 0; i--) {
+    const e = explosions[i];
+    e.t += dt;
+    if (e.t >= e.dur) explosions.splice(i, 1);
+  }
+}
+function drawExplosions() {
+  for (const e of explosions) {
+    const f = Math.min(SPRITE_EXPLOSION.length - 1, Math.floor((e.t / e.dur) * SPRITE_EXPLOSION.length));
+    drawSpriteCentered(SPRITE_EXPLOSION[f], e.x, e.y, e.scale);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * 9. FLOATING SCORE / BANNERS
+ * -------------------------------------------------------------------------*/
+const floaters = [];
+function addFloater(text, x, y, color, life) {
+  floaters.push({ text, x, y, color: color || '#fff', t: 0, life: life || 0.9 });
+}
+function updateFloaters(dt) {
+  for (let i = floaters.length - 1; i >= 0; i--) {
+    const f = floaters[i];
+    f.t += dt; f.y -= 20 * dt;
+    if (f.t >= f.life) floaters.splice(i, 1);
+  }
+}
+function drawFloaters() {
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 12px "Courier New", monospace';
+  for (const f of floaters) {
+    ctx.globalAlpha = Math.max(0, 1 - f.t / f.life);
+    ctx.fillStyle = f.color;
+    ctx.fillText(f.text, Math.round(f.x), Math.round(f.y));
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* Big centred banner (FORMATION! / RESCUED! / WAVE N). */
+let banner = null; // { text, color, t, life }
+function showBanner(text, color, life) {
+  banner = { text, color: color || '#fff', t: 0, life: life || 1.4 };
+}
+function updateBanner(dt) {
+  if (!banner) return;
+  banner.t += dt;
+  if (banner.t >= banner.life) banner = null;
+}
+function drawBanner() {
+  if (!banner) return;
+  const a = Math.min(1, banner.life - banner.t) / 0.4;
+  ctx.globalAlpha = Math.min(1, a);
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 28px "Courier New", monospace';
+  ctx.fillStyle = banner.color;
+  ctx.fillText(banner.text, W / 2, H / 2 - 20);
+  ctx.globalAlpha = 1;
+}
+
+/* ---------------------------------------------------------------------------
+ * 10. GAME  (state machine + main loop)
+ * -------------------------------------------------------------------------*/
+const Game = {
+  state: 'menu', // 'menu' | 'playing' | 'gameover' | 'paused'
+  keys: {},
+  score: 0,
+  high: parseInt(localStorage.getItem('galaga_high') || '0', 10) || 0,
+  wave: 1,
+  player: null,
+  shake: 0,
+  clearing: false,
+  clearTimer: 0,
+  clearSeq: 0,
+  betweenWaves: false,
+  betweenTimer: 0,
+  time: 0,
+
+  reset() {
+    this.score = 0;
+    this.wave = 1;
+    this.player = new Player();
+    playerBullets.length = 0;
+    enemyBullets.length = 0;
+    explosions.length = 0;
+    floaters.length = 0;
+    banner = null;
+    this.shake = 0;
+    this.clearing = false;
+    this.betweenWaves = false;
+    Starfield.seed();
+    this.startWave(1);
+  },
+
+  startWave(wave) {
+    this.wave = wave;
+    this.clearing = false;
+    this.betweenWaves = false;
+    // (Re)build the formation. Reset base home X, then populate.
+    Formation.populate(wave);
+    // After populate, slots have baseHomeX set from homeX (pre-sway).
+    Formation.init();
+    enemyBullets.length = 0;
+    if (wave > 1) showBanner('WAVE ' + wave, '#37e0ff', 1.6);
+    else showBanner('WAVE 1', '#37e0ff', 1.6);
+  },
+
+  startGame() {
+    this.reset();
+    this.state = 'playing';
+    Audio.resume();
+    Audio.bgmStart();
+  },
+
+  gameOver() {
+    this.state = 'gameover';
+    Audio.bgmStop();
+    if (this.score > this.high) {
+      this.high = this.score;
+      localStorage.setItem('galaga_high', String(this.high));
+    }
+  },
+
+  togglePause() {
+    if (this.state === 'playing') { this.state = 'paused'; Audio.bgmStop(); }
+    else if (this.state === 'paused') { this.state = 'playing'; Audio.bgmStart(); }
+  },
+
+  /* ---- Wave-clear bonus sequence ------------------------------------- */
+  startClear() {
+    this.clearing = true;
+    this.clearTimer = 0.3; // brief beat before the sequence
+    showBanner('FORMATION!', '#ffe000', 1.8);
+    Audio.waveClear();
+    // Flat formation-clear bonus (1000+, scales with wave).
+    const bonus = 1000 + (this.wave - 1) * 200;
+    this.addScore(bonus, W / 2, H / 2 - 40);
+    // Any remaining enemies (the captured ship, if present) are destroyed in
+    // sequence, each for 1000+ pts.
+    this.clearList = Formation.enemies().filter(e => !e.dead);
+  },
+
+  updateClear(dt) {
+    this.clearTimer -= dt;
+    if (this.clearTimer <= 0 && this.clearList && this.clearList.length) {
+      const e = this.clearList.shift();
+      e.dead = true;
+      e.slot.enemy = null;
+      spawnExplosion(e.x, e.y, e.type === 'boss' ? 3 : 2);
+      // If this was the captured player ship, the player is lost (costs a life).
+      if (e.captured) {
+        this.capturedPlayer = null;
+        this.player.alive = false;
+        this.player.lives--;
+        this.player.respawnTimer = 1.4;
+        if (this.player.lives < 0) { this.gameOver(); return; }
+      }
+      const bonus = 1000 + (e.type === 'boss' ? 500 : 0) + (this.wave - 1) * 100;
+      this.addScore(bonus, e.x, e.y);
+      this.clearTimer = 0.08; // destroy in quick sequence
+    }
+    if (this.clearList && this.clearList.length === 0) {
+      this.clearing = false;
+      this.betweenWaves = true;
+      this.betweenTimer = 1.6;
+    }
+  },
+
+  updateBetween(dt) {
+    this.betweenTimer -= dt;
+    if (this.betweenTimer <= 0) this.startWave(this.wave + 1);
+  },
+
+  addScore(pts, x, y) {
+    this.score += pts;
+    if (x != null) addFloater('+' + pts, x, y, '#fff', 0.8);
+    // Extra ship every 20,000 points.
+    if (this.score >= this.player.nextExtraAt) {
+      this.player.lives++;
+      this.player.nextExtraAt += 20000;
+      showBanner('EXTRA SHIP!', '#33e033', 1.4);
+      Audio.extraShip();
+    }
+    if (this.score > this.high) this.high = this.score;
+  },
+
+  /* ---- Capture mechanic ---------------------------------------------- */
+  tryCapture(e) {
+    if (!this.player || !this.player.alive) return;
+    // Low probability handled by the caller's dt*0.4 gate; here we just do it.
+    e.dead = true;
+    spawnExplosion(e.x, e.y, 2);
+    // Place a "captured ship" in a formation slot.
+    const slot = e.slot;
+    const cap = new Enemy(e.type, slot);
+    cap.state = 'form';
+    cap.captured = true;
+    cap.x = slot.homeX; cap.y = slot.homeY;
+    slot.enemy = cap;
+    // Player is "captured": show it in the formation (replace an enemy slot).
+    this.capturedPlayer = { slot, enemy: cap };
+    // The real player ship is now in the formation — freeze it.
+    this.player.alive = false;
+    this.player.respawnTimer = 9999; // won't auto-respawn until rescued
+    showBanner('CAPTURED!', '#ff5fd0', 1.4);
+    Audio.capture();
+  },
+
+  rescue() {
+    const cp = this.capturedPlayer;
+    if (!cp) return;
+    spawnExplosion(cp.enemy.x, cp.enemy.y, 2);
+    this.addScore(1000, cp.enemy.x, cp.enemy.y);
+    showBanner('RESCUED!', '#33e033', 1.4);
+    Audio.rescue();
+    // Remove the captured enemy from its slot.
+    cp.slot.enemy = null;
+    // Return the player.
+    this.player.alive = true;
+    this.player.respawnTimer = 0;
+    this.player.invuln = 2.2;
+    this.player.x = W / 2;
+    this.capturedPlayer = null;
+  },
+
+  /* ---- Collisions ---------------------------------------------------- */
+  checkCollisions() {
+    const p = this.player;
+    // Player bullets vs enemies (iterate backwards so splicing is safe).
+    for (let bi = playerBullets.length - 1; bi >= 0; bi--) {
+      const b = playerBullets[bi];
+      for (const e of Formation.enemies()) {
+        if (e.dead) continue;
+        if (Math.abs(b.x - e.x) < e.w / 2 + b.w / 2 &&
+            Math.abs(b.y - e.y) < e.h / 2 + b.h / 2) {
+          // Hit!
+          playerBullets.splice(bi, 1);
+          p.bulletInFlight = false;
+          if (e.captured) {
+            // Shooting the captured ship rescues the player.
+            this.rescue();
+          } else {
+            e.dead = true;
+            e.slot.enemy = null;
+            spawnExplosion(e.x, e.y, e.type === 'boss' ? 3 : 2);
+            this.addScore(e.points(), e.x, e.y);
+          }
+          break;
+        }
+      }
+    }
+    // Enemy bullets vs player.
+    if (p.alive && p.invuln <= 0 && !this.capturedPlayer) {
+      for (let i = enemyBullets.length - 1; i >= 0; i--) {
+        const b = enemyBullets[i];
+        if (Math.abs(b.x - p.x) < p.w / 2 + b.w / 2 &&
+            Math.abs(b.y - p.y) < p.h / 2 + b.h / 2) {
+          enemyBullets.splice(i, 1);
+          p.hit();
+          break;
+        }
+      }
+    }
+    // Diving enemy body vs player (ramming).
+    if (p.alive && p.invuln <= 0 && !this.capturedPlayer) {
+      for (const e of Formation.enemies()) {
+        if (e.dead || e.state !== 'dive') continue;
+        if (Math.abs(e.x - p.x) < (e.w + p.w) / 2 - 4 &&
+            Math.abs(e.y - p.y) < (e.h + p.h) / 2 - 4) {
+          e.dead = true; e.slot.enemy = null;
+          spawnExplosion(e.x, e.y, 2);
+          p.hit();
+          break;
+        }
+      }
+    }
+  },
+
+  /* ---- Main update --------------------------------------------------- */
+  update(dt) {
+    this.time += dt;
+    Starfield.update(dt);
+    updateExplosions(dt);
+    updateFloaters(dt);
+    updateBanner(dt);
+    if (this.shake > 0) this.shake = Math.max(0, this.shake - dt * 30);
+
+    if (this.state === 'playing') {
+      updateBullets(dt);
+      this.player.update(dt);
+      Formation.update(dt);
+      if (this.clearing) this.updateClear(dt);
+      else if (this.betweenWaves) this.updateBetween(dt);
+      else this.checkCollisions();
+    }
+  },
+
+  /* ---- Main draw ----------------------------------------------------- */
+  draw() {
+    ctx.save();
+    // Screen shake offset.
+    if (this.shake > 0) {
+      const s = this.shake;
+      ctx.translate(Math.round((Math.random() - 0.5) * s), Math.round((Math.random() - 0.5) * s));
+    }
+
+    ctx.fillStyle = '#000';
+    ctx.fillRect(-20, -20, W + 40, H + 40);
+    Starfield.draw();
+
+    if (this.state === 'menu') {
+      this.drawMenu();
+    } else {
+      Formation.draw();
+      drawBullets();
+      if (this.player) this.player.draw();
+      drawExplosions();
+      drawFloaters();
+      this.drawHUD();
+      drawBanner();
+      if (this.state === 'paused') this.drawPause();
+      if (this.state === 'gameover') this.drawGameOver();
+    }
+    ctx.restore();
+  },
+
+  drawHUD() {
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 14px "Courier New", monospace';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('SCORE ' + String(this.score).padStart(6, '0'), 10, 20);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#37e0ff';
+    ctx.fillText('HI ' + String(this.high).padStart(6, '0'), W / 2, 20);
+    // Lives: small ship icons bottom-left.
+    for (let i = 0; i < Math.max(0, this.player.lives); i++) {
+      drawSprite(SPRITE_PLAYER_ICON, 10 + i * 16, H - 18, 2);
+    }
+  },
+
+  drawMenu() {
+    // Title "GALAGA" — chunky.
+    ctx.textAlign = 'center';
+    // Big title using a scaled font.
+    ctx.font = 'bold 64px "Courier New", monospace';
+    ctx.fillStyle = '#ff3b3b';
+    ctx.fillText('GALAGA', W / 2 + 3, 150 + 3);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('GALAGA', W / 2, 150);
+
+    // Decorative sprites.
+    const t = this.time;
+    drawSpriteCentered(SPRITE_BEE, W / 2 - 150, 200 + Math.sin(t * 2) * 6, 2);
+    drawSpriteCentered(SPRITE_GALAGA, W / 2, 190 + Math.sin(t * 2 + 1) * 6, 2);
+    drawSpriteCentered(SPRITE_BOSS, W / 2 + 150, 200 + Math.sin(t * 2 + 2) * 6, 2);
+
+    ctx.font = 'bold 16px "Courier New", monospace';
+    ctx.fillStyle = '#ffe000';
+    ctx.fillText('PRESS SPACE TO START', W / 2, 300);
+
+    ctx.font = '14px "Courier New", monospace';
+    ctx.fillStyle = '#888';
+    ctx.fillText('← → / A D  move     SPACE / ↑  fire', W / 2, 340);
+    ctx.fillText('P / ESC  pause', W / 2, 360);
+
+    ctx.fillStyle = '#37e0ff';
+    ctx.fillText('HIGH SCORE  ' + String(this.high).padStart(6, '0'), W / 2, 400);
+  },
+
+  drawPause() {
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 32px "Courier New", monospace';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('PAUSED', W / 2, H / 2);
+    ctx.font = '14px "Courier New", monospace';
+    ctx.fillStyle = '#888';
+    ctx.fillText('PRESS P / ESC TO RESUME', W / 2, H / 2 + 30);
+  },
+
+  drawGameOver() {
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 40px "Courier New", monospace';
+    ctx.fillStyle = '#ff3b3b';
+    ctx.fillText('GAME OVER', W / 2, H / 2 - 20);
+    ctx.font = 'bold 18px "Courier New", monospace';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('SCORE  ' + String(this.score).padStart(6, '0'), W / 2, H / 2 + 20);
+    ctx.fillStyle = '#37e0ff';
+    ctx.fillText('HIGH   ' + String(this.high).padStart(6, '0'), W / 2, H / 2 + 44);
+    ctx.font = '14px "Courier New", monospace';
+    ctx.fillStyle = '#ffe000';
+    ctx.fillText('PRESS SPACE TO RESTART', W / 2, H / 2 + 80);
+  },
+};
+
+/* ---------------------------------------------------------------------------
+ * 11. INPUT
+ * -------------------------------------------------------------------------*/
+window.addEventListener('keydown', (e) => {
+  const k = e.key;
+  Game.keys[k] = true;
+  // Prevent page scroll on arrows/space.
+  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(k)) e.preventDefault();
+
+  Audio.resume(); // unlock audio on first interaction
+
+  if (Game.state === 'menu' && (k === ' ' || k === 'Enter')) {
+    Game.startGame();
+    return;
+  }
+  if (Game.state === 'gameover' && (k === ' ' || k === 'Enter')) {
+    Game.startGame();
+    return;
+  }
+  if (k === 'p' || k === 'P' || k === 'Escape') {
+    Game.togglePause();
+    return;
+  }
+  // Fire.
+  if (Game.state === 'playing' && (k === ' ' || k === 'ArrowUp' || k === 'w' || k === 'W')) {
+    if (Game.player && Game.player.alive && !Game.capturedPlayer) {
+      firePlayerBullet(Game.player);
+    }
+  }
+});
+window.addEventListener('keyup', (e) => { Game.keys[e.key] = false; });
+
+/* ---------------------------------------------------------------------------
+ * 11b. TOUCH CONTROLS (iOS / mobile)
+ * On-screen buttons: left, right, fire. Pointer-Events based (covers touch +
+ * mouse) and multi-touch aware, so you can steer and fire at the same time.
+ * Tapping the canvas starts the game / fires / unpauses. Hidden on devices
+ * with a real mouse+keyboard (see CSS @media hover:hover).
+ * -------------------------------------------------------------------------*/
+(function () {
+  const btnLeft  = document.getElementById('btnLeft');
+  const btnRight = document.getElementById('btnRight');
+  const btnFire  = document.getElementById('btnFire');
+
+  function updateBtn(el, on) { el.classList.toggle('on', !!on); }
+
+  function tryFire() {
+    if (Game.state === 'menu' || Game.state === 'gameover') { Game.startGame(); return; }
+    if (Game.state === 'playing' && Game.player && Game.player.alive && !Game.capturedPlayer) {
+      firePlayerBullet(Game.player);
+    }
+  }
+
+  // Bind a press-and-hold button. We track the pointerId so a second finger
+  // (or a stray release) can't accidentally release this button.
+  function bindHold(el, onDown, onUp) {
+    let pid = null;
+    el.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      pid = e.pointerId;
+      if (el.setPointerCapture) { try { el.setPointerCapture(pid); } catch (_) {} }
+      Audio.resume();
+      onDown();
+    });
+    const release = (e) => {
+      if (pid !== null && e.pointerId !== pid) return;
+      pid = null;
+      onUp();
+    };
+    el.addEventListener('pointerup', release);
+    el.addEventListener('pointercancel', release);
+    el.addEventListener('lostpointercapture', release);
+  }
+
+  // Left / right: set the same key flags the keyboard uses, so movement logic
+  // is shared.
+  bindHold(btnLeft,  () => { Game.keys['ArrowLeft']  = true;  updateBtn(btnLeft, true); },
+                    () => { Game.keys['ArrowLeft']  = false; updateBtn(btnLeft, false); });
+  bindHold(btnRight, () => { Game.keys['ArrowRight'] = true;  updateBtn(btnRight, true); },
+                    () => { Game.keys['ArrowRight'] = false; updateBtn(btnRight, false); });
+
+  // Fire: hold to keep firing (a new bolt leaves as soon as the last one does).
+  let firing = false;
+  bindHold(btnFire, () => { firing = true;  updateBtn(btnFire, true);  tryFire(); },
+                    () => { firing = false; updateBtn(btnFire, false); });
+  // Poll the held fire button each frame for auto-fire while held.
+  (function pollFire() {
+    if (firing) tryFire();
+    requestAnimationFrame(pollFire);
+  })();
+
+  // Tapping the canvas itself: start / fire / pause.
+  canvas.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    Audio.resume();
+    if (Game.state === 'menu' || Game.state === 'gameover') Game.startGame();
+    else if (Game.state === 'playing') tryFire();
+    else if (Game.state === 'paused') Game.togglePause();
+  });
+
+  // Kill iOS default touch behaviour (scroll / rubber-band / double-tap zoom).
+  document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+  document.addEventListener('gesturestart', (e) => e.preventDefault());
+})();
+
+/* ---------------------------------------------------------------------------
+ * 12. MAIN LOOP  (requestAnimationFrame + delta-time, frame-rate independent)
+ * -------------------------------------------------------------------------*/
+let last = performance.now();
+function frame(now) {
+  let dt = (now - last) / 1000;
+  last = now;
+  if (dt > 0.05) dt = 0.05; // clamp big deltas (tab switches) to avoid jumps
+
+  Game.update(dt);
+  Game.draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ELIZA — Weizenbaum's Therapist (1966)</title>
+<style>
+  :root {
+    --green: #33ff33;
+    --green-dim: #1a8c1a;
+    --green-bright: #66ff66;
+    --bg: #0a0a0a;
+    --scanline: rgba(0, 0, 0, 0.15);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #111;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Courier New', 'Consolas', monospace;
+    padding: 20px;
+  }
+  .crt {
+    position: relative;
+    width: 100%;
+    max-width: 780px;
+    height: 85vh;
+    min-height: 500px;
+    background: var(--bg);
+    border-radius: 18px;
+    border: 3px solid #222;
+    box-shadow:
+      0 0 60px rgba(51, 255, 51, 0.08),
+      inset 0 0 80px rgba(0, 0, 0, 0.6);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  /* Scanlines */
+  .crt::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      var(--scanline) 0px,
+      var(--scanline) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    pointer-events: none;
+    z-index: 10;
+  }
+  /* Vignette */
+  .crt::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.4) 100%);
+    pointer-events: none;
+    z-index: 11;
+  }
+  .screen {
+    flex: 1;
+    overflow-y: auto;
+    padding: 28px 32px;
+    color: var(--green);
+    font-size: 15px;
+    line-height: 1.6;
+    text-shadow: 0 0 4px rgba(51, 255, 51, 0.4);
+    scrollbar-width: thin;
+    scrollbar-color: var(--green-dim) transparent;
+  }
+  .screen::-webkit-scrollbar { width: 6px; }
+  .screen::-webkit-scrollbar-thumb { background: var(--green-dim); border-radius: 3px; }
+
+  .line { white-space: pre-wrap; word-wrap: break-word; }
+  .eliza { color: var(--green-bright); }
+  .user { color: #88ff88; }
+  .system { color: var(--green-dim); font-style: italic; }
+
+  .input-row {
+    display: flex;
+    align-items: center;
+    padding: 0 32px 20px;
+    gap: 8px;
+  }
+  .prompt { color: var(--green-dim); font-size: 15px; white-space: nowrap; }
+  #input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--green);
+    font-family: inherit;
+    font-size: 15px;
+    caret-color: var(--green);
+    text-shadow: 0 0 4px rgba(51, 255, 51, 0.4);
+  }
+  .cursor-blink {
+    display: inline-block;
+    width: 9px;
+    height: 17px;
+    background: var(--green);
+    animation: blink 1s step-end infinite;
+    vertical-align: text-bottom;
+    box-shadow: 0 0 6px var(--green);
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .flicker {
+    animation: flicker 0.15s ease;
+  }
+  @keyframes flicker {
+    0% { opacity: 1; }
+    50% { opacity: 0.92; }
+    100% { opacity: 1; }
+  }
+
+  .bezel {
+    background: linear-gradient(180deg, #1a1a1a, #0d0d0d);
+    padding: 8px 0 4px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+  }
+  .bezel .led {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+    animation: pulse 3s ease-in-out infinite;
+  }
+  @keyframes pulse { 50% { opacity: 0.5; } }
+  .bezel span { font-size: 10px; color: #444; letter-spacing: 2px; text-transform: uppercase; }
+</style>
+</head>
+<body>
+<div class="crt">
+  <div class="screen" id="screen"></div>
+  <div class="input-row">
+    <span class="prompt">&gt;</span>
+    <input id="input" type="text" autocomplete="off" autofocus spellcheck="false">
+  </div>
+  <div class="bezel">
+    <div class="led"></div>
+    <span>ELIZA Terminal</span>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// ELIZA — A program for computer-manipulation of natural language
+// Based on: Weizenbaum, J. (1966). Communications of the ACM, 9(1)
+// ============================================================
+
+const screen = document.getElementById('screen');
+const input = document.getElementById('input');
+
+// --- Pronoun transformations (applied to extracted phrases) ---
+const DECOMP = [
+  [/\byour\b/gi, 'my'],
+  [/\bme\b/gi, 'you'],
+  [/\bi'm\b/gi, 'you are'],
+  [/\bi was\b/gi, 'you were'],
+  [/\bi\b/gi, 'you'],
+  [/\bmy\b/gi, 'your'],
+  [/\bmine\b/gi, 'yours'],
+  [/\bi've\b/gi, "you've"],
+  [/\bi'd\b/gi, "you'd"],
+  [/\bi'll\b/gi, "you'll"],
+  [/\bi can\b/gi, 'you can'],
+  [/\bmyself\b/gi, 'yourself'],
+  [/\bmyself\b/gi, 'yourself'],
+];
+
+// --- Prepositions for decomposition ---
+const DECOMPS = [
+  ['because', 'tell me more about why', ['why', 'because']],
+  ['can', 'What makes you think you {0}', ['can', 'able']],
+  ['want', 'What would it mean to you if you {0}', ['want', 'wish', 'like to']],
+  ['is', 'How does it make you feel that you {0}', ['is', 'am', 'are']],
+  ['are', 'How does it make you feel that you {0}', ['are']],
+  ['was', 'How does it make you feel that you {0}', ['was']],
+  ['need', 'What would it mean to you if you {0}', ['need']],
+];
+
+// --- Memory (simple) ---
+let memory = [];
+let memoryEnabled = false;
+
+// --- Default responses ---
+const DEFAULT_RESPONSES = [
+  "I see.",
+  "Please go on.",
+  "What does that suggest to you?",
+  "Do you think there is anything we could talk about instead?",
+  "What else comes to mind when you think of that?",
+  "How long have you felt this way?",
+  "Does that connection surprise you?",
+  "You seem to be avoiding the real issue here.",
+  "Tell me more.",
+  "I'm not sure I follow. Can you elaborate?",
+];
+
+// --- Eliza rules (key: pattern, matches: triggers, responses: templates) ---
+const RULES = [
+  {
+    key: 'suicide',
+    matches: ['kill', 'suicide', 'die', 'end it all', 'hurt myself'],
+    responses: [
+      "Why do you want to be dead?",
+      "I am sorry to hear that you want to die. Please tell me why.",
+      "Perhaps you would find happiness in life?"
+    ]
+  },
+  {
+    key: 'computer',
+    matches: ['computer'],
+    responses: [
+      "Do computers worry you?",
+      "Why do you mention computers?",
+      "What do you think machines have to do with your difficulties?",
+      "Don't you think computers can help people get to know each other?",
+      "What would you like me to do about computers?"
+    ]
+  },
+  {
+    key: 'dream',
+    matches: ['dream', 'dreamed', 'dreamt', 'nightmare'],
+    responses: [
+      "What does that dream suggest to you?",
+      "Do you dream often?",
+      "Do you have recurring dreams?",
+      "What persons appear in your dreams?",
+      "How do you feel about your dreams?"
+    ]
+  },
+  {
+    key: 'money',
+    matches: ['money', 'expensive', 'cheap', 'broke', 'salary', 'pay'],
+    responses: [
+      "Is money a problem right now?",
+      "How do you feel about money in general?",
+      "What would you do if you had a million dollars?",
+      "Does money make you anxious?"
+    ]
+  },
+  {
+    key: 'mother',
+    matches: ['mother', 'mom', 'mommy'],
+    responses: [
+      "Tell me more about your mother.",
+      "How do you feel about your mother?",
+      "What about your relationship with your mother?",
+      "What else does your mother remind you of?",
+      "What relationship do you think your mother has to your problem?"
+    ]
+  },
+  {
+    key: 'father',
+    matches: ['father', 'dad', 'daddy', 'papa'],
+    responses: [
+      "Tell me more about your father.",
+      "How do you feel about your father?",
+      "What about your relationship with your father?",
+      "What else does your father remind you of?",
+      "What relationship do you think your father has to your problem?"
+    ]
+  },
+  {
+    key: 'family',
+    matches: ['family', 'sister', 'brother', 'parents', 'wife', 'husband', 'girlfriend', 'boyfriend', 'partner'],
+    responses: [
+      "What else do you think you should tell me about your family?",
+      "Tell me more about your family.",
+      "How important is family to you?",
+      "What do you think your family has to do with your problems?"
+    ]
+  },
+  {
+    key: 'married',
+    matches: ['married', 'marriage', 'divorce', 'divorced'],
+    responses: [
+      "Do you believe marriage is possible?",
+      "Do you like your spouse?",
+      "Why are you married?",
+      "Are you having trouble with your marriage?"
+    ]
+  },
+  {
+    key: 'yes',
+    matches: ['yes', 'yeah', 'yep', 'yup', 'absolutely', 'of course', 'definitely'],
+    responses: [
+      "Please go on.",
+      "I see.",
+      "And what else?",
+      "Does that connection surprise you?",
+      "What makes you think of that now?"
+    ]
+  },
+  {
+    key: 'no',
+    matches: ['no', 'nope', 'nah', "don't", 'never'],
+    responses: [
+      "Are you sure?",
+      "Why not?",
+      "Don't you think there is something we could talk about instead?",
+      "What other thoughts come to mind?"
+    ]
+  },
+  {
+    key: 'hello',
+    matches: ['hello', 'hi', 'hey', 'good morning', 'good evening'],
+    responses: [
+      "Hello. How are you today?",
+      "Hi there. What's on your mind?",
+      "Greetings. What brings you here?"
+    ]
+  },
+  {
+    key: 'how are you',
+    matches: ['how are you', "how's it going", 'how do you feel', 'how are things'],
+    responses: [
+      "I'm doing well. How are YOU feeling today?",
+      "Fine, thank you. And you?",
+      "I'm just a program, but I'm here for you. How do you feel?"
+    ]
+  },
+  {
+    key: 'name',
+    matches: ['my name', 'i am', "i'm called", 'call me'],
+    responses: [
+      "Nice to meet you. What brings you here today?",
+      "Thank you for telling me. How can I help?",
+      "I see. What would you like to talk about?"
+    ]
+  },
+  {
+    key: 'sad',
+    matches: ['sad', 'unhappy', 'depressed', 'miserable', 'down', 'low', 'blue'],
+    responses: [
+      "I'm sorry to hear that you're feeling {0}.",
+      "Why do you feel {0}?",
+      "Do you think being {0} is connected to something specific?",
+      "What could make you feel less {0}?",
+      "When did you first start feeling {0}?"
+    ]
+  },
+  {
+    key: 'afraid',
+    matches: ['afraid', 'fear', 'scared', 'terrified', 'anxious', 'worried', 'nervous'],
+    responses: [
+      "Why are you afraid of {0}?",
+      "What is it that you fear most about {0}?",
+      "Does being afraid of {0} bring up other feelings?",
+      "What do you think would happen if you weren't afraid?"
+    ]
+  },
+  {
+    key: 'angry',
+    matches: ['angry', 'mad', 'furious', 'annoyed', 'irritated', 'frustrated', 'hate'],
+    responses: [
+      "What makes you feel angry?",
+      "Why do you feel angry right now?",
+      "Does it help to be angry?",
+      "What do you do when you get angry?",
+      "Who do you most often feel angry at?"
+    ]
+  },
+  {
+    key: 'love',
+    matches: ['love', 'adore', 'crush', 'infatuated'],
+    responses: [
+      "Who do you love?",
+      "Why do you love that person?",
+      "Is it safe to love them?",
+      "What does love mean to you?",
+      "Can you tell me more about this person?"
+    ]
+  },
+  {
+    key: 'alone',
+    matches: ['alone', 'lonely', 'isolated', 'no friends', 'no one'],
+    responses: [
+      "I am sure you are not alone in feeling that way.",
+      "Do you think you are alone because of something specific?",
+      "What do you think isolation means to you?",
+      "How would you feel if someone reached out to you?"
+    ]
+  },
+  {
+    key: 'help',
+    matches: ['help', 'stuck', 'lost', 'confused'],
+    responses: [
+      "Why do you ask for help?",
+      "What sort of help do you think you need?",
+      "What makes you feel stuck?",
+      "I'm here to listen. Tell me more."
+    ]
+  },
+  {
+    key: 'work',
+    matches: ['work', 'job', 'boss', 'career', 'office', 'colleague', 'coworker'],
+    responses: [
+      "Do you enjoy your work?",
+      "What do you do for a living?",
+      "Is work a major stressor for you?",
+      "How does your work affect your personal life?"
+    ]
+  },
+  {
+    key: 'sex',
+    matches: ['sex', 'sexual', 'intimate'],
+    responses: [
+      "Can you elaborate on that?",
+      "How do you feel about that topic?",
+      "Does that bring up other feelings for you?"
+    ]
+  },
+  {
+    key: 'religion',
+    matches: ['god', 'religion', 'church', 'faith', 'believe in', 'soul'],
+    responses: [
+      "Do you believe in a higher power?",
+      "What does faith mean to you?",
+      "How does your belief system affect your daily life?"
+    ]
+  },
+  {
+    key: 'remember',
+    matches: ['remember', 'recall', 'forget'],
+    responses: [
+      "Why do you want to recall that now?",
+      "What else might you remember?",
+      "Are you sure you want to remember that?",
+      "What does that memory mean to you?"
+    ]
+  },
+  {
+    key: 'always',
+    matches: ['always', 'never', 'everyone', 'no one', 'everything', 'nothing', 'all', 'nobody'],
+    responses: [
+      "Really? You are {0} sure.",
+      "Can you think of an example?",
+      "When you say '{0}', what do you mean specifically?",
+      "What makes you feel so certain?"
+    ]
+  },
+  {
+    key: 'because',
+    matches: ['because'],
+    responses: [
+      "Is that the only reason?",
+      "What other reasons might there be?",
+      "Does that reason seem reasonable to you?",
+      "What would be another possible explanation?"
+    ]
+  },
+  {
+    key: 'i feel',
+    matches: ['i feel', 'i am feeling', "i'm feeling", 'feeling'],
+    responses: [
+      "Why do you feel that way?",
+      "Do you often feel that way?",
+      "What makes you feel that way?",
+      "When you feel that way, what do you do?"
+    ]
+  },
+  {
+    key: 'i want',
+    matches: ['i want', "i'd like", 'i would like', 'i wish'],
+    responses: [
+      "What would it mean to you if you got that?",
+      "Why do you want that?",
+      "What would prevent you from getting that?",
+      "What steps could you take to get that?"
+    ]
+  },
+  {
+    key: 'i think',
+    matches: ['i think', 'i believe', 'i guess', 'i suppose', "i'm sure"],
+    responses: [
+      "Why do you think that?",
+      "But are you really sure?",
+      "Do you really believe so?",
+      "But you are not sure you think that.",
+      "Do you wish to believe that?"
+    ]
+  },
+  {
+    key: 'maybe',
+    matches: ['maybe', 'perhaps', 'possibly', 'i don\'t know', 'not sure', 'unsure'],
+    responses: [
+      "Do you really think so?",
+      "Perhaps you already know the answer.",
+      "What would it mean if the answer were yes?",
+      "Is there any other possibility?"
+    ]
+  },
+  {
+    key: 'can you',
+    matches: ['can you', 'could you', 'will you'],
+    responses: [
+      "You really want me to be able to do that, don't you?",
+      "What if I could do that for you?",
+      "Why do you ask if I can do that?"
+    ]
+  },
+  {
+    key: 'you',
+    matches: ['you are', "you're", 'you seem', 'you look', 'you feel'],
+    responses: [
+      "What makes you think I am {0}?",
+      "Does it please you to believe that I am {0}?",
+      "Wouldn't it be better if you were {0} yourself?",
+      "Why do you project that onto me?"
+    ]
+  },
+];
+
+// --- Memory rule ---
+const MEMORY_RULE = {
+  key: 'memory',
+  matches: ['you remember', 'last time', 'earlier', 'you said'],
+  responses: [
+  "Earlier you said: {memory}",
+  "You mentioned before: {memory}",
+  "Do you connect this to what you said earlier — {memory}?"
+  ]
+};
+
+// --- Core engine ---
+function transform(text) {
+  let result = text;
+  for (const [pattern, replacement] of DECOMP) {
+    result = result.replace(pattern, replacement);
+  }
+  return result;
+}
+
+function matchRule(input) {
+  const lower = input.toLowerCase().replace(/[.!?]+$/, '').trim();
+
+  // Check memory rule first if memory is enabled
+  if (memoryEnabled && memory.length > 0) {
+    for (const trigger of MEMORY_RULE.matches) {
+      if (lower.includes(trigger)) {
+        const mem = memory[Math.floor(Math.random() * memory.length)];
+        return MEMORY_RULE.responses[Math.floor(Math.random() * MEMORY_RULE.responses.length)]
+          .replace('{memory}', `"${mem}"`);
+      }
+    }
+  }
+
+  // Try specific rules
+  for (const rule of RULES) {
+    for (const trigger of rule.matches) {
+      if (lower.includes(trigger)) {
+        let response = rule.responses[Math.floor(Math.random() * rule.responses.length)];
+        // Handle {0} placeholder — extract the matched word/phrase
+        if (response.includes('{0}')) {
+          const word = lower.match(new RegExp(`\\b(\\w+)\\b`, 'g'))?.[0] || '';
+          response = response.replace('{0}', transform(word));
+        }
+        return response;
+      }
+    }
+  }
+
+  // Try decomposition rules
+  for (const [keyword, template, triggers] of DECOMPS) {
+    for (const t of triggers) {
+      const idx = lower.indexOf(t);
+      if (idx !== -1) {
+        const rest = lower.substring(idx + t.length).trim();
+        if (rest.length > 3) {
+          return template.replace('{0}', transform(rest)).replace(/\s+/g, ' ').trim();
+        }
+      }
+    }
+  }
+
+  // Store in memory
+  if (lower.length > 10 && lower.length < 200) {
+    memory.push(lower);
+    if (memory.length > 5) memory.shift();
+    memoryEnabled = true;
+  }
+
+  // Default
+  return DEFAULT_RESPONSES[Math.floor(Math.random() * DEFAULT_RESPONSES.length)];
+}
+
+// --- Terminal UI ---
+let isTyping = false;
+let history = [];
+let historyIdx = -1;
+
+function appendLine(text, cls) {
+  const div = document.createElement('div');
+  div.className = 'line ' + (cls || '');
+  div.textContent = text;
+  screen.appendChild(div);
+  screen.scrollTop = screen.scrollHeight;
+}
+
+function typeText(text, cls, callback) {
+  isTyping = true;
+  const div = document.createElement('div');
+  div.className = 'line ' + (cls || '');
+  screen.appendChild(div);
+
+  let i = 0;
+  const cursor = document.createElement('span');
+  cursor.className = 'cursor-blink';
+  div.appendChild(cursor);
+
+  function tick() {
+    if (i < text.length) {
+      cursor.before(document.createTextNode(text[i]));
+      i++;
+      screen.scrollTop = screen.scrollHeight;
+      // Variable speed: pause longer after punctuation
+      let delay = 18 + Math.random() * 22;
+      if (text[i - 1] === '.' || text[i - 1] === '!' || text[i - 1] === '?') delay = 200;
+      else if (text[i - 1] === ',') delay = 80;
+      setTimeout(tick, delay);
+    } else {
+      cursor.remove();
+      isTyping = false;
+      if (callback) callback();
+    }
+  }
+  tick();
+}
+
+function elizaRespond(userText) {
+  const response = matchRule(userText);
+  setTimeout(() => {
+    typeText(response, 'eliza');
+  }, 400 + Math.random() * 800);
+}
+
+function handleInput() {
+  const text = input.value.trim();
+  input.value = '';
+  if (!text) return;
+
+  appendLine(text, 'user');
+  history.push(text);
+  historyIdx = history.length;
+
+  const lower = text.toLowerCase();
+  if (lower === 'quit' || lower === 'exit' || lower === 'bye' || lower === 'goodbye') {
+    setTimeout(() => {
+      typeText("It was nice talking with you. Goodbye.", 'eliza', () => {
+        setTimeout(() => {
+          typeText("SESSION ENDED. Type 'restart' to begin again.", 'system');
+          input.placeholder = "type 'restart' to begin again";
+          input.disabled = true;
+        }, 600);
+      });
+    }, 300);
+    return;
+  }
+
+  if (lower === 'restart' && input.disabled) {
+    input.disabled = false;
+    input.placeholder = '';
+    screen.innerHTML = '';
+    memory = [];
+    memoryEnabled = false;
+    startSession();
+    return;
+  }
+
+  elizaRespond(text);
+}
+
+function startSession() {
+  appendLine('ELIZA — A Program for Computer-Manipulation of Natural Language', 'system');
+  appendLine('Weizenbaum, J. (1966). Communications of the ACM, 9(1), 39-46.', 'system');
+  appendLine('', '');
+  typeText("Hello. I am ELIZA. I'm a simple program that simulates a Rogerian psychotherapist. What would you like to talk about?", 'eliza');
+}
+
+// --- Events ---
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    handleInput();
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (historyIdx > 0) {
+      historyIdx--;
+      input.value = history[historyIdx];
+    }
+  } else if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (historyIdx < history.length - 1) {
+      historyIdx++;
+      input.value = history[historyIdx];
+    } else {
+      historyIdx = history.length;
+      input.value = '';
+    }
+  }
+});
+
+// Keep input focused
+document.addEventListener('click', () => {
+  if (!input.disabled) input.focus();
+});
+
+// Start
+startSession();
+</script>
+</body>
+</html>

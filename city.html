@@ -1,0 +1,2013 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>City Blocks — 3D City Builder</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#0a0f1e;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; user-select:none; }
+  #app { position:fixed; inset:0; }
+  canvas { display:block; }
+  .glass { background: rgba(15, 23, 42, 0.62); backdrop-filter: blur(14px) saturate(1.4);
+    -webkit-backdrop-filter: blur(14px) saturate(1.4);
+    border: 1px solid rgba(255,255,255,0.14); box-shadow: 0 8px 32px rgba(0,0,0,0.35); }
+  .hud { position:absolute; z-index:20; }
+  .tool-btn { transition: all .15s ease; cursor:pointer; border:1px solid transparent; }
+  .tool-btn:hover { transform: translateY(-3px); border-color: rgba(255,255,255,0.35); }
+  .tool-btn.active { border-color:#22d3ee; background: rgba(34,211,238,0.18);
+    box-shadow: 0 0 18px rgba(34,211,238,0.35), inset 0 0 12px rgba(34,211,238,0.12); }
+  .speed-btn { transition: all .12s ease; cursor:pointer; }
+  .speed-btn:hover { background: rgba(255,255,255,0.14); }
+  .speed-btn.active { background:#22d3ee; color:#082f49; font-weight:700; }
+  .icon-btn { cursor:pointer; transition: all .12s ease; }
+  .icon-btn:hover { background: rgba(255,255,255,0.14); transform: scale(1.08); }
+  #inspector { transition: opacity .2s ease, transform .2s ease; }
+  #inspector.hidden-card { opacity:0; pointer-events:none; transform: translateY(8px); }
+  .mood-bar { height:6px; border-radius:3px; background:rgba(255,255,255,0.15); overflow:hidden; }
+  .mood-fill { height:100%; border-radius:3px; transition: width .4s ease, background .4s ease; }
+  .toast { animation: toastIn .25s ease; }
+  @keyframes toastIn { from { opacity:0; transform: translateY(10px) scale(.95); } to { opacity:1; transform:none; } }
+  .float-emoji { position:absolute; z-index:40; pointer-events:none; font-size:22px;
+    animation: floatUp 1.4s ease-out forwards; }
+  @keyframes floatUp { 0% { opacity:0; transform: translateY(0) scale(.6); }
+    15% { opacity:1; transform: translateY(-14px) scale(1.15); }
+    100% { opacity:0; transform: translateY(-70px) scale(1); } }
+  #vignette { position:absolute; inset:0; pointer-events:none; z-index:10;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,10,0.42) 100%); }
+  ::-webkit-scrollbar { width:0; height:0; }
+  .kbd { font-size:10px; padding:1px 5px; border-radius:4px; background:rgba(255,255,255,0.12);
+    border:1px solid rgba(255,255,255,0.2); }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="app"></div>
+<div id="vignette"></div>
+
+<!-- ═══════════ TOP HUD BAR ═══════════ -->
+<div id="topbar" class="hud top-0 left-0 right-0 flex justify-center pt-3 px-3 pointer-events-none">
+  <div class="glass rounded-2xl px-5 py-2.5 flex items-center gap-5 pointer-events-auto flex-wrap justify-center">
+    <div class="flex items-center gap-2">
+      <span class="text-xl">🏙️</span>
+      <span class="text-white font-bold tracking-wide text-sm">CITY BLOCKS</span>
+    </div>
+    <div class="w-px h-6 bg-white/15 hidden sm:block"></div>
+    <div class="flex items-center gap-2 text-sm">
+      <span>💰</span>
+      <span id="stat-funds" class="text-emerald-300 font-bold tabular-nums min-w-[70px]">$10,000</span>
+      <span id="stat-income" class="text-emerald-500/80 text-xs tabular-nums"></span>
+    </div>
+    <div class="flex items-center gap-2 text-sm">
+      <span>👥</span>
+      <span id="stat-pop" class="text-sky-300 font-bold tabular-nums">0</span>
+    </div>
+    <div class="flex items-center gap-2 text-sm">
+      <span>😊</span>
+      <span id="stat-happy" class="text-amber-300 font-bold tabular-nums">0%</span>
+      <div class="mood-bar w-16 hidden md:block"><div id="happy-fill" class="mood-fill" style="width:50%"></div></div>
+    </div>
+    <div class="w-px h-6 bg-white/15 hidden sm:block"></div>
+    <div class="flex items-center gap-2 text-sm">
+      <span id="stat-icon">☀️</span>
+      <span id="stat-clock" class="text-white/90 font-semibold tabular-nums">08:00</span>
+    </div>
+    <div class="w-px h-6 bg-white/15 hidden sm:block"></div>
+    <div class="flex items-center gap-1">
+      <button id="speed-0" class="speed-btn px-2.5 py-1 rounded-lg text-xs text-white/80">⏸</button>
+      <button id="speed-1" class="speed-btn active px-2.5 py-1 rounded-lg text-xs text-white/80">1×</button>
+      <button id="speed-2" class="speed-btn px-2.5 py-1 rounded-lg text-xs text-white/80">2×</button>
+      <button id="speed-3" class="speed-btn px-2.5 py-1 rounded-lg text-xs text-white/80">3×</button>
+      <button id="btn-daynight" class="icon-btn ml-2 px-2.5 py-1 rounded-lg text-sm" title="Toggle day / night">🌗</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ BUILD TOOLBAR ═══════════ -->
+<div id="toolbar" class="hud bottom-0 left-0 right-0 flex justify-center pb-4 pointer-events-none">
+  <div class="glass rounded-2xl px-3 py-2.5 flex items-end gap-2 pointer-events-auto">
+    <button class="tool-btn flex flex-col items-center gap-1 px-3 py-2 rounded-xl" data-tool="road">
+      <span class="text-2xl leading-none">🛣️</span>
+      <span class="text-[11px] font-semibold text-white/85">Road</span>
+      <span class="text-[10px] text-emerald-300 font-bold">$20</span>
+    </button>
+    <button class="tool-btn flex flex-col items-center gap-1 px-3 py-2 rounded-xl" data-tool="res">
+      <span class="text-2xl leading-none">🏠</span>
+      <span class="text-[11px] font-semibold text-white/85">Residential</span>
+      <span class="text-[10px] text-emerald-300 font-bold">$100</span>
+    </button>
+    <button class="tool-btn flex flex-col items-center gap-1 px-3 py-2 rounded-xl" data-tool="com">
+      <span class="text-2xl leading-none">🏬</span>
+      <span class="text-[11px] font-semibold text-white/85">Commercial</span>
+      <span class="text-[10px] text-emerald-300 font-bold">$150</span>
+    </button>
+    <button class="tool-btn flex flex-col items-center gap-1 px-3 py-2 rounded-xl" data-tool="park">
+      <span class="text-2xl leading-none">🌳</span>
+      <span class="text-[11px] font-semibold text-white/85">Park</span>
+      <span class="text-[10px] text-emerald-300 font-bold">$80</span>
+    </button>
+    <div class="w-px self-stretch bg-white/15 mx-1"></div>
+    <button class="tool-btn flex flex-col items-center gap-1 px-3 py-2 rounded-xl" data-tool="bulldoze">
+      <span class="text-2xl leading-none">🚜</span>
+      <span class="text-[11px] font-semibold text-white/85">Bulldoze</span>
+      <span class="text-[10px] text-red-300 font-bold">+$10</span>
+    </button>
+  </div>
+</div>
+
+<!-- ═══════════ HELP HINT ═══════════ -->
+<div id="hint" class="hud bottom-24 left-4 pointer-events-none">
+  <div class="glass rounded-xl px-4 py-3 text-[11px] text-white/70 leading-relaxed">
+    <div class="text-white/90 font-semibold mb-1">🎮 Controls</div>
+    <div><span class="kbd">Drag</span> rotate &nbsp; <span class="kbd">Scroll</span> zoom &nbsp; <span class="kbd">WASD</span>/<span class="kbd">↑↓←→</span> pan</div>
+    <div><span class="kbd">Click tile</span> build &nbsp; <span class="kbd">Click agent</span> inspect &nbsp; <span class="kbd">Esc</span> deselect / exit follow</div>
+  </div>
+</div>
+
+<!-- ═══════════ INSPECTOR CARD ═══════════ -->
+<div id="inspector" class="hud hidden-card top-24 right-4 w-72">
+  <div class="glass rounded-2xl p-4">
+    <div class="flex items-start justify-between">
+      <div class="flex items-center gap-3">
+        <div id="insp-avatar" class="w-11 h-11 rounded-xl flex items-center justify-center text-2xl"
+             style="background:rgba(56,189,248,0.2)">🚗</div>
+        <div>
+          <div id="insp-name" class="text-white font-bold text-sm">—</div>
+          <div id="insp-role" class="text-white/60 text-xs">—</div>
+        </div>
+      </div>
+      <button id="insp-close" class="icon-btn text-white/50 hover:text-white text-lg leading-none px-1" title="Close">✕</button>
+    </div>
+    <div class="mt-3 space-y-2 text-xs">
+      <div class="flex justify-between items-center">
+        <span class="text-white/55">Mood</span>
+        <span id="insp-mood" class="text-white/90 font-semibold">😊 Content</span>
+      </div>
+      <div class="mood-bar"><div id="insp-mood-fill" class="mood-fill" style="width:60%; background:#fbbf24"></div></div>
+      <div class="flex justify-between items-center pt-1">
+        <span class="text-white/55">Activity</span>
+        <span id="insp-activity" class="text-white/90 font-semibold text-right max-w-[170px]">—</span>
+      </div>
+      <div class="flex justify-between items-center">
+        <span class="text-white/55">Destination</span>
+        <span id="insp-dest" class="text-white/90 font-semibold text-right max-w-[170px]">—</span>
+      </div>
+    </div>
+    <div class="flex gap-2 mt-4">
+      <button id="btn-follow" class="flex-1 py-2 rounded-xl text-xs font-bold bg-cyan-500/25 border border-cyan-400/40 text-cyan-200 hover:bg-cyan-500/40 transition cursor-pointer">
+        🎥 Follow Camera
+      </button>
+      <button id="btn-inspire" class="flex-1 py-2 rounded-xl text-xs font-bold bg-pink-500/25 border border-pink-400/40 text-pink-200 hover:bg-pink-500/40 transition cursor-pointer">
+        💖 Inspire
+      </button>
+    </div>
+    <div id="follow-exit-row" class="hidden mt-2">
+      <button id="btn-exit-follow" class="w-full py-2 rounded-xl text-xs font-bold bg-white/10 border border-white/20 text-white/80 hover:bg-white/20 transition cursor-pointer">
+        Exit Follow (Esc)
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ TOASTS ═══════════ -->
+<div id="toasts" class="hud top-20 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 pointer-events-none"></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ═══════════════════════════ CONSTANTS ═══════════════════════════ */
+const GRID = 24, CELL = 4;
+const W = GRID * CELL;
+const cellX = x => (x - GRID / 2 + 0.5) * CELL;
+const cellZ = z => (z - GRID / 2 + 0.5) * CELL;
+const inGrid = (x, z) => x >= 0 && z >= 0 && x < GRID && z < GRID;
+const cellKey = (x, z) => x + ',' + z;
+const DIRS = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] };
+const rnd = (a, b) => a + Math.random() * (b - a);
+const rndi = (a, b) => Math.floor(rnd(a, b + 1));
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+
+/* ═══════════════════════════ RENDERER / SCENE ═══════════════════════════ */
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+app.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x8ec9ee);
+scene.fog = new THREE.Fog(0x8ec9ee, 80, 240);
+
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 600);
+camera.position.set(40, 36, 44);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.maxPolarAngle = Math.PI * 0.465;
+controls.minDistance = 3;
+controls.maxDistance = 140;
+controls.target.set(0, 0, 0);
+
+/* ═══════════════════════════ LIGHTS ═══════════════════════════ */
+const hemi = new THREE.HemisphereLight(0xbfe3ff, 0x39483a, 0.75);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff2d9, 1.7);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+const SH = 62;
+sun.shadow.camera.left = -SH; sun.shadow.camera.right = SH;
+sun.shadow.camera.top = SH; sun.shadow.camera.bottom = -SH;
+sun.shadow.camera.near = 1; sun.shadow.camera.far = 300;
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.02;
+scene.add(sun); scene.add(sun.target);
+const moon = new THREE.DirectionalLight(0x8fa8ff, 0.0);
+moon.position.set(-40, 50, -30);
+scene.add(moon);
+
+/* ═══════════════════════════ PROCEDURAL TEXTURES ═══════════════════════════ */
+function canvasTex(size, draw, repeatX = 1, repeatY = 1) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  draw(c.getContext('2d'), size);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(repeatX, repeatY);
+  t.anisotropy = 4;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+const grassTex = canvasTex(256, (g, s) => {
+  g.fillStyle = '#4d8f3e'; g.fillRect(0, 0, s, s);
+  for (let i = 0; i < 2600; i++) {
+    const v = rnd(0, 1);
+    g.fillStyle = v < 0.5 ? `rgba(46,${rndi(110,140)},40,0.5)` : `rgba(${rndi(90,120)},${rndi(170,195)},${rndi(55,75)},0.45)`;
+    g.fillRect(rnd(0, s), rnd(0, s), rnd(1, 3), rnd(1, 3));
+  }
+  // subtle mowed stripes
+  g.fillStyle = 'rgba(255,255,255,0.035)';
+  for (let i = 0; i < 8; i++) g.fillRect(0, i * 32, s, 16);
+}, 12, 12);
+
+const sidewalkTex = canvasTex(128, (g, s) => {
+  g.fillStyle = '#9aa0a8'; g.fillRect(0, 0, s, s);
+  for (let i = 0; i < 900; i++) {
+    g.fillStyle = `rgba(${rndi(120,170)},${rndi(122,172)},${rndi(128,178)},0.25)`;
+    g.fillRect(rnd(0, s), rnd(0, s), 2, 2);
+  }
+  g.strokeStyle = 'rgba(60,64,70,0.55)'; g.lineWidth = 2;
+  for (let i = 0; i <= 2; i++) { g.beginPath(); g.moveTo(i * 64, 0); g.lineTo(i * 64, s); g.stroke();
+    g.beginPath(); g.moveTo(0, i * 64); g.lineTo(s, i * 64); g.stroke(); }
+});
+
+const asphaltTex = canvasTex(128, (g, s) => {
+  g.fillStyle = '#3b3e44'; g.fillRect(0, 0, s, s);
+  for (let i = 0; i < 1400; i++) {
+    g.fillStyle = `rgba(${rndi(40,80)},${rndi(42,82)},${rndi(48,88)},0.4)`;
+    g.fillRect(rnd(0, s), rnd(0, s), 2, 2);
+  }
+});
+
+function makeFacadeTexture(wall, winCols, winRows, litRatio, dayGlass) {
+  // returns {map, emissiveMap} — emissiveMap only has warm lit windows
+  const cw = 128, ch = 128;
+  const c1 = document.createElement('canvas'); c1.width = cw; c1.height = ch;
+  const c2 = document.createElement('canvas'); c2.width = cw; c2.height = ch;
+  const g1 = c1.getContext('2d'), g2 = c2.getContext('2d');
+  g1.fillStyle = wall; g1.fillRect(0, 0, cw, ch);
+  g2.fillStyle = '#000'; g2.fillRect(0, 0, cw, ch);
+  // wall shading variation
+  for (let i = 0; i < 300; i++) {
+    g1.fillStyle = `rgba(0,0,0,${rnd(0, 0.06)})`;
+    g1.fillRect(rnd(0, cw), rnd(0, ch), rnd(2, 8), rnd(2, 8));
+  }
+  const mx = 14, my = 16, gw = (cw - mx * 2) / winCols, gh = (ch - my * 2) / winRows;
+  for (let r = 0; r < winRows; r++) for (let col = 0; col < winCols; col++) {
+    const x = mx + col * gw, y = my + r * gh;
+    const lit = Math.random() < litRatio;
+    g1.fillStyle = dayGlass;
+    g1.fillRect(x + 2, y + 2, gw - 4, gh - 4);
+    g1.fillStyle = 'rgba(255,255,255,0.25)';
+    g1.fillRect(x + 2, y + 2, gw - 4, 3);
+    if (lit) {
+      const warm = pick(['#ffd98a', '#ffe6b0', '#ffc46b', '#fff3cf']);
+      g2.fillStyle = warm;
+      g2.fillRect(x + 2, y + 2, gw - 4, gh - 4);
+    }
+  }
+  const map = new THREE.CanvasTexture(c1), em = new THREE.CanvasTexture(c2);
+  map.colorSpace = THREE.SRGBColorSpace; em.colorSpace = THREE.SRGBColorSpace;
+  return { map, emissiveMap: em };
+}
+
+/* ═══════════════════════════ GROUND & WORLD ═══════════════════════════ */
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(W + 240, W + 240),
+  new THREE.MeshStandardMaterial({ map: grassTex, roughness: 1 })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// city base slab so the 24x24 plot reads as a "plate"
+const baseSlab = new THREE.Mesh(
+  new THREE.BoxGeometry(W + 2.4, 0.5, W + 2.4),
+  new THREE.MeshStandardMaterial({ color: 0x6b7280, roughness: 0.95 })
+);
+baseSlab.position.y = -0.26;
+baseSlab.receiveShadow = true;
+scene.add(baseSlab);
+
+// water ring beyond the slab
+const water = new THREE.Mesh(
+  new THREE.PlaneGeometry(700, 700),
+  new THREE.MeshStandardMaterial({ color: 0x2e6f9e, roughness: 0.35, metalness: 0.15 })
+);
+water.rotation.x = -Math.PI / 2;
+water.position.y = -0.55;
+scene.add(water);
+
+// faint grid helper lines over the buildable area (very subtle)
+const gridHelper = new THREE.GridHelper(W, GRID, 0xffffff, 0xffffff);
+gridHelper.position.y = 0.02;
+gridHelper.material.opacity = 0.05;
+gridHelper.material.transparent = true;
+scene.add(gridHelper);
+
+/* ═══════════════════════════ GRID DATA ═══════════════════════════ */
+const cells = [];
+for (let x = 0; x < GRID; x++) { cells[x] = []; for (let z = 0; z < GRID; z++) cells[x][z] = { type: null, group: null, data: null }; }
+
+function setCell(x, z, type) {
+  const c = cells[x][z];
+  c.type = type;
+  return c;
+}
+function cellAt(x, z) { return inGrid(x, z) ? cells[x][z] : null; }
+function isRoad(x, z) { const c = cellAt(x, z); return !!c && c.type === 'road'; }
+
+/* ═══════════════════════════ ROAD TILING ═══════════════════════════ */
+const matSidewalk = new THREE.MeshStandardMaterial({ map: sidewalkTex, roughness: 0.95 });
+const matAsphalt = new THREE.MeshStandardMaterial({ map: asphaltTex, roughness: 0.92 });
+const matLine = new THREE.MeshStandardMaterial({ color: 0xf5d547, roughness: 0.6 });
+const matWhite = new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.6 });
+
+function box(w, h, d, mat, x, y, z) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y, z);
+  m.receiveShadow = true;
+  return m;
+}
+
+const ROAD_TOP = 0.09, SIDE_TOP = 0.06;
+
+function makeRoadGroup(x, z) {
+  const g = new THREE.Group();
+  g.position.set(cellX(x), 0, cellZ(z));
+  const N = isRoad(x, z - 1), S = isRoad(x, z + 1), E = isRoad(x + 1, z), Wd = isRoad(x - 1, z);
+  const n = (N?1:0) + (S?1:0) + (E?1:0) + (Wd?1:0);
+  const vert = N && S, horz = E && Wd;
+
+  g.add(box(CELL, SIDE_TOP, CELL, matSidewalk, 0, SIDE_TOP / 2, 0));
+  const A = CELL * 0.62;
+  const arm = (dx, dz) => {
+    const w = dx !== 0 ? CELL + 0.001 : A;
+    const d = dz !== 0 ? CELL + 0.001 : A;
+    const px = dx * CELL / 4, pz = dz * CELL / 4;
+    g.add(box(w, 0.035, d, matAsphalt, px, SIDE_TOP + 0.0175, pz));
+    return { dx, dz, px, pz };
+  };
+
+  const dashY = SIDE_TOP + 0.038;
+  const addCenterDashes = (dx, dz) => {
+    // dashed center line along arm (skip the very middle so intersections stay clean)
+    const len = CELL / 2 - 0.55;
+    for (let t = -1; t <= 1; t += 2) {
+      const sgn = t;
+      const off = sgn * (CELL / 4);
+      const dw = 0.14, dl = 0.55;
+      const m = box(dx !== 0 ? dl : dw, 0.012, dx !== 0 ? dw : dl, matLine,
+        dx * off, dashY, dz * off);
+      g.add(m);
+      // second dash further out
+      const off2 = sgn * (CELL / 4 + 0.85);
+      g.add(box(dx !== 0 ? dl : dw, 0.012, dx !== 0 ? dw : dl, matLine, dx * off2, dashY, dz * off2));
+    }
+  };
+  const addCrosswalk = (dx, dz) => {
+    // zebra stripes across the arm near its outer edge
+    const stripes = 5, sw = 0.42, gap = 0.16;
+    const total = stripes * sw + (stripes - 1) * gap;
+    const off = (CELL / 2) - 0.75;
+    for (let i = 0; i < stripes; i++) {
+      const t = -total / 2 + sw / 2 + i * (sw + gap);
+      const px = dx * off + (dx !== 0 ? 0 : t);
+      const pz = dz * off + (dz !== 0 ? 0 : t);
+      const w = dx !== 0 ? 0.18 : sw, d = dz !== 0 ? 0.18 : sw;
+      g.add(box(w, 0.012, d, matWhite, px, dashY, pz));
+    }
+  };
+
+  if (n === 0) {
+    // isolated pad — full asphalt
+    g.add(box(A, 0.035, A, matAsphalt, 0, SIDE_TOP + 0.0175, 0));
+  } else if (n === 1) {
+    // dead end — turnaround pad + one arm
+    g.add(box(A, 0.035, A, matAsphalt, 0, SIDE_TOP + 0.0175, 0));
+    if (N) arm(0, -1);
+    if (S) arm(0, 1);
+    if (E) arm(1, 0);
+    if (Wd) arm(-1, 0);
+  } else if (n === 2 && (vert || horz)) {
+    if (vert) { arm(0, 1); arm(0, -1); addCenterDashes(0, 1); addCenterDashes(0, -1); }
+    else { arm(1, 0); arm(-1, 0); addCenterDashes(1, 0); addCenterDashes(-1, 0); }
+  } else if (n === 2) {
+    // corner
+    if (N) { arm(0, -1); addCenterDashes(0, -1); }
+    if (S) { arm(0, 1); addCenterDashes(0, 1); }
+    if (E) { arm(1, 0); addCenterDashes(1, 0); }
+    if (Wd) { arm(-1, 0); addCenterDashes(-1, 0); }
+  } else if (n === 3) {
+    // T intersection — asphalt covers 3 arms + center
+    g.add(box(A + 0.001, 0.035, A + 0.001, matAsphalt, 0, SIDE_TOP + 0.0175, 0));
+    if (N) { arm(0, -1); addCrosswalk(0, -1); }
+    if (S) { arm(0, 1); addCrosswalk(0, 1); }
+    if (E) { arm(1, 0); addCrosswalk(1, 0); }
+    if (Wd) { arm(-1, 0); addCrosswalk(-1, 0); }
+  } else if (n === 4) {
+    g.add(box(A + 0.001, 0.035, A + 0.001, matAsphalt, 0, SIDE_TOP + 0.0175, 0));
+    addCrosswalk(0, -1); addCrosswalk(0, 1); addCrosswalk(1, 0); addCrosswalk(-1, 0);
+  }
+  return g;
+}
+
+function rebuildRoad(x, z) {
+  if (!inGrid(x, z)) return;
+  const c = cells[x][z];
+  if (c.group) {
+    scene.remove(c.group);
+    c.group.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+    c.group = null;
+  }
+  if (c.type !== 'road') return;
+  c.group = makeRoadGroup(x, z);
+  scene.add(c.group);
+}
+function rebuildRoadAndNeighbors(x, z) {
+  if (!inGrid(x, z)) return;
+  rebuildRoad(x, z);
+  rebuildRoad(x + 1, z); rebuildRoad(x - 1, z);
+  rebuildRoad(x, z + 1); rebuildRoad(x, z - 1);
+}
+
+/* street lamps along road edges (decorative, added per road cell that borders non-road) */
+const lampGroup = new THREE.Group();
+scene.add(lampGroup);
+const lampPoles = [];
+const matLampPost = new THREE.MeshStandardMaterial({ color: 0x374151, roughness: 0.5, metalness: 0.6 });
+const matLampHead = new THREE.MeshStandardMaterial({ color: 0x1f2937, emissive: 0xffd98a, emissiveIntensity: 0 });
+const lampPoleGeo = new THREE.CylinderGeometry(0.05, 0.07, 2.6, 6);
+const lampHeadGeo = new THREE.SphereGeometry(0.16, 8, 6);
+
+function rebuildLamps() {
+  lampGroup.clear();
+  lampPoles.length = 0;
+  for (let x = 0; x < GRID; x++) for (let z = 0; z < GRID; z++) {
+    if (cells[x][z].type !== 'road') continue;
+    const N = isRoad(x, z - 1), S = isRoad(x, z + 1), E = isRoad(x + 1, z), Wd = isRoad(x - 1, z);
+    const spots = [];
+    if (!N) spots.push([CELL / 2 - 0.45, -(CELL / 2 - 0.45)]);
+    if (!S) spots.push([CELL / 2 - 0.45, CELL / 2 - 0.45]);
+    if (!E) spots.push([-(CELL / 2 - 0.45), CELL / 2 - 0.45]);
+    if (!Wd) spots.push([-(CELL / 2 - 0.45), -(CELL / 2 - 0.45)]);
+    if (spots.length === 0) continue;
+    // one lamp per qualifying corner, deterministic hash to avoid clutter
+    const h = (x * 73856093) ^ (z * 19349663);
+    if ((h & 3) !== 0) continue;
+    const [lx, lz] = spots[Math.abs(h) % spots.length];
+    const px = cellX(x) + lx, pz = cellZ(z) + lz;
+    const pole = new THREE.Mesh(lampPoleGeo, matLampPost);
+    pole.position.set(px, 1.3 + SIDE_TOP, pz);
+    pole.castShadow = true;
+    const head = new THREE.Mesh(lampHeadGeo, matLampHead);
+    head.position.set(px, 2.65 + SIDE_TOP, pz);
+    lampGroup.add(pole, head);
+    lampPoles.push({ x: px, z: pz });
+  }
+}
+
+
+/* ═══════════════════════════ BUILDINGS ═══════════════════════════ */
+const facadeMats = []; // updated for day/night emissive
+const buildingList = []; // {x, z, type, group, kind, name}
+
+function facadeMat(wall, cols, rows, litRatio, dayGlass) {
+  const t = makeFacadeTexture(wall, cols, rows, litRatio, dayGlass);
+  const m = new THREE.MeshStandardMaterial({
+    map: t.map, emissiveMap: t.emissiveMap,
+    emissive: new THREE.Color(0xffc87a), emissiveIntensity: 0,
+    roughness: 0.85
+  });
+  m.userData.owned = true;
+  facadeMats.push(m);
+  return m;
+}
+// mark a material as unique to one entity (so removal can dispose it)
+function own(m) { m.userData.owned = true; return m; }
+
+const matRoofDark = new THREE.MeshStandardMaterial({ color: 0x4b3a33, roughness: 0.9 });
+const matRoofFlat = new THREE.MeshStandardMaterial({ color: 0x5b6470, roughness: 0.9 });
+const matDoor = new THREE.MeshStandardMaterial({ color: 0x4a3527, roughness: 0.8 });
+const matFence = new THREE.MeshStandardMaterial({ color: 0xd8d3c8, roughness: 0.9 });
+
+function addBox(parent, w, h, d, mat, x, y, z, castShadow = true) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y, z);
+  m.castShadow = castShadow;
+  m.receiveShadow = true;
+  parent.add(m);
+  return m;
+}
+
+/* ---- Residential ---- */
+const resPalettes = [
+  { wall: '#c9a888', roof: 0x8c4a3c },
+  { wall: '#a8b8c8', roof: 0x5c6c7c },
+  { wall: '#d8c8a8', roof: 0x7c5c44 },
+  { wall: '#b8c8a8', roof: 0x4c6c44 },
+  { wall: '#d0a8a8', roof: 0x6c4444 },
+];
+
+function makeHouse() {
+  const g = new THREE.Group();
+  const pal = pick(resPalettes);
+  const stories = rndi(1, 2);
+  const bw = rnd(2.3, 2.9), bd = rnd(2.3, 2.9), bh = stories * rnd(1.7, 2.1);
+  const wallMat = facadeMat(pal.wall, 3, stories + 1, 0.55, '#3a4a5a');
+  addBox(g, bw, bh, bd, wallMat, 0, bh / 2, 0);
+  // gabled roof (triangular prism via 3-sided cylinder)
+  const roof = new THREE.Mesh(
+    new THREE.CylinderGeometry(bw * 0.78, bw * 0.78, bd * 1.12, 3),
+    own(new THREE.MeshStandardMaterial({ color: pal.roof, roughness: 0.85 }))
+  );
+  roof.rotation.x = Math.PI / 2;
+  roof.rotation.y = Math.PI / 2;
+  roof.scale.set(1, 1, bw / bd * 1.0);
+  roof.position.y = bh + 0.62;
+  roof.castShadow = true;
+  g.add(roof);
+  // door
+  addBox(g, 0.5, 0.95, 0.08, matDoor, 0, 0.48, bd / 2 + 0.02);
+  // chimney sometimes
+  if (Math.random() < 0.5) addBox(g, 0.3, 0.9, 0.3, matRoofDark, bw * 0.28, bh + 1.0, -bd * 0.2);
+  // small yard hedge
+  if (Math.random() < 0.6) {
+    const hedge = addBox(g, 1.1, 0.4, 0.4, own(new THREE.MeshStandardMaterial({ color: 0x3f7a34, roughness: 1 })),
+      -bw / 2 + 0.7, 0.2, bd / 2 + 0.35);
+  }
+  return g;
+}
+
+function makeApartment() {
+  const g = new THREE.Group();
+  const floors = rndi(3, 6);
+  const bw = rnd(2.6, 3.2), bd = rnd(2.6, 3.2), bh = floors * 1.35;
+  const wall = pick(['#8a97a8', '#a89880', '#98a898', '#b0a8c0']);
+  const wallMat = facadeMat(wall, 4, floors, 0.6, '#2e3c4a');
+  addBox(g, bw, bh, bd, wallMat, 0, bh / 2, 0);
+  addBox(g, bw + 0.15, 0.18, bd + 0.15, matRoofFlat, 0, bh + 0.09, 0);
+  // roof water tank
+  if (Math.random() < 0.7) {
+    const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.8, 10),
+      own(new THREE.MeshStandardMaterial({ color: 0x7a6a55, roughness: 0.9 })));
+    tank.position.set(rnd(-0.6, 0.6), bh + 0.58, rnd(-0.6, 0.6));
+    tank.castShadow = true;
+    g.add(tank);
+  }
+  addBox(g, 0.6, 1.0, 0.08, matDoor, 0, 0.5, bd / 2 + 0.02);
+  return g;
+}
+
+function makeResidential(x, z) {
+  const g = new THREE.Group();
+  g.position.set(cellX(x), 0, cellZ(z));
+  const isApt = Math.random() < 0.4;
+  const b = isApt ? makeApartment() : makeHouse();
+  b.position.y = SIDE_TOP;
+  g.add(b);
+  return { group: g, kind: isApt ? 'apartment' : 'house' };
+}
+
+/* ---- Commercial ---- */
+const comColors = ['#e05c5c', '#4c8ce0', '#e0a84c', '#5cc8a8', '#b06cd8', '#e07ca8'];
+
+function makeShop() {
+  const g = new THREE.Group();
+  const color = pick(comColors);
+  const bw = rnd(2.8, 3.4), bd = rnd(2.8, 3.4), bh = rnd(2.6, 3.4);
+  const wallMat = facadeMat(pick(['#d8d0c0', '#c8c8d0', '#d0d8d0']), 4, 2, 0.5, '#334');
+  addBox(g, bw, bh, bd, wallMat, 0, bh / 2, 0);
+  addBox(g, bw + 0.1, 0.14, bd + 0.1, matRoofFlat, 0, bh + 0.07, 0);
+  // storefront glass on front face
+  const glass = new THREE.MeshStandardMaterial({ color: 0x2a4a5e, roughness: 0.2, metalness: 0.4,
+    emissive: 0x88ccff, emissiveIntensity: 0 });
+  own(glass);
+  facadeMats.push(glass);
+  glass.userData.isGlass = true;
+  addBox(g, bw * 0.8, bh * 0.5, 0.1, glass, 0, bh * 0.42, bd / 2 + 0.03);
+  // awning
+  const awn = addBox(g, bw * 0.9, 0.1, 0.9,
+    own(new THREE.MeshStandardMaterial({ color: new THREE.Color(color).multiplyScalar(0.85), roughness: 0.7 })),
+    0, bh * 0.72, bd / 2 + 0.45);
+  awn.rotation.x = 0.12;
+  // sign
+  const signMat = own(new THREE.MeshStandardMaterial({ color: new THREE.Color(color), emissive: new THREE.Color(color), emissiveIntensity: 0.15 }));
+  const sign = addBox(g, bw * 0.7, 0.4, 0.08, signMat, 0, bh * 0.85, bd / 2 + 0.05);
+  facadeMats.push(signMat); signMat.userData.isSign = true;
+  return g;
+}
+
+function makeCafe() {
+  const g = new THREE.Group();
+  const color = pick(comColors);
+  const bw = 2.6, bd = 2.6, bh = 2.4;
+  const wallMat = facadeMat(pick(['#e8d8b8', '#d8c8b0']), 3, 2, 0.5, '#334');
+  addBox(g, bw, bh, bd, wallMat, 0, bh / 2, 0);
+  addBox(g, bw + 0.1, 0.12, bd + 0.1, matRoofFlat, 0, bh + 0.06, 0);
+  const glass = new THREE.MeshStandardMaterial({ color: 0x3a5a6a, roughness: 0.25, metalness: 0.3,
+    emissive: 0xffd9a0, emissiveIntensity: 0 });
+  own(glass);
+  facadeMats.push(glass); glass.userData.isGlass = true;
+  addBox(g, bw * 0.75, bh * 0.55, 0.1, glass, 0, bh * 0.4, bd / 2 + 0.03);
+  const awn = addBox(g, bw * 0.95, 0.09, 1.0,
+    own(new THREE.MeshStandardMaterial({ color: new THREE.Color(color).multiplyScalar(0.8), roughness: 0.7 })),
+    0, bh * 0.75, bd / 2 + 0.5);
+  awn.rotation.x = 0.15;
+  // outdoor tables
+  const tableMat = own(new THREE.MeshStandardMaterial({ color: 0x8a8a8a, roughness: 0.6 }));
+  for (let i = 0; i < 2; i++) {
+    const tx = rnd(-0.8, 0.8), tz = bd / 2 + 0.75;
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.5, 5), tableMat);
+    leg.position.set(tx, 0.25, tz); leg.castShadow = true; g.add(leg);
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.05, 8), tableMat);
+    top.position.set(tx, 0.52, tz); top.castShadow = true; g.add(top);
+  }
+  return g;
+}
+
+function makeOffice() {
+  const g = new THREE.Group();
+  const floors = rndi(6, 11);
+  const bw = rnd(2.8, 3.4), bd = rnd(2.8, 3.4), bh = floors * 1.25;
+  const wallMat = facadeMat(pick(['#7a8ea0', '#8a9aa8', '#6a7e90']), 5, floors, 0.65, '#1e2c3a');
+  addBox(g, bw, bh, bd, wallMat, 0, bh / 2, 0);
+  addBox(g, bw + 0.12, 0.16, bd + 0.12, matRoofFlat, 0, bh + 0.08, 0);
+  // rooftop AC units + antenna
+  addBox(g, 0.8, 0.5, 0.8, own(new THREE.MeshStandardMaterial({ color: 0x9aa4ae, roughness: 0.7, metalness: 0.4 })), rnd(-0.7, 0.7), bh + 0.4, rnd(-0.7, 0.7));
+  if (Math.random() < 0.5) {
+    const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 1.6, 5), matLampPost);
+    ant.position.set(rnd(-0.8, 0.8), bh + 1.0, rnd(-0.8, 0.8));
+    g.add(ant);
+  }
+  // ground floor glass
+  const glass = new THREE.MeshStandardMaterial({ color: 0x24384a, roughness: 0.15, metalness: 0.5,
+    emissive: 0x9fd0ff, emissiveIntensity: 0 });
+  own(glass);
+  facadeMats.push(glass); glass.userData.isGlass = true;
+  addBox(g, bw * 0.9, 1.1, 0.08, glass, 0, 0.6, bd / 2 + 0.02);
+  return g;
+}
+
+function makeCommercial(x, z) {
+  const g = new THREE.Group();
+  g.position.set(cellX(x), 0, cellZ(z));
+  const r = Math.random();
+  let kind, b;
+  if (r < 0.45) { kind = 'shop'; b = makeShop(); }
+  else if (r < 0.7) { kind = 'cafe'; b = makeCafe(); }
+  else { kind = 'office'; b = makeOffice(); }
+  b.position.y = SIDE_TOP;
+  // rotate so storefront faces a neighboring road
+  if (isRoad(x, z - 1)) g.rotation.y = 0;
+  else if (isRoad(x, z + 1)) g.rotation.y = Math.PI;
+  else if (isRoad(x + 1, z)) g.rotation.y = -Math.PI / 2;
+  else if (isRoad(x - 1, z)) g.rotation.y = Math.PI / 2;
+  g.add(b);
+  return { group: g, kind };
+}
+
+/* ---- Park ---- */
+const matTrunk = new THREE.MeshStandardMaterial({ color: 0x6b4a2e, roughness: 1 });
+const canopyMats = [
+  new THREE.MeshStandardMaterial({ color: 0x3f8a3a, roughness: 1 }),
+  new THREE.MeshStandardMaterial({ color: 0x54a04a, roughness: 1 }),
+  new THREE.MeshStandardMaterial({ color: 0x2f7a44, roughness: 1 }),
+];
+const matBench = new THREE.MeshStandardMaterial({ color: 0x7a5a3a, roughness: 0.9 });
+const matPath = new THREE.MeshStandardMaterial({ color: 0xcfc4a8, roughness: 0.95 });
+const matFountain = new THREE.MeshStandardMaterial({ color: 0xb8b8c0, roughness: 0.5 });
+const matWater = new THREE.MeshStandardMaterial({ color: 0x4aa8e0, roughness: 0.15, metalness: 0.2 });
+
+function makeTree(scale = 1) {
+  const t = new THREE.Group();
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12 * scale, 0.18 * scale, 0.9 * scale, 6), matTrunk);
+  trunk.position.y = 0.45 * scale;
+  trunk.castShadow = true;
+  t.add(trunk);
+  const canopy = new THREE.Mesh(new THREE.IcosahedronGeometry(0.75 * scale, 0), pick(canopyMats));
+  canopy.position.y = 1.35 * scale;
+  canopy.castShadow = true;
+  t.add(canopy);
+  const canopy2 = new THREE.Mesh(new THREE.IcosahedronGeometry(0.5 * scale, 0), pick(canopyMats));
+  canopy2.position.set(rnd(-0.3, 0.3) * scale, 1.9 * scale, rnd(-0.3, 0.3) * scale);
+  canopy2.castShadow = true;
+  t.add(canopy2);
+  return t;
+}
+
+function makePark(x, z) {
+  const g = new THREE.Group();
+  g.position.set(cellX(x), 0, cellZ(z));
+  // grass base
+  const base = new THREE.Mesh(new THREE.BoxGeometry(CELL - 0.15, SIDE_TOP, CELL - 0.15),
+    own(new THREE.MeshStandardMaterial({ color: 0x4f9440, roughness: 1 })));
+  base.position.y = SIDE_TOP / 2;
+  base.receiveShadow = true;
+  g.add(base);
+  // cross paths
+  g.add(box(CELL - 0.2, 0.02, 0.8, matPath, 0, SIDE_TOP + 0.011, 0));
+  g.add(box(0.8, 0.02, CELL - 0.2, matPath, 0, SIDE_TOP + 0.011, 0));
+  // trees
+  const nTrees = rndi(3, 5);
+  for (let i = 0; i < nTrees; i++) {
+    const t = makeTree(rnd(0.8, 1.3));
+    const side = pick([1, -1]);
+    t.position.set(side * rnd(0.9, 1.45), SIDE_TOP, side * rnd(0.9, 1.45));
+    g.add(t);
+  }
+  // bench
+  const bench = new THREE.Group();
+  addBox(bench, 0.9, 0.08, 0.3, matBench, 0, 0.32, 0);
+  addBox(bench, 0.9, 0.28, 0.06, matBench, 0, 0.5, -0.14);
+  addBox(bench, 0.06, 0.3, 0.26, matBench, -0.38, 0.15, 0);
+  addBox(bench, 0.06, 0.3, 0.26, matBench, 0.38, 0.15, 0);
+  bench.position.set(rnd(-1, 1), SIDE_TOP, rnd(1.1, 1.5) * pick([1, -1]));
+  bench.rotation.y = pick([0, Math.PI, Math.PI / 2, -Math.PI / 2]);
+  g.add(bench);
+  // fountain (center)
+  if (Math.random() < 0.65) {
+    const f = new THREE.Group();
+    const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.8, 0.3, 12), matFountain);
+    rim.position.y = 0.15; rim.castShadow = true; f.add(rim);
+    const w = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.06, 12), matWater);
+    w.position.y = 0.28; f.add(w);
+    const jet = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.7, 6),
+      own(new THREE.MeshStandardMaterial({ color: 0x9fd8f0, transparent: true, opacity: 0.75, roughness: 0.1 })));
+    jet.position.y = 0.75; f.add(jet);
+    f.position.set(0, SIDE_TOP, 0);
+    g.add(f);
+  }
+  return { group: g, kind: 'park' };
+}
+
+function placeBuilding(x, z, type) {
+  let res;
+  if (type === 'res') res = makeResidential(x, z);
+  else if (type === 'com') res = makeCommercial(x, z);
+  else if (type === 'park') res = makePark(x, z);
+  const c = cells[x][z];
+  c.type = type;
+  c.group = res.group;
+  c.data = res;
+  scene.add(res.group);
+  buildingList.push({ x, z, type, group: res.group, kind: res.kind });
+  return c;
+}
+
+function removeBuildingAt(x, z) {
+  const c = cells[x][z];
+  if (c.group) {
+    scene.remove(c.group);
+    c.group.traverse(o => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.isMesh && o.material && o.material.userData.owned) {
+        const mi = facadeMats.indexOf(o.material);
+        if (mi >= 0) facadeMats.splice(mi, 1);
+        if (o.material.map) o.material.map.dispose();
+        if (o.material.emissiveMap) o.material.emissiveMap.dispose();
+        o.material.dispose();
+      }
+    });
+    c.group = null; c.data = null;
+  }
+  const i = buildingList.findIndex(b => b.x === x && b.z === z);
+  if (i >= 0) buildingList.splice(i, 1);
+}
+
+
+/* ═══════════════════════════ NAMES & AGENT DATA ═══════════════════════════ */
+const FIRST = ['Maya','Leo','Zoe','Kai','Ivy','Noah','Luna','Owen','Ruby','Finn','Elsa','Milo','Nora','Jude','Iris','Theo','Cleo','Axel','Wren','Ezra','Sage','Remy','Nova','Hugo','Piper','Rex','Mara','Cole','Tess','Bruno','Lila','Otis','June','Silas','Dana','Moss','Vera','Gus','Poppy','Eli'];
+const LAST = ['Rivera','Chen','Okafor','Petrov','Nakamura','Silva','Kowalski','Haddad','Berg','Costa','Mbeki','Tanaka','Larsen','Moreau','Singh','Vargas','Novak','Adeyemi','Rossi','Kim'];
+const CAR_COLORS = [0xd94f4f, 0x4f7fd9, 0xd9a44f, 0x59c98a, 0x9a6cd9, 0xe0e0e0, 0x3a3f4a, 0xd97fb0, 0x4fc9d9, 0xb0b0b0];
+const SHIRT_COLORS = [0xe06c5c, 0x5c8ce0, 0xe0c05c, 0x6cc98a, 0xb07ce0, 0xe0e0e0, 0x5cc9c0, 0xd98ab0, 0x8a9aa8, 0xc07a4c];
+const PANTS_COLORS = [0x3a4a5c, 0x5c5c5c, 0x4a3a2e, 0x2e4a5c, 0x5c4a5c];
+
+const uid = (() => { let n = 0; return () => ++n; })();
+
+function genName() { return pick(FIRST) + ' ' + pick(LAST); }
+
+const agents = []; // all cars + peds
+let cars = [], peds = [];
+
+/* ═══════════════════════════ ROAD GRAPH ═══════════════════════════ */
+function roadNeighbors(x, z) {
+  const out = [];
+  for (const [dx, dz] of [[0, -1], [0, 1], [1, 0], [-1, 0]]) {
+    if (isRoad(x + dx, z + dz)) out.push([x + dx, z + dz]);
+  }
+  return out;
+}
+
+function findPath(sx, sz, tx, tz, maxExpand = 600) {
+  if (sx === tx && sz === tz) return null;
+  const start = sx + ',' + sz, goal = tx + ',' + tz;
+  if (!isRoad(sx, sz) || !isRoad(tx, tz)) return null;
+  const prev = new Map();
+  const visited = new Set([start]);
+  let frontier = [[sx, sz]];
+  let found = false;
+  for (let iter = 0; iter < maxExpand && frontier.length; iter++) {
+    const next = [];
+    for (const [cx, cz] of frontier) {
+      for (const [nx, nz] of roadNeighbors(cx, cz)) {
+        const k = nx + ',' + nz;
+        if (visited.has(k)) continue;
+        visited.add(k);
+        prev.set(k, cx + ',' + cz);
+        if (nx === tx && nz === tz) { found = true; break; }
+        next.push([nx, nz]);
+      }
+      if (found) break;
+    }
+    if (found) break;
+    frontier = next;
+  }
+  if (!found) return null;
+  const path = [[tx, tz]];
+  let cur = goal;
+  while (cur !== start) {
+    const p = prev.get(cur);
+    if (!p) return null;
+    const [px, pz] = p.split(',').map(Number);
+    path.push([px, pz]);
+    cur = p;
+  }
+  path.reverse();
+  return path;
+}
+
+function allRoadCells() {
+  const out = [];
+  for (let x = 0; x < GRID; x++) for (let z = 0; z < GRID; z++)
+    if (cells[x][z].type === 'road') out.push([x, z]);
+  return out;
+}
+function randomRoadCell() {
+  const rc = allRoadCells();
+  return rc.length ? pick(rc) : null;
+}
+function roadCellNear(bx, bz) {
+  // find a road cell within radius 4 of building at bx,bz
+  const rc = allRoadCells();
+  if (!rc.length) return null;
+  rc.sort((a, b) => (Math.abs(a[0] - bx) + Math.abs(a[1] - bz)) - (Math.abs(b[0] - bx) + Math.abs(b[1] - bz)));
+  return rc[0];
+}
+
+/* ═══════════════════════════ WAYPOINT GEOMETRY (right-hand lane) ═══════════════════════════ */
+const LANE = CELL * 0.16;
+
+function laneOffsetAt(path, i) {
+  // average of incoming & outgoing right vectors → smooth corner arcs
+  let rx = 0, rz = 0, cnt = 0;
+  if (i > 0) {
+    const dx = path[i][0] - path[i - 1][0], dz = path[i][1] - path[i - 1][1];
+    rx += dz; rz -= dx; cnt++;
+  }
+  if (i < path.length - 1) {
+    const dx = path[i + 1][0] - path[i][0], dz = path[i + 1][1] - path[i][1];
+    rx += dz; rz -= dx; cnt++;
+  }
+  if (cnt === 0) return [0, 0];
+  const len = Math.hypot(rx, rz) || 1;
+  return [rx / len * LANE, rz / len * LANE];
+}
+
+function waypointPos(path, i) {
+  const [ox, oz] = laneOffsetAt(path, i);
+  return new THREE.Vector3(cellX(path[i][0]) + ox, 0, cellZ(path[i][1]) + oz);
+}
+
+/* ═══════════════════════════ CARS ═══════════════════════════ */
+const matTire = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 });
+const matGlassDark = new THREE.MeshStandardMaterial({ color: 0x1c2833, roughness: 0.2, metalness: 0.5 });
+const headlightMats = [];
+const taillightMats = [];
+
+function makeCarMesh(color, kind) {
+  const g = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.35 });
+  bodyMat.userData.owned = true;
+  let bw, bh, bl;
+  if (kind === 'bus') { bw = 1.5; bh = 1.0; bl = 3.6; }
+  else if (kind === 'van') { bw = 1.35; bh = 0.95; bl = 2.9; }
+  else { bw = 1.25; bh = 0.62; bl = 2.5; }
+  const body = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bl), bodyMat);
+  body.position.y = 0.35 + bh / 2;
+  body.castShadow = true;
+  g.add(body);
+  // cabin
+  if (kind !== 'bus') {
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(bw * 0.82, bh * 0.75, bl * 0.48), matGlassDark);
+    cab.position.set(0, 0.35 + bh + bh * 0.3, -bl * 0.08);
+    cab.castShadow = true;
+    g.add(cab);
+  } else {
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(bw * 0.98, 0.5, bl * 0.92), matGlassDark);
+    strip.position.set(0, 0.35 + bh * 0.62, 0);
+    g.add(strip);
+  }
+  // wheels
+  const wr = 0.24;
+  const wheelGeo = new THREE.CylinderGeometry(wr, wr, 0.18, 10);
+  wheelGeo.rotateZ(Math.PI / 2);
+  const wpos = kind === 'bus'
+    ? [[-0.62, 1.05], [0.62, 1.05], [-0.62, -1.05], [0.62, -1.05]]
+    : [[-0.55, 0.72], [0.55, 0.72], [-0.55, -0.72], [0.55, -0.72]];
+  for (const [wx, wz] of wpos) {
+    const w = new THREE.Mesh(wheelGeo, matTire);
+    w.position.set(wx, wr, wz);
+    g.add(w);
+  }
+  // headlights (front = -Z) & taillights (rear = +Z)
+  const hlMat = new THREE.MeshStandardMaterial({ color: 0xfff8d8, emissive: 0xfff2b0, emissiveIntensity: 0 });
+  const tlMat = new THREE.MeshStandardMaterial({ color: 0x7a1a1a, emissive: 0xff2a1a, emissiveIntensity: 0.25 });
+  headlightMats.push(hlMat); taillightMats.push(tlMat);
+  const hlGeo = new THREE.BoxGeometry(0.16, 0.1, 0.06);
+  for (const sx of [-1, 1]) {
+    const hl = new THREE.Mesh(hlGeo, hlMat);
+    hl.position.set(sx * bw * 0.32, 0.55, -bl / 2 - 0.02);
+    g.add(hl);
+    const tl = new THREE.Mesh(hlGeo, tlMat);
+    tl.position.set(sx * bw * 0.32, 0.55, bl / 2 + 0.02);
+    g.add(tl);
+  }
+  // headlight spotlights (only a few cars get real lights for perf)
+  g.userData = { hlMat, tlMat, kind };
+  return g;
+}
+
+function spawnCar() {
+  // prefer spawning near residential buildings
+  const res = buildingList.filter(b => b.type === 'res');
+  let rc = null;
+  if (res.length && Math.random() < 0.75) rc = roadCellNear(pick(res).x, pick(res).z);
+  if (!rc) rc = randomRoadCell();
+  if (!rc) return null;
+  const nb = roadNeighbors(rc[0], rc[1]);
+  if (!nb.length) return null;
+  const kind = Math.random() < 0.12 ? 'bus' : (Math.random() < 0.25 ? 'van' : 'sedan');
+  const mesh = makeCarMesh(pick(CAR_COLORS), kind);
+  const car = {
+    id: uid(), type: 'car',
+    name: kind === 'bus' ? 'City Bus #(' + rndi(10, 99) + ')' : (kind === 'van' ? 'Delivery Van' : pick(['Commuter Sedan', 'City Car', 'Sedan', 'Hatchback'])),
+    kind,
+    mesh,
+    path: null, seg: 0,
+    pos: new THREE.Vector3(),
+    heading: 0,
+    speed: 0,
+    baseSpeed: kind === 'bus' ? rnd(3.2, 3.8) : rnd(4.2, 5.6),
+    mood: rnd(55, 90),
+    state: 'cruising', // cruising | waiting
+    waitTimer: 0,
+    activity: 'Cruising around town',
+    dest: '—',
+    driver: null,
+  };
+  // initial path
+  const p = findPath(rc[0], rc[1], nb[0][0], nb[0][1]);
+  if (!p) return null;
+  car.path = p;
+  car.pos.copy(waypointPos(p, 0));
+  scene.add(mesh);
+  cars.push(car);
+  agents.push(car);
+  return car;
+}
+
+function newCarPlan(car) {
+  // pick a destination road cell (prefer near commercial)
+  const coms = buildingList.filter(b => b.type === 'com');
+  let target = null;
+  if (coms.length && Math.random() < 0.65) {
+    const c = pick(coms);
+    target = roadCellNear(c.x, c.z);
+    car.activity = car.kind === 'bus' ? 'Running the route' : 'Commuting to ' + comName(c);
+    car.dest = comName(c);
+  } else {
+    target = randomRoadCell();
+    car.activity = 'Cruising around town';
+    car.dest = 'Nowhere in particular';
+  }
+  if (!target) { car.path = null; return; }
+  let sx, sz;
+  if (car.path) { sx = car.path[car.path.length - 1][0]; sz = car.path[car.path.length - 1][1]; }
+  else {
+    sx = clamp(Math.round(car.pos.x / CELL + GRID / 2 - 0.5), 0, GRID - 1);
+    sz = clamp(Math.round(car.pos.z / CELL + GRID / 2 - 0.5), 0, GRID - 1);
+    if (!isRoad(sx, sz)) {
+      const nr = roadCellNear(sx, sz);
+      if (!nr) { car.path = null; return; }
+      sx = nr[0]; sz = nr[1];
+    }
+  }
+  const p = findPath(sx, sz, target[0], target[1]);
+  if (!p) { car.path = null; return; }
+  car.path = p;
+  car.seg = 0;
+}
+
+function comName(b) {
+  if (b.kind === 'cafe') return pick(['Bean Corner Café', 'The Daily Grind', 'Sunrise Café', 'Café Lumen']);
+  if (b.kind === 'office') return pick(['Downtown Tower', 'Skyline Offices', 'Metro Plaza', 'The Exchange']);
+  return pick(['Main St. Market', 'Corner Shop', 'Bloom & Co.', 'The Emporium', 'QuickStop', 'Retro Arcade']);
+}
+
+/* ── traffic: one car may occupy an intersection at a time ── */
+function carCell(car) {
+  return [clamp(Math.floor(car.pos.x / CELL + GRID / 2), 0, GRID - 1),
+          clamp(Math.floor(car.pos.z / CELL + GRID / 2), 0, GRID - 1)];
+}
+function isIntersection(x, z) {
+  if (!isRoad(x, z)) return false;
+  const n = (isRoad(x, z-1)?1:0)+(isRoad(x, z+1)?1:0)+(isRoad(x+1, z)?1:0)+(isRoad(x-1, z)?1:0);
+  return n >= 3;
+}
+
+function updateCar(car, dt) {
+  if (!car.path) {
+    // re-plan
+    car.waitTimer -= dt;
+    if (car.waitTimer <= 0) { newCarPlan(car); car.waitTimer = 1.5; }
+    car.speed = lerp(car.speed, 0, dt * 2);
+    return;
+  }
+  const cur = car.path[car.seg], nxt = car.path[car.seg + 1];
+  const from = waypointPos(car.path, car.seg);
+  const to = nxt ? waypointPos(car.path, car.seg + 1) : null;
+
+  // desired speed: slow if car ahead
+  let desired = car.baseSpeed;
+  let blocked = false;
+  if (to) {
+    const dirX = (to.x - car.pos.x), dirZ = (to.z - car.pos.z);
+    const dist = Math.hypot(dirX, dirZ);
+    if (dist > 0.001) {
+      const dx = dirX / dist, dz = dirZ / dist;
+      for (const other of cars) {
+        if (other === car) continue;
+        const ox = other.pos.x - car.pos.x, oz = other.pos.z - car.pos.z;
+        const ahead = ox * dx + oz * dz;
+        if (ahead > 0.2 && ahead < 4.0) {
+          const lat = Math.abs(ox * -dz + oz * dx);
+          if (lat < 1.0) {
+            desired = Math.min(desired, clamp((ahead - 1.4) * 1.8, 0, car.baseSpeed));
+            if (ahead < 1.5) blocked = true;
+          }
+        }
+      }
+      // light intersection gate: one car inside at a time (no exit check -> keeps flow)
+      const phys = carCell(car);
+      const insideInt = isIntersection(phys[0], phys[1]);
+      const nextInt = (!insideInt && isIntersection(nxt[0], nxt[1]));
+      if (insideInt) {
+        car.gateTimer = 0;
+      } else if (nextInt) {
+        let occupied = false;
+        for (const o of cars) {
+          if (o === car) continue;
+          const oc = carCell(o);
+          if (isIntersection(oc[0], oc[1]) && oc[0] === nxt[0] && oc[1] === nxt[1]) { occupied = true; break; }
+        }
+        if (occupied) {
+          car.gateTimer = (car.gateTimer || 0) + dt;
+          if (car.gateTimer < 2.0) { desired = 0; blocked = true; }
+        } else {
+          car.gateTimer = 0;
+        }
+      } else {
+        car.gateTimer = 0;
+      }
+    }
+  }
+  // smooth accel
+  const accel = blocked ? 6 : 3.2;
+  car.speed = lerp(car.speed, desired, clamp(dt * accel, 0, 1));
+  if (car.speed < 0.02) car.speed = 0;
+
+  // move toward current target waypoint
+  if (to) {
+    const dx = to.x - car.pos.x, dz = to.z - car.pos.z;
+    const dist = Math.hypot(dx, dz);
+    const step = car.speed * dt;
+    if (step >= dist - 0.02) {
+      car.pos.copy(to);
+      car.seg++;
+      if (car.seg >= car.path.length - 1) {
+        // arrived at end
+        car.pos.copy(waypointPos(car.path, car.path.length - 1));
+        car.path = null;
+        car.mood = clamp(car.mood + rnd(-2, 4), 20, 100);
+        return;
+      }
+    } else {
+      car.pos.x += dx / dist * step;
+      car.pos.z += dz / dist * step;
+    }
+    // heading
+    const targetHeading = Math.atan2(-dx, -dz); // model faces -Z at heading 0
+    let dh = targetHeading - car.heading;
+    while (dh > Math.PI) dh -= Math.PI * 2;
+    while (dh < -Math.PI) dh += Math.PI * 2;
+    car.heading += dh * clamp(dt * 7, 0, 1);
+  }
+
+  car.mesh.position.set(car.pos.x, SIDE_TOP, car.pos.z);
+  car.mesh.rotation.y = car.heading;
+  car.mesh.position.y = SIDE_TOP + 0.24;
+
+  // mood drift
+  car.mood = clamp(car.mood + rnd(-0.4, 0.5) * dt, 20, 100);
+}
+
+/* ═══════════════════════════ PEDESTRIANS ═══════════════════════════ */
+function makePedMesh() {
+  const g = new THREE.Group();
+  const shirt = new THREE.MeshStandardMaterial({ color: pick(SHIRT_COLORS), roughness: 0.9 });
+  const pants = new THREE.MeshStandardMaterial({ color: pick(PANTS_COLORS), roughness: 0.9 });
+  const skin = new THREE.MeshStandardMaterial({ color: pick([0xf0c8a0, 0xc89868, 0x8a5c3c, 0xe8b890]), roughness: 0.8 });
+  shirt.userData.owned = pants.userData.owned = skin.userData.owned = true;
+  // torso
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.42, 0.2), shirt);
+  torso.position.y = 0.72;
+  torso.castShadow = true;
+  g.add(torso);
+  // head
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 0.24), skin);
+  head.position.y = 1.12;
+  head.castShadow = true;
+  g.add(head);
+  // hair
+  const hairMat = new THREE.MeshStandardMaterial({ color: pick([0x2a1a0e, 0x4a3018, 0x1a1a1a, 0x8a6a3a, 0x6a2a1a]), roughness: 1 });
+  hairMat.userData.owned = true;
+  const hair = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.1, 0.26), hairMat);
+  hair.position.y = 1.24;
+  g.add(hair);
+  // legs (pivot at hip)
+  const legGeo = new THREE.BoxGeometry(0.13, 0.5, 0.15);
+  legGeo.translate(0, -0.25, 0);
+  const legL = new THREE.Mesh(legGeo, pants);
+  legL.position.set(-0.09, 0.5, 0);
+  legL.castShadow = true;
+  const legR = new THREE.Mesh(legGeo, pants);
+  legR.position.set(0.09, 0.5, 0);
+  legR.castShadow = true;
+  // arms (pivot at shoulder)
+  const armGeo = new THREE.BoxGeometry(0.11, 0.42, 0.12);
+  armGeo.translate(0, -0.2, 0);
+  const armL = new THREE.Mesh(armGeo, shirt);
+  armL.position.set(-0.24, 0.9, 0);
+  const armR = new THREE.Mesh(armGeo, shirt);
+  armR.position.set(0.24, 0.9, 0);
+  g.add(legL, legR, armL, armR);
+  g.userData = { legL, legR, armL, armR };
+  return g;
+}
+
+function spawnPed() {
+  // spawn on a sidewalk near a residential building when possible
+  const res = buildingList.filter(b => b.type === 'res');
+  let rc = null;
+  if (res.length && Math.random() < 0.8) rc = roadCellNear(pick(res).x, pick(res).z);
+  if (!rc) rc = randomRoadCell();
+  if (!rc) return null;
+  const mesh = makePedMesh();
+  const ped = {
+    id: uid(), type: 'ped',
+    name: genName(),
+    role: pick(['Student', 'Office Worker', 'Barista', 'Retired', 'Artist', 'Nurse', 'Engineer', 'Musician', 'Teacher', 'Chef']),
+    mesh,
+    path: null, seg: 0,
+    pos: new THREE.Vector3(),
+    heading: 0,
+    speed: 0,
+    baseSpeed: rnd(1.5, 2.2),
+    walkPhase: rnd(0, Math.PI * 2),
+    mood: rnd(50, 95),
+    activity: 'Wandering',
+    dest: '—',
+    state: 'walking', // walking | visiting | resting
+    stateTimer: rnd(2, 6),
+  };
+  placePedOnSidewalk(ped, rc);
+  scene.add(mesh);
+  peds.push(ped);
+  agents.push(ped);
+  return ped;
+}
+
+function sidewalkPointFor(rc) {
+  // pick an edge of the road cell that borders a non-road (or grid edge) and stand near it
+  const [x, z] = rc;
+  const edges = [];
+  if (!isRoad(x, z - 1)) edges.push([0, -1]);
+  if (!isRoad(x, z + 1)) edges.push([0, 1]);
+  if (!isRoad(x + 1, z)) edges.push([1, 0]);
+  if (!isRoad(x - 1, z)) edges.push([-1, 0]);
+  let ex, ez;
+  if (edges.length) {
+    const e = pick(edges);
+    ex = e[0]; ez = e[1];
+  } else { ex = pick([1, -1]); ez = 0; }
+  const off = CELL / 2 - 0.45;
+  return new THREE.Vector3(cellX(x) + ex * off, 0, cellZ(z) + ez * off);
+}
+
+function placePedOnSidewalk(ped, rc) {
+  ped.pos.copy(sidewalkPointFor(rc));
+  ped.mesh.position.set(ped.pos.x, SIDE_TOP, ped.pos.z);
+}
+
+function pedDestinations() {
+  const out = [];
+  for (const b of buildingList) {
+    if (b.type === 'com' || b.type === 'park') out.push({ x: b.x, z: b.z, label: b.type === 'park' ? 'the Park' : comName(b), kind: b.type });
+  }
+  return out;
+}
+
+function newPedPlan(ped) {
+  const dests = pedDestinations();
+  let gx, gz, label, kind;
+  if (dests.length && Math.random() < 0.75) {
+    const d = pick(dests);
+    gx = d.x; gz = d.z; label = d.label; kind = d.kind;
+  } else {
+    const rc = randomRoadCell();
+    if (!rc) { ped.path = null; return; }
+    gx = rc[0]; gz = rc[1]; label = 'the streets'; kind = null;
+  }
+  // walk to a road cell near destination, then "enter"
+  const rc = roadCellNear(gx, gz);
+  if (!rc) { ped.path = null; return; }
+  const sx = clamp(Math.round(ped.pos.x / CELL + GRID / 2 - 0.5), 0, GRID - 1);
+  const sz = clamp(Math.round(ped.pos.z / CELL + GRID / 2 - 0.5), 0, GRID - 1);
+  let p = isRoad(sx, sz) ? findPath(sx, sz, rc[0], rc[1]) : null;
+  if (!p && isRoad(sx, sz)) {
+    // no route — just walk in a straight line to nearest sidewalk point
+    p = null;
+  }
+  if (p) {
+    ped.path = p;
+    ped.seg = 0;
+    ped.activity = kind === 'park' ? 'Walking to ' + label : 'Heading to ' + label;
+    ped.dest = label;
+    ped.state = 'walking';
+  } else {
+    // fallback: walk directly to sidewalk point near destination (crossing streets)
+    const target = new THREE.Vector3(cellX(gx) + rnd(-1, 1), 0, cellZ(gz) + rnd(-1, 1));
+    ped.path = null;
+    ped.directTarget = target;
+    ped.activity = 'Cutting across to ' + label;
+    ped.dest = label;
+    ped.state = 'walking';
+  }
+}
+
+function updatePed(ped, dt) {
+  const ud = ped.mesh.userData;
+  ped.mood = clamp(ped.mood + rnd(-0.5, 0.55) * dt, 15, 100);
+
+  if (ped.state === 'resting') {
+    ped.stateTimer -= dt;
+    // idle: small sway
+    ud.legL.rotation.x = Math.sin(ped.walkPhase) * 0.05;
+    ud.legR.rotation.x = -Math.sin(ped.walkPhase) * 0.05;
+    ud.armL.rotation.x = 0;
+    ud.armR.rotation.x = 0;
+    if (ped.stateTimer <= 0) newPedPlan(ped);
+    return;
+  }
+
+  if (ped.state === 'visiting') {
+    ped.stateTimer -= dt;
+    ped.walkPhase += dt * 2;
+    ud.legL.rotation.x = Math.sin(ped.walkPhase) * 0.08;
+    ud.legR.rotation.x = -Math.sin(ped.walkPhase) * 0.08;
+    // turn slowly (looking around)
+    ped.heading += dt * 0.6;
+    ped.mood = clamp(ped.mood + dt * 1.5, 15, 100);
+    if (ped.stateTimer <= 0) newPedPlan(ped);
+    return;
+  }
+
+  // walking
+  let target = null;
+  if (ped.path) {
+    if (ped.seg >= ped.path.length - 1) {
+      // arrived at road cell near destination → visit
+      ped.path = null;
+      ped.state = 'visiting';
+      ped.stateTimer = rnd(4, 9);
+      ped.activity = ped.dest === 'the Park' ? 'Enjoying the park' : 'At ' + ped.dest;
+      ped.mood = clamp(ped.mood + rnd(3, 8), 15, 100);
+      return;
+    }
+    const cur = ped.path[ped.seg], nxt = ped.path[ped.seg + 1];
+    const from = waypointPos(ped.path, ped.seg);
+    const to = waypointPos(ped.path, ped.seg + 1);
+    target = to;
+    // peds use sidewalk-ish offset: shift toward cell edge away from road center
+    const dx = to.x - ped.pos.x, dz = to.z - ped.pos.z;
+    const dist = Math.hypot(dx, dz);
+    const step = ped.baseSpeed * dt;
+    if (step >= dist - 0.02) {
+      ped.pos.copy(to);
+      ped.seg++;
+    } else {
+      ped.pos.x += dx / dist * step;
+      ped.pos.z += dz / dist * step;
+    }
+    if (dist > 0.001) {
+      const targetHeading = Math.atan2(-dx, -dz);
+      let dh = targetHeading - ped.heading;
+      while (dh > Math.PI) dh -= Math.PI * 2;
+      while (dh < -Math.PI) dh += Math.PI * 2;
+      ped.heading += dh * clamp(dt * 8, 0, 1);
+    }
+  } else if (ped.directTarget) {
+    const dx = ped.directTarget.x - ped.pos.x, dz = ped.directTarget.z - ped.pos.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 0.4) {
+      ped.directTarget = null;
+      ped.state = 'visiting';
+      ped.stateTimer = rnd(4, 9);
+      ped.activity = ped.dest === 'the Park' ? 'Enjoying the park' : 'At ' + ped.dest;
+      return;
+    }
+    ped.pos.x += dx / dist * ped.baseSpeed * dt;
+    ped.pos.z += dz / dist * ped.baseSpeed * dt;
+    const targetHeading = Math.atan2(-dx, -dz);
+    let dh = targetHeading - ped.heading;
+    while (dh > Math.PI) dh -= Math.PI * 2;
+    while (dh < -Math.PI) dh += Math.PI * 2;
+    ped.heading += dh * clamp(dt * 8, 0, 1);
+  } else {
+    ped.stateTimer -= dt;
+    if (ped.stateTimer <= 0) newPedPlan(ped);
+    return;
+  }
+
+  // walk animation
+  ped.walkPhase += dt * ped.baseSpeed * 4.2;
+  const sw = Math.sin(ped.walkPhase) * 0.55 * clamp(ped.baseSpeed / 2, 0.4, 1);
+  ud.legL.rotation.x = sw;
+  ud.legR.rotation.x = -sw;
+  ud.armL.rotation.x = -sw * 0.8;
+  ud.armR.rotation.x = sw * 0.8;
+  // bob
+  ped.mesh.position.y = SIDE_TOP + Math.abs(Math.sin(ped.walkPhase)) * 0.04;
+  ped.mesh.position.x = ped.pos.x;
+  ped.mesh.position.z = ped.pos.z;
+  ped.mesh.rotation.y = ped.heading;
+}
+
+
+/* ═══════════════════════════ AGENT OFFSET FIX (peds use sidewalk) ═══════════════════════════ */
+const PED_LANE = CELL * 0.385;
+function pedWaypointPos(path, i) {
+  let rx = 0, rz = 0, cnt = 0;
+  if (i > 0) {
+    const dx = path[i][0] - path[i - 1][0], dz = path[i][1] - path[i - 1][1];
+    rx += dz; rz -= dx; cnt++;
+  }
+  if (i < path.length - 1) {
+    const dx = path[i + 1][0] - path[i][0], dz = path[i + 1][1] - path[i][1];
+    rx += dz; rz -= dx; cnt++;
+  }
+  if (cnt === 0) return new THREE.Vector3(cellX(path[i][0]), 0, cellZ(path[i][1]));
+  const len = Math.hypot(rx, rz) || 1;
+  return new THREE.Vector3(cellX(path[i][0]) + rx / len * PED_LANE, 0, cellZ(path[i][1]) + rz / len * PED_LANE);
+}
+// override ped movement to use sidewalk waypoints
+const _origUpdatePed = updatePed;
+updatePed = function (ped, dt) {
+  if (ped.state !== 'walking' || !ped.path) { _origUpdatePed(ped, dt); return; }
+  if (ped.seg >= ped.path.length - 1) { _origUpdatePed(ped, dt); return; }
+  const to = pedWaypointPos(ped.path, ped.seg + 1);
+  const dx = to.x - ped.pos.x, dz = to.z - ped.pos.z;
+  const dist = Math.hypot(dx, dz);
+  const step = ped.baseSpeed * dt;
+  if (step >= dist - 0.02) { ped.pos.copy(to); ped.seg++; }
+  else { ped.pos.x += dx / dist * step; ped.pos.z += dz / dist * step; }
+  if (dist > 0.001) {
+    const targetHeading = Math.atan2(-dx, -dz);
+    let dh = targetHeading - ped.heading;
+    while (dh > Math.PI) dh -= Math.PI * 2;
+    while (dh < -Math.PI) dh += Math.PI * 2;
+    ped.heading += dh * clamp(dt * 8, 0, 1);
+  }
+  ped.walkPhase += dt * ped.baseSpeed * 4.2;
+  const sw = Math.sin(ped.walkPhase) * 0.55;
+  const ud = ped.mesh.userData;
+  ud.legL.rotation.x = sw; ud.legR.rotation.x = -sw;
+  ud.armL.rotation.x = -sw * 0.8; ud.armR.rotation.x = sw * 0.8;
+  ped.mesh.position.set(ped.pos.x, SIDE_TOP + Math.abs(Math.sin(ped.walkPhase)) * 0.04, ped.pos.z);
+  ped.mesh.rotation.y = ped.heading;
+};
+
+/* ═══════════════════════════ ECONOMY ═══════════════════════════ */
+const COSTS = { road: 20, res: 100, com: 150, park: 80, bulldoze: -10 };
+const economy = { funds: 10000, income: 0, lastTick: 0 };
+
+function computeIncome() {
+  let inc = 0;
+  for (const b of buildingList) {
+    if (b.type === 'res') inc += b.kind === 'apartment' ? 6 : 3;
+    else if (b.type === 'com') inc += b.kind === 'office' ? 9 : 7;
+    else if (b.type === 'park') inc += 2;
+  }
+  return inc; // per second
+}
+
+/* ═══════════════════════════ DAY / NIGHT ═══════════════════════════ */
+const day = { t: 0.32, speed: 1 / 180, auto: true }; // t in [0,1); 0=midnight, 0.5=noon
+const skyDay = new THREE.Color(0x8ec9ee), skyDusk = new THREE.Color(0xf2925c), skyNight = new THREE.Color(0x0a1026);
+const fogDay = new THREE.Color(0x9fd4f0), fogDusk = new THREE.Color(0xe89a6a), fogNight = new THREE.Color(0x0a1026);
+
+function dayPhase(t) {
+  // returns {daylight: 0..1, dusk: 0..1}
+  const d = Math.sin((t - 0.25) * Math.PI * 2); // -1..1, 1 at noon
+  const daylight = clamp((d + 0.12) / 0.55, 0, 1);
+  const dusk = clamp(1 - Math.abs(d) * 3.2, 0, 1);
+  return { daylight, dusk };
+}
+
+function updateSky(dt) {
+  if (day.auto) day.t = (day.t + dt * day.speed) % 1;
+  const t = day.t;
+  const { daylight, dusk } = dayPhase(t);
+  // sun position: rises east (+X), sets west
+  const ang = (t - 0.25) * Math.PI * 2; // 0 at sunrise
+  sun.position.set(Math.cos(ang) * 80, Math.sin(ang) * 80, 30);
+  const sunUp = Math.sin(ang) > 0;
+  sun.intensity = (sunUp ? 1.7 : 0) * daylight;
+  sun.color.copy(new THREE.Color(0xffd9a8).lerp(new THREE.Color(0xfff6e0), daylight));
+  moon.intensity = (1 - daylight) * 0.5;
+  hemi.intensity = 0.3 + daylight * 0.55;
+  hemi.color.copy(new THREE.Color(0x2a3a5c).lerp(new THREE.Color(0xbfe3ff), daylight));
+
+  const sky = skyNight.clone().lerp(skyDay, daylight);
+  sky.lerp(skyDusk, dusk * 0.55);
+  scene.background = sky;
+  const fog = fogNight.clone().lerp(fogDay, daylight);
+  fog.lerp(fogDusk, dusk * 0.5);
+  scene.fog.color = fog;
+
+  // emissive: windows, signs, lamps, headlights
+  const night = 1 - daylight;
+  for (const m of facadeMats) {
+    if (m.userData.isGlass) m.emissiveIntensity = night * 0.9;
+    else if (m.userData.isSign) m.emissiveIntensity = 0.15 + night * 1.6;
+    else m.emissiveIntensity = night * 1.15;
+  }
+  matLampHead.emissiveIntensity = night * 2.2;
+  for (const m of headlightMats) m.emissiveIntensity = night * 3.0;
+  for (const m of taillightMats) m.emissiveIntensity = 0.3 + night * 1.6;
+
+  // clock text
+  const hours = Math.floor(t * 24), mins = Math.floor((t * 24 % 1) * 60);
+  document.getElementById('stat-clock').textContent =
+    String(hours).padStart(2, '0') + ':' + String(mins).padStart(2, '0');
+  document.getElementById('stat-icon').textContent =
+    night > 0.7 ? '🌙' : (dusk > 0.3 ? '🌅' : '☀️');
+}
+
+/* ═══════════════════════════ INPUT: TOOLS, GHOST, RAYCAST ═══════════════════════════ */
+let currentTool = 'road';
+const ghostMat = new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0.4, depthWrite: false });
+const ghostBadMat = new THREE.MeshBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0.4, depthWrite: false });
+const ghost = new THREE.Mesh(new THREE.BoxGeometry(CELL - 0.15, 0.25, CELL - 0.15), ghostMat);
+ghost.visible = false;
+scene.add(ghost);
+
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+let hoveredCell = null;
+let selectedAgent = null;
+let followAgent = null;
+
+function screenToCell(e) {
+  pointer.x = (e.clientX / innerWidth) * 2 - 1;
+  pointer.y = -(e.clientY / innerHeight) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const hits = raycaster.intersectObject(ground, false);
+  if (!hits.length) return null;
+  const p = hits[0].point;
+  const x = Math.floor(p.x / CELL + GRID / 2);
+  const z = Math.floor(p.z / CELL + GRID / 2);
+  if (!inGrid(x, z)) return null;
+  return [x, z];
+}
+
+function canPlace(x, z, tool) {
+  const c = cells[x][z];
+  if (tool === 'bulldoze') return c.type !== null;
+  if (c.type !== null) return false;
+  return true;
+}
+
+function updateGhost(e) {
+  const cell = screenToCell(e);
+  hoveredCell = cell;
+  if (!cell) { ghost.visible = false; return; }
+  const ok = canPlace(cell[0], cell[1], currentTool);
+  ghost.visible = true;
+  ghost.position.set(cellX(cell[0]), 0.14, cellZ(cell[1]));
+  ghost.material = ok ? ghostMat : ghostBadMat;
+}
+
+function doBuild(x, z) {
+  const tool = currentTool;
+  const c = cells[x][z];
+  if (tool === 'bulldoze') {
+    if (!c.type) return;
+    // agents on this cell need new plans
+    for (const car of cars) {
+      if (car.path) {
+        const onPath = car.path.some(([px, pz]) => px === x && pz === z);
+        if (onPath) { car.path = null; car.waitTimer = 0.5; }
+      }
+    }
+    for (const ped of peds) {
+      if (ped.path) {
+        const onPath = ped.path.some(([px, pz]) => px === x && pz === z);
+        if (onPath) { ped.path = null; ped.directTarget = null; ped.stateTimer = 0.5; }
+      }
+    }
+    if (c.type === 'road') {
+      c.type = null;
+      if (c.group) { scene.remove(c.group); c.group.traverse(o => { if (o.geometry) o.geometry.dispose(); }); c.group = null; }
+      rebuildRoadAndNeighbors(x, z);
+    } else {
+      removeBuildingAt(x, z);
+      c.type = null;
+    }
+    economy.funds += 10;
+    spawnDust(x, z);
+    toast('🚜 Bulldozed +$10');
+    rebuildLamps();
+    return;
+  }
+  if (c.type !== null) { toast('⛔ Tile occupied'); return; }
+  const cost = COSTS[tool];
+  if (economy.funds < cost) { toast('💸 Not enough funds!'); return; }
+  economy.funds -= cost;
+  if (tool === 'road') {
+    setCell(x, z, 'road');
+    rebuildRoadAndNeighbors(x, z);
+    rebuildLamps();
+  } else {
+    placeBuilding(x, z, tool);
+  }
+  toast(tool === 'road' ? '🛣️ Road built' : tool === 'res' ? '🏠 Residential built' : tool === 'com' ? '🏬 Commercial built' : '🌳 Park built');
+  updateHUD();
+}
+
+/* ═══════════════════════════ PARTICLES ═══════════════════════════ */
+const particles = [];
+function spawnDust(x, z) {
+  const px = cellX(x), pz = cellZ(z);
+  for (let i = 0; i < 14; i++) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(rnd(0.12, 0.3), rnd(0.12, 0.3), rnd(0.12, 0.3)),
+      new THREE.MeshBasicMaterial({ color: pick([0x9a8a6a, 0xb0a080, 0x7a6a4a]), transparent: true }));
+    m.position.set(px + rnd(-1, 1), rnd(0.3, 1.2), pz + rnd(-1, 1));
+    m.userData = {
+      vx: rnd(-2, 2), vy: rnd(2, 5), vz: rnd(-2, 2),
+      life: rnd(0.5, 1.0), maxLife: 1,
+    };
+    scene.add(m);
+    particles.push(m);
+  }
+}
+function spawnHearts(agent) {
+  const emojis = ['💖', '⭐', '✨', '💛'];
+  const screenPos = toScreen(agent.mesh.position);
+  if (screenPos) {
+    const el = document.createElement('div');
+    el.className = 'float-emoji';
+    el.textContent = pick(emojis);
+    el.style.left = screenPos.x + 'px';
+    el.style.top = screenPos.y + 'px';
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 1500);
+  }
+  // 3D burst too
+  const p = agent.mesh.position;
+  for (let i = 0; i < 8; i++) {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 5),
+      new THREE.MeshBasicMaterial({ color: pick([0xff6ca8, 0xffd166, 0x7ce8ff]), transparent: true }));
+    m.position.set(p.x + rnd(-0.4, 0.4), p.y + 1.4, p.z + rnd(-0.4, 0.4));
+    m.userData = { vx: rnd(-1, 1), vy: rnd(2, 4), vz: rnd(-1, 1), life: rnd(0.6, 1.1), maxLife: 1.1 };
+    scene.add(m);
+    particles.push(m);
+  }
+  agent.mood = clamp(agent.mood + 12, 0, 100);
+}
+function toScreen(v) {
+  const p = v.clone().project(camera);
+  if (p.z > 1) return null;
+  return { x: (p.x * 0.5 + 0.5) * innerWidth, y: (-p.y * 0.5 + 0.5) * innerHeight };
+}
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const m = particles[i];
+    const u = m.userData;
+    u.life -= dt;
+    if (u.life <= 0) {
+      scene.remove(m);
+      m.geometry.dispose();
+      m.material.dispose();
+      particles.splice(i, 1);
+      continue;
+    }
+    u.vy -= 9 * dt;
+    m.position.x += u.vx * dt;
+    m.position.y += u.vy * dt;
+    m.position.z += u.vz * dt;
+    if (m.position.y < 0.05) m.position.y = 0.05;
+    m.material.opacity = clamp(u.life / u.maxLife, 0, 1);
+    m.rotation.x += dt * 3; m.rotation.y += dt * 2;
+  }
+}
+
+/* ═══════════════════════════ SELECTION & INSPECTOR ═══════════════════════════ */
+const highlightRing = new THREE.Mesh(
+  new THREE.RingGeometry(0.55, 0.8, 24),
+  new THREE.MeshBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false })
+);
+highlightRing.rotation.x = -Math.PI / 2;
+highlightRing.visible = false;
+scene.add(highlightRing);
+
+function pickAgent(e) {
+  pointer.x = (e.clientX / innerWidth) * 2 - 1;
+  pointer.y = -(e.clientY / innerHeight) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const meshes = [];
+  for (const a of agents) meshes.push(a.mesh);
+  const hits = raycaster.intersectObjects(meshes, true);
+  if (!hits.length) return null;
+  let obj = hits[0].object;
+  while (obj && !agents.find(a => a.mesh === obj)) obj = obj.parent;
+  return obj ? agents.find(a => a.mesh === obj) : null;
+}
+
+function moodInfo(m) {
+  if (m > 80) return ['😄', 'Ecstatic', '#4ade80'];
+  if (m > 65) return ['😊', 'Happy', '#a3e635'];
+  if (m > 45) return ['🙂', 'Content', '#fbbf24'];
+  if (m > 28) return ['😐', 'Meh', '#fb923c'];
+  return ['😞', 'Grumpy', '#f87171'];
+}
+
+function openInspector(agent) {
+  selectedAgent = agent;
+  const el = document.getElementById('inspector');
+  el.classList.remove('hidden-card');
+  const isCar = agent.type === 'car';
+  document.getElementById('insp-avatar').textContent = isCar ? (agent.kind === 'bus' ? '🚌' : agent.kind === 'van' ? '🚐' : '🚗') : '🚶';
+  document.getElementById('insp-name').textContent = agent.name;
+  document.getElementById('insp-role').textContent = isCar ? agent.kind.toUpperCase() + ' • ' + agent.baseSpeed.toFixed(1) + ' u/s' : agent.role;
+  refreshInspector();
+}
+function refreshInspector() {
+  if (!selectedAgent) return;
+  const [emoji, label, color] = moodInfo(selectedAgent.mood);
+  document.getElementById('insp-mood').textContent = emoji + ' ' + label;
+  const fill = document.getElementById('insp-mood-fill');
+  fill.style.width = selectedAgent.mood + '%';
+  fill.style.background = color;
+  document.getElementById('insp-activity').textContent = selectedAgent.activity || '—';
+  document.getElementById('insp-dest').textContent = selectedAgent.dest || '—';
+}
+function closeInspector() {
+  selectedAgent = null;
+  document.getElementById('inspector').classList.add('hidden-card');
+  if (followAgent) exitFollow();
+}
+
+function enterFollow(agent) {
+  followAgent = agent;
+  document.getElementById('follow-exit-row').classList.remove('hidden');
+  document.getElementById('btn-follow').textContent = '🎥 Following…';
+  controls.enabled = false;
+}
+function exitFollow() {
+  followAgent = null;
+  document.getElementById('follow-exit-row').classList.add('hidden');
+  document.getElementById('btn-follow').textContent = '🎥 Follow Camera';
+  controls.enabled = true;
+}
+function updateFollowCam(dt) {
+  if (!followAgent) return;
+  const p = followAgent.mesh.position;
+  const h = followAgent.heading || 0;
+  const isCar = followAgent.type === 'car';
+  const dist = isCar ? 7 : 4.5, height = isCar ? 3.2 : 2.4;
+  // behind the agent: opposite of heading (model faces -Z at heading 0)
+  const behind = new THREE.Vector3(Math.sin(h) * dist, 0, Math.cos(h) * dist);
+  const desired = new THREE.Vector3(p.x + behind.x, p.y + height, p.z + behind.z);
+  const k = 1 - Math.pow(0.001, dt); // smooth exp
+  camera.position.lerp(desired, k * 0.6);
+  const look = new THREE.Vector3(p.x, p.y + (isCar ? 0.8 : 1.1), p.z);
+  controls.target.lerp(look, k);
+  camera.lookAt(controls.target);
+}
+
+/* ═══════════════════════════ TOASTS ═══════════════════════════ */
+function toast(msg) {
+  const el = document.createElement('div');
+  el.className = 'glass toast rounded-xl px-4 py-2 text-sm text-white/90';
+  el.textContent = msg;
+  const box = document.getElementById('toasts');
+  box.appendChild(el);
+  setTimeout(() => { el.style.transition = 'opacity .4s'; el.style.opacity = '0'; }, 1800);
+  setTimeout(() => el.remove(), 2300);
+  while (box.children.length > 3) box.firstChild.remove();
+}
+
+/* ═══════════════════════════ HUD ═══════════════════════════ */
+let simSpeed = 1;
+function updateHUD() {
+  document.getElementById('stat-funds').textContent = '$' + Math.floor(economy.funds).toLocaleString();
+  document.getElementById('stat-pop').textContent = peds.length + ' 👤 ' + cars.length + ' 🚗';
+  const avg = peds.length ? peds.reduce((s, p) => s + p.mood, 0) / peds.length : 0;
+  document.getElementById('stat-happy').textContent = Math.round(avg) + '%';
+  const hf = document.getElementById('happy-fill');
+  hf.style.width = avg + '%';
+  hf.style.background = moodInfo(avg)[2];
+}
+function setSpeed(s) {
+  simSpeed = s;
+  for (const id of [0, 1, 2, 3]) {
+    const b = document.getElementById('speed-' + id);
+    b.classList.toggle('active', id === s);
+  }
+}
+for (const id of [0, 1, 2, 3]) {
+  document.getElementById('speed-' + id).addEventListener('click', () => setSpeed(id));
+}
+document.getElementById('btn-daynight').addEventListener('click', () => {
+  day.t = day.t < 0.5 ? 0.78 : 0.3;
+  day.auto = false;
+  toast(day.t < 0.5 ? '☀️ Daytime' : '🌙 Nighttime');
+});
+document.getElementById('insp-close').addEventListener('click', closeInspector);
+document.getElementById('btn-follow').addEventListener('click', () => {
+  if (!selectedAgent) return;
+  if (followAgent === selectedAgent) exitFollow();
+  else enterFollow(selectedAgent);
+});
+document.getElementById('btn-exit-follow').addEventListener('click', exitFollow);
+document.getElementById('btn-inspire').addEventListener('click', () => {
+  if (!selectedAgent) return;
+  spawnHearts(selectedAgent);
+  toast('💖 ' + selectedAgent.name + ' is feeling inspired!');
+});
+
+/* toolbar */
+for (const btn of document.querySelectorAll('.tool-btn')) {
+  btn.addEventListener('click', () => {
+    currentTool = btn.dataset.tool;
+    for (const b of document.querySelectorAll('.tool-btn')) b.classList.toggle('active', b === btn);
+  });
+}
+document.querySelector('[data-tool="road"]').classList.add('active');
+
+/* ═══════════════════════════ EVENTS ═══════════════════════════ */
+const keys = {};
+addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'Escape') {
+    if (followAgent) exitFollow();
+    closeInspector();
+  }
+  const toolKeys = { KeyR: 'road', KeyH: 'res', KeyC: 'com', KeyP: 'park', KeyB: 'bulldoze', Digit1: 'road', Digit2: 'res', Digit3: 'com', Digit4: 'park', Digit5: 'bulldoze' };
+  if (toolKeys[e.code]) {
+    const tool = toolKeys[e.code];
+    currentTool = tool;
+    for (const b of document.querySelectorAll('.tool-btn')) b.classList.toggle('active', b.dataset.tool === tool);
+  }
+});
+addEventListener('keyup', e => { keys[e.code] = false; });
+
+let downPos = null;
+renderer.domElement.addEventListener('pointerdown', e => { downPos = { x: e.clientX, y: e.clientY, t: performance.now() }; });
+renderer.domElement.addEventListener('pointerup', e => {
+  if (!downPos) return;
+  const dx = e.clientX - downPos.x, dy = e.clientY - downPos.y;
+  const moved = Math.hypot(dx, dy) > 6;
+  const dt = performance.now() - downPos.t;
+  downPos = null;
+  if (moved || dt > 450) return; // it was a drag
+  // 1) try agent pick
+  const agent = pickAgent(e);
+  if (agent) {
+    openInspector(agent);
+    return;
+  }
+  // 2) build
+  const cell = screenToCell(e);
+  if (cell) doBuild(cell[0], cell[1]);
+});
+renderer.domElement.addEventListener('pointermove', e => updateGhost(e));
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+function updatePanKeys(dt) {
+  if (followAgent) return;
+  const speed = 22 * dt * (camera.position.distanceTo(controls.target) / 40);
+  const fwd = new THREE.Vector3();
+  camera.getWorldDirection(fwd);
+  fwd.y = 0; fwd.normalize();
+  const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0));
+  const move = new THREE.Vector3();
+  if (keys['KeyW'] || keys['ArrowUp']) move.add(fwd);
+  if (keys['KeyS'] || keys['ArrowDown']) move.sub(fwd);
+  if (keys['KeyA'] || keys['ArrowLeft']) move.sub(right);
+  if (keys['KeyD'] || keys['ArrowRight']) move.add(right);
+  if (move.lengthSq() > 0) {
+    move.normalize().multiplyScalar(speed);
+    controls.target.add(move);
+    camera.position.add(move);
+  }
+}
+
+/* ═══════════════════════════ AGENT POPULATION ═══════════════════════════ */
+const MAX_CARS = 11, MAX_PEDS = 30;
+let spawnTimer = 0;
+
+function maintainPopulation(dt) {
+  spawnTimer -= dt;
+  if (spawnTimer > 0) return;
+  spawnTimer = 0.8;
+  const roadCount = allRoadCells().length;
+  if (roadCount < 6) return;
+  if (cars.length < MAX_CARS && Math.random() < 0.5) spawnCar();
+  if (peds.length < MAX_PEDS && Math.random() < 0.7) spawnPed();
+}
+
+function cleanupStranded() {
+  // if a car/ped path is broken (road removed), handled in doBuild;
+  // also drop agents that are far off the map
+  for (const a of [...agents]) {
+    if (Math.abs(a.pos.x) > W || Math.abs(a.pos.z) > W) {
+      scene.remove(a.mesh);
+      a.mesh.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+      const i = agents.indexOf(a);
+      if (i >= 0) agents.splice(i, 1);
+      const ci = cars.indexOf(a); if (ci >= 0) cars.splice(ci, 1);
+      const pi = peds.indexOf(a); if (pi >= 0) peds.splice(pi, 1);
+      if (selectedAgent === a) closeInspector();
+    }
+  }
+}
+
+/* ═══════════════════════════ STARTER TOWN ═══════════════════════════ */
+function buildStarterTown() {
+  // two crossing roads
+  for (let x = 3; x < 21; x++) setCell(x, 11, 'road');
+  for (let z = 4; z < 20; z++) setCell(11, z, 'road');
+  for (let x = 6; x < 18; x++) setCell(x, 16, 'road');
+  for (let z = 6; z < 14; z++) setCell(7, z, 'road');
+
+  const res = [[4,9],[5,9],[4,10],[5,10],[13,9],[14,9],[13,10],[14,10],[4,13],[5,13],[4,14],[5,14],[13,13],[14,13],[9,5],[10,5],[9,4],[10,4],[15,5],[16,5],[15,4],[16,4],[9,14],[10,14],[15,14],[16,14]];
+  const com = [[12,10],[13,11],[14,11],[12,12],[8,12],[10,12],[12,15],[14,15],[8,15],[12,6],[14,6]];
+  const parks = [[5,5],[18,9],[18,10],[18,12],[18,13],[5,17],[17,17],[5,18],[17,18]];
+
+  for (const [x, z] of res) if (inGrid(x, z) && !cells[x][z].type) placeBuilding(x, z, 'res');
+  for (const [x, z] of com) if (inGrid(x, z) && !cells[x][z].type) placeBuilding(x, z, 'com');
+  for (const [x, z] of parks) if (inGrid(x, z) && !cells[x][z].type) placeBuilding(x, z, 'park');
+
+  for (let x = 0; x < GRID; x++) for (let z = 0; z < GRID; z++)
+    if (cells[x][z].type === 'road') rebuildRoad(x, z);
+  rebuildLamps();
+
+  // seed agents
+  for (let i = 0; i < 8; i++) { const c = spawnCar(); if (c) newCarPlan(c); }
+  for (let i = 0; i < 16; i++) { const p = spawnPed(); if (p) newPedPlan(p); }
+}
+
+/* ═══════════════════════════ MAIN LOOP ═══════════════════════════ */
+const clock = new THREE.Clock();
+let hudTimer = 0, incomeTimer = 0, inspTimer = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const rawDt = Math.min(clock.getDelta(), 0.05);
+  const dt = rawDt * simSpeed;
+
+  updateSky(rawDt);
+  updatePanKeys(rawDt);
+  if (followAgent) updateFollowCam(rawDt);
+  else controls.update();
+
+  if (simSpeed > 0) {
+    for (const car of cars) updateCar(car, dt);
+    for (const ped of peds) updatePed(ped, dt);
+    maintainPopulation(dt);
+    cleanupStranded();
+    // economy
+    incomeTimer += dt;
+    if (incomeTimer >= 1) {
+      incomeTimer = 0;
+      economy.income = computeIncome();
+      economy.funds += economy.income;
+    }
+  }
+  updateParticles(rawDt);
+
+  // highlight ring
+  if (selectedAgent) {
+    highlightRing.visible = true;
+    highlightRing.position.set(selectedAgent.mesh.position.x, SIDE_TOP + 0.05, selectedAgent.mesh.position.z);
+    const s = 1 + Math.sin(performance.now() * 0.005) * 0.12;
+    highlightRing.scale.setScalar(s);
+  } else highlightRing.visible = false;
+
+  // HUD refresh (throttled)
+  hudTimer += rawDt;
+  if (hudTimer > 0.25) { hudTimer = 0; updateHUD(); }
+  inspTimer += rawDt;
+  if (inspTimer > 0.4) { inspTimer = 0; refreshInspector(); }
+  document.getElementById('stat-income').textContent = economy.income > 0 ? '+$' + economy.income + '/s' : '';
+
+  renderer.render(scene, camera);
+}
+
+/* debug/test handle */
+window.__city = {
+  get camera() { return camera; },
+  get cars() { return cars; },
+  get peds() { return peds; },
+  cells,
+  economy,
+  buildAt: doBuild,
+  setTool: t => { currentTool = t; },
+  screenToCell,
+  follow: enterFollow,
+  exitFollow,
+  openInspector,
+  spawnHearts,
+};
+
+buildStarterTown();
+setSpeed(1);
+updateHUD();
+animate();
+
+</script>
+</body>
+</html>
