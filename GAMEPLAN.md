@@ -111,3 +111,5 @@ Choose one task at a time; agree on scope before implementation:
 
 ## Handoff/update rule
 At the end of each substantial work session, update this file: mark completed work, record bugs/decisions, and leave one concrete next task. Keep this document short enough to be useful to a fresh model.
+
+<!-- check-in test 2026-11-20 08:17:31 -->
