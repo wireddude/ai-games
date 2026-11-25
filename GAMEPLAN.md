@@ -5,7 +5,15 @@ Two live mirrors of the same site — keep **both** in sync when you add a game:
 - **here.now** (shared with friends, permanent): https://wistful-truffle-vpr4.here.now/
 - **GitHub Pages**: https://wireddude.github.io/ai-games/ (mirrored gitea2 → GitHub)
 
-**here.now — one command:**
+**One command for both (recommended):**
+```bash
+./ship.sh                 # or: ./ship.sh "custom commit message"
+```
+No subcommands, no game name — it stages all root games, refreshes the manifest, publishes to here.now, then commits + pushes to `ai-games`. Safe to run when nothing changed (says “up to date”). This is the normal “I’m happy with the game” step.
+
+**Individual steps** (only if you want one destination at a time):
+
+*here.now only:*
 ```bash
 ./publish_herenow.sh
 ```
