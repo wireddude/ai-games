@@ -1,5 +1,45 @@
 # Zelda-style game: project handoff
 
+## Chess (standalone game) — `chess.html`
+- Single-file chess game playable on desktop and mobile (iPhone/iPad). Full rules: legal move generation, check, checkmate, stalemate, castling, en passant, promotion, 50-move rule.
+- **Stockfish engine** (v10 via jsDelivr CDN): loads `stockfish.js` + `stockfish.wasm` (~2 MB total) into a Blob Worker on page load. Communicates via UCI protocol. 4 difficulty levels: Easy (depth 2), Medium (depth 10), Hard (depth 18), Master (depth 25). Shows live evaluation score + depth in status bar while thinking.
+- **Built-in fallback AI**: 1-3 ply minimax with alpha-beta pruning + piece-square tables. Used automatically if Stockfish fails to load (e.g. offline).
+- FEN generator converts internal board state to standard FEN for Stockfish. UCI move parser converts Stockfish responses back to internal move format.
+- Touch-friendly: tap to select, tap to move. Legal moves shown as dots (green) or capture rings (red). Last move highlighted. Check highlighted in red. Board flip. Promotion dialog.
+- Responsive canvas, DPR-aware, Unicode pieces. No external assets.
+- Validation: `node --check` passes; 27-assertion headless suite covers board setup, FEN generation, move generation, castling, check/checkmate/stalemate, en passant (both colors), UCI parsing, fallback AI. All green.
+- Known: requires internet for Stockfish (falls back to weaker built-in AI offline); no draw by repetition or insufficient material; no sound; Master difficulty may take 5-15s on mobile.
+- Next small task: browser-playtest on desktop + iPhone; verify Stockfish loads and plays; tune difficulty depths if needed.
+
+## San Diego Flight Sim (new standalone game) — `sd-flight-sim.html`
+- New single-file three.js (r128 via cdnjs) flight sim of San Diego; playable by opening the file directly (needs internet for the CDN). Fixed layout: ocean west, bay, Coronado island + bridge, Point Loma hills + lighthouse, downtown skyline (54 towers, seeded RNG), east-west runway at z=-3800.
+- Flight physics (arcade): W/S throttle, ↑/↓ pitch, ←/→ roll, A/D yaw, R reset, C cycles chase/cockpit/orbit camera. Lift curve tuned so stall ≈ 58 kt, level flight ≈ 87 kt, top ≈ 213 kt; takeoff roll ~6 s on the runway. Ground/terrain and building AABB collision (bridge deck is a collider you can fly under); crash = slide to stop + status toast; soft landing callout.
+- Visuals: gradient sky-dome shader, PCF soft shadows, distance fog, animated vertex waves on water, 34 drifting low-poly cloud blobs, canvas-texture building windows (seeded), vignette overlay.
+- HUD: bottom tape (speed kt / altitude ft AGL / heading / throttle % / vertical speed fpm), top-right minimap canvas (land, water, runway, bridge, plane arrow, N marker), status toasts (takeoff, crash, landing, camera).
+- Validation: `node --check` on extracted inline JS; headless Chrome (SwiftShader) runs 12 s with no JS errors/warnings; physics envelope verified numerically in node (takeoff distance, stall/top speed, climb). No human playtest yet.
+- Known: visual quality only heuristically verified (pixel-sampled screenshots); downtown slab sits inside bay footprint by design; no fuel/mission; orbit camera lerps (can lag on fast turns).
+- Next small task: browser playtest — takeoff, fly the Coronado bridge, downtown low pass, landing; tune control feel and lift if it stalls too easily.
+
+## Flight Simulator v2 — wider touch steering joystick
+- Reworked the iPhone/iPad flight stick into a wide horizontal slider: longer left/right travel gives finer turn control while the shorter vertical axis still controls pitch.
+- Kept touch/capture behavior and added a clear `SLIDE ↔ TURN · ↕ PITCH` label; adjusted phone, small-phone, and landscape sizing so it fits alongside throttle/action controls.
+- Validation: inline module JavaScript syntax check; no browser/device test run.
+- Next: test steering precision and layout on iPhone and iPad; tune horizontal travel if needed.
+
+## Doodle Climb (new standalone game)
+- Added `drawing-platformer.html`, a single-file, no-dependency Doodle Jump–style vertical climber (Canvas + vanilla JS, no external assets).
+- Mechanics: auto-bounce (only while falling), screen-wrap edges, arrow/AD movement with facing flip, camera locks at 45% screen height and scrolls with score = pixels climbed / 10. Platform types ramp with score: green (solid) → blue (moving, 150+) → brown (fragile, 300+) → white (disappearing, 500+). Springs (2.5× launch, compress/extend anim), rare jetpack (3 s thrust, exhaust particles, invulnerability), and hovering monsters (350+) that kill on touch but can be stomped or shot (Space/↑).
+- Fixed-timestep physics at 120 Hz via accumulator (identical behavior on 60/120 Hz+ displays); graph-paper grid scrolls with camera; squash-and-stretch on bounce; Web Audio synth SFX (jump, spring, snap, shoot, stomp, jetpack, game-over glissando); start/game-over screens with canvas buttons; high score in localStorage; DPR-aware responsive scaling; visible on-screen touch buttons (LEFT/RIGHT/FIRE, bottom corners + center) shown only on touch devices, multi-touch, glow while pressed.
+- Validation: extracted inline JS passes `node --check`; 41-assertion headless suite (stubbed DOM/canvas/AudioContext/localStorage/rAF) covers Play button (desktop click + mobile touch + Enter), audio unlock, all 4 platform types, spring, jetpack (on/invuln/burn-out), shoot, stomp, side-touch death, game-over SFX, best persistence, Play Again, floor crumble, touch controls — all green. No real-browser/visual test run.
+- Bug fixes (this session, after "sits on intro, Play does nothing, no sound" report):
+  - **Critical: `startGame()` called `addPlatform()` which was never defined** — a `ReferenceError` threw inside the Play click/tap/Enter handler, silently stranding the game on the intro screen on both desktop and mobile. Fixed by defining `addPlatform(x,y,type)` (create + push + return) and refactoring `spawnRow` to use it.
+  - **No sound on desktop**: `AudioSys.ensure()` was only called on keydown/touch, not `pointerdown` — a mouse-only user who clicked Play never unlocked the `AudioContext` (browser gesture policy) and heard nothing. Now called on click too.
+  - **Instant-death spawn**: player used to spawn 43px above a narrow platform and could walk off + die in <1s. Now spawns standing on a full-width starting floor that crumbles away once score >= 15 (~150px climbed), after which falling is a real game over.
+  - **No visible mobile controls**: touch was an invisible "hold left/right half of screen" scheme, so on a phone there was nothing to look at. Replaced with visible on-screen LEFT/RIGHT/FIRE buttons (drawn on canvas, shown only on touch devices, multi-touch, glow while pressed).
+  - **Character kept coasting at full speed in the air** (the "keeps going / flies off" feel): horizontal drag only applied on the ground, so once airborne the player held max velocity until landing. Now releasing input applies *exponential* drag (frame-rate independent) — `AIR_DRAG` (4.5/s, gentle coast, keeps momentum) in the air and `GROUND_FRICTION` (18/s, firm stop) on the ground — so a tap gives a controlled nudge that decays instead of locking the player at top speed.
+- Known: tuning (jump height 104 px vs max gap 92 px, monster density) is untested by a human; jetpack lets you fly through monsters by design.
+- Next small task: browser-playtest on desktop + iPhone/iPad and tune `CONFIG` (gravity/jump/monster chance); consider adding the game to `manifest.json` + index landing page.
+
 ## Flight Simulator v2 — landing gear and runway landings
 - Added retractable visible landing gear, toggled by **G** or the touch **GEAR** button. The HUD reports gear/landing status and the objective hint explains airport landings.
 - A touchdown on the runway at the airport succeeds only with gear down, runway alignment, a gentle descent, and landing speed; otherwise the plane resets with a hard/missed-runway message. Successful landings roll to a stop on the runway.

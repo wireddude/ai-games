@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>San Diego Flight Sim</title>
+<style>
+  html, body { margin:0; padding:0; height:100%; overflow:hidden; background:#79a8c9; font-family:'Segoe UI', system-ui, sans-serif; }
+  #app { position:fixed; inset:0; }
+  canvas { display:block; }
+  #vignette { position:fixed; inset:0; z-index:5; pointer-events:none;
+    background:radial-gradient(ellipse at 50% 46%, rgba(0,0,0,0) 52%, rgba(8,16,26,.42) 100%); }
+  #hud { position:fixed; top:14px; left:16px; z-index:10; color:#eaf4fb; pointer-events:none; }
+  #hud h1 { font-size:16px; letter-spacing:.34em; margin:0 0 2px; font-weight:600; text-shadow:0 1px 6px rgba(0,0,0,.5); }
+  #hud p { margin:0; font-size:12px; opacity:.88; letter-spacing:.05em; text-shadow:0 1px 4px rgba(0,0,0,.55); }
+  #tape { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); z-index:10;
+    display:flex; gap:4px; background:rgba(10,18,26,.72); border:1px solid rgba(255,255,255,.16);
+    border-radius:14px; padding:8px 10px; backdrop-filter:blur(7px); box-shadow:0 6px 24px rgba(0,0,0,.35);
+    pointer-events:none; }
+  .stat { min-width:86px; padding:4px 12px; text-align:center; border-radius:9px; background:rgba(255,255,255,.05); }
+  .stat .k { display:block; font-size:10px; letter-spacing:.18em; color:#8fc0e8; margin-bottom:2px; }
+  .stat .v { display:block; font-size:21px; font-weight:600; color:#f2f8ff; font-variant-numeric:tabular-nums; }
+  .stat .u { font-size:11px; color:#a9c6da; font-weight:400; }
+  #minimap { position:fixed; top:14px; right:14px; z-index:10; border-radius:12px;
+    border:1px solid rgba(255,255,255,.18); box-shadow:0 6px 22px rgba(0,0,0,.4);
+    background:rgba(10,18,26,.72); backdrop-filter:blur(7px); pointer-events:none; }
+  #status { position:fixed; top:17%; left:50%; transform:translate(-50%,-8px); z-index:11; pointer-events:none;
+    font-size:34px; letter-spacing:.24em; font-weight:700; color:#fff; text-shadow:0 3px 18px rgba(0,0,0,.65);
+    opacity:0; transition:opacity .35s, transform .35s; white-space:nowrap; }
+  #status.show { opacity:1; transform:translate(-50%,0); }
+  #status.bad { color:#ffb4a6; }
+  #err { display:none; position:fixed; inset:0; z-index:20; background:#1c1f26; color:#ffd9a0; align-items:center; justify-content:center; font-size:16px; text-align:center; padding:24px; line-height:1.6; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="vignette"></div>
+<div id="hud">
+  <h1>SAN DIEGO FLIGHT SIM</h1>
+  <p>W/S throttle &nbsp;&middot;&nbsp; &#8593;/&#8595; pitch &nbsp;&middot;&nbsp; &#8592;/&#8594; roll &nbsp;&middot;&nbsp; A/D yaw &nbsp;&middot;&nbsp; R reset &nbsp;&middot;&nbsp; C camera</p>
+</div>
+<canvas id="minimap" width="200" height="200"></canvas>
+<div id="tape">
+  <div class="stat"><span class="k">SPEED</span><span class="v" id="t-spd">0<span class="u"> kt</span></span></div>
+  <div class="stat"><span class="k">ALTITUDE</span><span class="v" id="t-alt">0<span class="u"> ft</span></span></div>
+  <div class="stat"><span class="k">HEADING</span><span class="v" id="t-hdg">090<span class="u">&deg;</span></span></div>
+  <div class="stat"><span class="k">THROTTLE</span><span class="v" id="t-thr">0<span class="u"> %</span></span></div>
+  <div class="stat"><span class="k">V/S</span><span class="v" id="t-vs">0<span class="u"> fpm</span></span></div>
+</div>
+<div id="status"></div>
+<div id="err"><div>Could not load three.js from the CDN.<br>Check your internet connection and reload.</div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+'use strict';
+if (typeof THREE === 'undefined') {
+  var errEl = document.getElementById('err');
+  if (errEl) errEl.style.display = 'flex';
+  return;
+}
+
+/* ============================================================
+   SAN DIEGO FLIGHT SIM — single-file three.js
+   Fixed layout (x east, z south, y up, units in meters):
+     ocean:      x < -2600  (blue water)
+     bay:        x -2000..2400, z -3400..1100 (water)
+     coronado:   x -4400..-2700, z 400..4600 (flat land)
+     bridge:     (-2700,500) -> (-2000,500) (raised arch)
+     point loma: x -5000..-3800, z -6000..-1000 (hilly land)
+     downtown:   x -1500..0, z -3000..-1500 (tall boxes)
+     runway:     x -2400..-400 @ z -3800, 60 m wide
+   ============================================================ */
+
+var LAYOUT = {
+  oceanX: -2600,
+  bay: { x0: -2000, x1: 2400, z0: -3400, z1: 1100 },
+  coronado: { x0: -4400, x1: -2700, z0: 400, z1: 4600 },
+  pointLoma: { x0: -5000, x1: -3800, z0: -6000, z1: -1000 },
+  downtown: { x0: -1500, x1: 0, z0: -3000, z1: -1500 },
+  runway: { x0: -2400, x1: -400, z: -3800, w: 60 },
+  bridge: { x0: -2700, x1: -2000, z: 500 }
+};
+
+var buildings = [];   // { x, z, hw, hd, top } — kept for later crash detection
+
+/* ---------------- deterministic rng ---------------- */
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    var t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+var rng = mulberry32(42);
+
+/* ---------------- renderer / scene / camera ---------------- */
+var scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87b5d6);
+var camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, 30000);
+var renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.getElementById('app').appendChild(renderer.domElement);
+
+/* ---------------- sky dome (gradient shader) ---------------- */
+var skyGeo = new THREE.SphereGeometry(13000, 32, 16);
+var skyMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide,
+  depthWrite: false,
+  uniforms: {
+    cTop: { value: new THREE.Color(0x2e63a8) },
+    cMid: { value: new THREE.Color(0x9cc8e6) },
+    cBot: { value: new THREE.Color(0xe3eef2) }
+  },
+  vertexShader: [
+    'varying vec3 vPos;',
+    'void main(){ vPos = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }'
+  ].join('\n'),
+  fragmentShader: [
+    'varying vec3 vPos;',
+    'uniform vec3 cTop; uniform vec3 cMid; uniform vec3 cBot;',
+    'void main(){',
+    '  float h = normalize(vPos).y;',
+    '  vec3 c = h > 0.12 ? mix(cMid, cTop, smoothstep(0.12, 0.85, h))',
+    '                   : mix(cBot, cMid, smoothstep(-0.08, 0.12, h));',
+    '  gl_FragColor = vec4(c, 1.0);',
+    '}'
+  ].join('\n')
+});
+var sky = new THREE.Mesh(skyGeo, skyMat);
+scene.add(sky);
+
+/* ---------------- lights ---------------- */
+var hemi = new THREE.HemisphereLight(0xbfd9ff, 0x5a6b45, 0.65);
+scene.add(hemi);
+var sun = new THREE.DirectionalLight(0xfff1d6, 1.3);
+sun.position.set(4500, 7500, 2500);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.near = 1000;
+sun.shadow.camera.far = 20000;
+sun.shadow.camera.left = -4800;
+sun.shadow.camera.right = 4800;
+sun.shadow.camera.top = 4800;
+sun.shadow.camera.bottom = -4800;
+sun.shadow.bias = -0.0004;
+scene.add(sun);
+scene.add(sun.target);
+
+/* haze distance fog (fades far terrain into the sky tone) */
+scene.fog = new THREE.Fog(0xc7d9e8, 2600, 10500);
+
+/* ---------------- helpers ---------------- */
+function lambert(c){ return new THREE.MeshLambertMaterial({ color: c }); }
+
+/* --- building window textures (seeded, deterministic) --- */
+function makeWindowCanvas(base, lit){
+  var c = document.createElement('canvas'); c.width = 128; c.height = 128;
+  var ctx = c.getContext('2d');
+  ctx.fillStyle = base; ctx.fillRect(0, 0, 128, 128);
+  var cols = 4, rows = 8, cw = 128 / cols, rh = 128 / rows;
+  for (var r = 0; r < rows; r++){
+    for (var col = 0; col < cols; col++){
+      var winLit = rng() < lit;
+      ctx.fillStyle = winLit ? 'rgba(255, 226, 150, 0.92)' : 'rgba(16, 26, 36, 0.88)';
+      ctx.fillRect(col * cw + 5, r * rh + 5, cw - 10, rh - 9);
+    }
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.10)';
+  ctx.fillRect(0, 0, 128, 5);
+  return c;
+}
+var buildingCanvases = [
+  makeWindowCanvas('#7f8b99', 0.26),
+  makeWindowCanvas('#8c98a6', 0.34),
+  makeWindowCanvas('#9aa7b0', 0.24),
+  makeWindowCanvas('#6f7d8d', 0.30),
+  makeWindowCanvas('#87939f', 0.31),
+  makeWindowCanvas('#5f6f80', 0.27)
+];
+function buildingMaterial(w, h, variant){
+  var side = new THREE.MeshLambertMaterial({
+    map: (function(){
+      var t = new THREE.CanvasTexture(buildingCanvases[variant % buildingCanvases.length]);
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.repeat.set(Math.max(1, Math.round(w / 36)), Math.max(2, Math.round(h / 30)));
+      t.anisotropy = 4;
+      return t;
+    })()
+  });
+  var top = new THREE.MeshLambertMaterial({ color: 0x39414a });
+  return [side, side, top, top, side, side];
+}
+function addBox(w, h, d, color, x, yBase, z, opts){
+  opts = opts || {};
+  var m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), opts.material || lambert(color));
+  m.position.set(x, yBase + h / 2, z);
+  m.castShadow = opts.cast !== false;
+  m.receiveShadow = opts.receive !== false;
+  if (opts.rotY) m.rotation.y = opts.rotY;
+  scene.add(m);
+  return m;
+}
+function landPlane(x0, x1, z0, z1, color, y){
+  var g = new THREE.PlaneGeometry(x1 - x0, z1 - z0);
+  g.rotateX(-Math.PI / 2);
+  var m = new THREE.Mesh(g, lambert(color));
+  m.position.set((x0 + x1) / 2, y, (z0 + z1) / 2);
+  m.receiveShadow = true;
+  scene.add(m);
+  return m;
+}
+
+/* ---------------- land ---------------- */
+landPlane(-2600, 12000, -8000, -3400, 0x6f8f4e, 0.2);  // north of bay
+landPlane(-2600, 12000, 1100, 8000, 0x6f8f4e, 0.2);    // south of bay
+landPlane(-2600, -2000, -3400, 1100, 0x6f8f4e, 0.2);   // west strip (bridge landing)
+landPlane(LAYOUT.coronado.x0, LAYOUT.coronado.x1, LAYOUT.coronado.z0, LAYOUT.coronado.z1, 0xcbb98e, 0.3); // coronado island
+landPlane(LAYOUT.pointLoma.x0, LAYOUT.pointLoma.x1, LAYOUT.pointLoma.z0, LAYOUT.pointLoma.z1, 0x7d8a58, 0.3); // point loma island
+/* downtown sits inside the bay footprint, so a low harbor-city slab
+   stands under the buildings (coordinates kept as given) */
+landPlane(LAYOUT.downtown.x0, LAYOUT.downtown.x1, LAYOUT.downtown.z0, LAYOUT.downtown.z1, 0x8d8d85, 0.4);
+
+/* ---------------- water ---------------- */
+var waterMeshes = [];
+function waterPlane(x0, x1, z0, z1){
+  var sx = Math.min(96, Math.max(24, Math.round((x1 - x0) / 90)));
+  var sz = Math.min(96, Math.max(24, Math.round((z1 - z0) / 90)));
+  var g = new THREE.PlaneGeometry(x1 - x0, z1 - z0, sx, sz);
+  g.rotateX(-Math.PI / 2);
+  var m = new THREE.Mesh(g, new THREE.MeshPhongMaterial({
+    color: 0x1f5f8b, shininess: 130, specular: 0x8fd8ff,
+    transparent: true, opacity: 0.94
+  }));
+  m.position.set((x0 + x1) / 2, -1.5, (z0 + z1) / 2);
+  m.receiveShadow = true;
+  m.userData.base = g.attributes.position.array.slice();
+  waterMeshes.push(m);
+  scene.add(m);
+  return m;
+}
+function updateWaterWaves(t){
+  for (var i = 0; i < waterMeshes.length; i++){
+    var m = waterMeshes[i], pos = m.geometry.attributes.position;
+    var base = m.userData.base, n = pos.count;
+    for (var j = 0; j < n; j++){
+      var bx = base[j * 3], bz = base[j * 3 + 2];
+      pos.setY(j, Math.sin(t * 0.85 + bx * 0.0035 + bz * 0.0046) * 0.55 +
+                    Math.cos(t * 0.55 + bx * 0.0022 - bz * 0.0028) * 0.45);
+    }
+    pos.needsUpdate = true;
+  }
+}
+waterPlane(-18000, LAYOUT.oceanX, -16000, 16000);       // ocean
+waterPlane(LAYOUT.bay.x0, LAYOUT.bay.x1, LAYOUT.bay.z0, LAYOUT.bay.z1); // bay
+
+/* ---------------- downtown skyline ---------------- */
+var downtown = LAYOUT.downtown;
+var palette = [0x8b98a5, 0x9aa5ad, 0xb0a58f, 0x7d8a99, 0xc2b8a8, 0x6f7d8c, 0x8fa3b0];
+var nTowers = 54;
+for (var ti = 0; ti < nTowers; ti++){
+  var bw = 45 + rng() * 75;
+  var bd = 45 + rng() * 75;
+  var bx = downtown.x0 + 60 + bw / 2 + rng() * (downtown.x1 - downtown.x0 - 120 - bw);
+  var bz = downtown.z0 + 60 + bd / 2 + rng() * (downtown.z1 - downtown.z0 - 120 - bd);
+  var bh = (ti < 8) ? 170 + rng() * 100 : 60 + rng() * 140;   // a few landmark towers
+  addBox(bw, bh, bd, palette[ti % palette.length], bx, 0.4, bz, { material: buildingMaterial(bw, bh, ti) });
+  buildings.push({ x: bx, z: bz, hw: bw / 2, hd: bd / 2, top: 0.4 + bh });
+}
+
+/* ---------------- coronado flats ---------------- */
+var coronado = LAYOUT.coronado;
+for (var ci = 0; ci < 11; ci++){
+  var cw = 40 + rng() * 60;
+  var cd = 40 + rng() * 60;
+  var cx = coronado.x0 + 70 + cw / 2 + rng() * (coronado.x1 - coronado.x0 - 140 - cw);
+  var cz = coronado.z0 + 70 + cd / 2 + rng() * (coronado.z1 - coronado.z0 - 140 - cd);
+  var ch = 8 + rng() * 26;
+  addBox(cw, ch, cd, 0xd8d2c4, cx, 0.3, cz, { material: buildingMaterial(cw, ch, ci + 3) });
+  buildings.push({ x: cx, z: cz, hw: cw / 2, hd: cd / 2, top: 0.3 + ch });
+}
+
+/* ---------------- point loma hills + lighthouse ---------------- */
+var hillDefs = [
+  { x: -4700, z: -5400, r: 380, h: 95 },
+  { x: -4100, z: -4700, r: 330, h: 70 },
+  { x: -4800, z: -3300, r: 300, h: 60 },
+  { x: -4000, z: -2200, r: 280, h: 65 },
+  { x: -4500, z: -2800, r: 330, h: 80 }
+];
+for (var hi = 0; hi < hillDefs.length; hi++){
+  var hd = hillDefs[hi];
+  var geo = new THREE.ConeGeometry(hd.r, hd.h, 7);
+  var hill = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({ color: 0x5f7a4a, flatShading: true, shininess: 4 }));
+  hill.position.set(hd.x, 0.3 + hd.h / 2, hd.z);
+  hill.castShadow = true;
+  hill.receiveShadow = true;
+  scene.add(hill);
+}
+/* lighthouse at the south tip of point loma */
+var lh = new THREE.Group();
+var lhBody = new THREE.Mesh(new THREE.CylinderGeometry(5.5, 6.5, 40, 12), lambert(0xf4f1e8));
+lhBody.position.y = 20;
+lh.add(lhBody);
+var lhBand1 = new THREE.Mesh(new THREE.CylinderGeometry(5.75, 5.9, 5, 12), lambert(0xc0392b));
+lhBand1.position.y = 11;
+lh.add(lhBand1);
+var lhBand2 = new THREE.Mesh(new THREE.CylinderGeometry(5.55, 5.7, 5, 12), lambert(0xc0392b));
+lhBand2.position.y = 27;
+lh.add(lhBand2);
+var lhGallery = new THREE.Mesh(new THREE.CylinderGeometry(7.4, 7.4, 1.6, 12), lambert(0x2f3640));
+lhGallery.position.y = 40.8;
+lh.add(lhGallery);
+var lhLamp = new THREE.Mesh(new THREE.BoxGeometry(5.4, 5, 5.4), new THREE.MeshLambertMaterial({ color: 0x1d2230, emissive: 0xffdd66, emissiveIntensity: 0.45 }));
+lhLamp.position.y = 44.2;
+lh.add(lhLamp);
+var lhDome = new THREE.Mesh(new THREE.ConeGeometry(3.6, 4.4, 12), lambert(0xc0392b));
+lhDome.position.y = 49.4;
+lh.add(lhDome);
+lh.traverse(function(o){ o.castShadow = true; });
+lh.position.set(-4400, 0.3, -1280);
+scene.add(lh);
+buildings.push({ x: -4400, z: -1280, hw: 8, hd: 8, top: 0.3 + 53 });  // lighthouse collider
+
+/* ---------------- coronado bridge (raised arch) ---------------- */
+var bridge = LAYOUT.bridge;
+var deckY = 34;
+addBox(700, 4, 18, 0x424a52, -2350, deckY, 500);          // deck
+buildings.push({ x: -2350, z: 500, hw: 350, hd: 9, top: deckY + 4, base: deckY });  // deck collider (fly under)
+addBox(700, 1.6, 1.2, 0x9aa3ab, -2350, deckY + 4, 491.5);  // rails
+addBox(700, 1.6, 1.2, 0x9aa3ab, -2350, deckY + 4, 508.5);
+addBox(14, 38, 10, 0x5c646c, -2560, -2, 500);              // piers
+addBox(14, 38, 10, 0x5c646c, -2140, -2, 500);
+function archPoint(t){
+  return { x: -2700 + 700 * t, y: 36 + 124 * (1 - Math.pow(2 * t - 1, 2)) };
+}
+for (var ai = 0; ai < 16; ai++){
+  var p0 = archPoint(ai / 16), p1 = archPoint((ai + 1) / 16);
+  var adx = p1.x - p0.x, ady = p1.y - p0.y;
+  var alen = Math.sqrt(adx * adx + ady * ady);
+  var seg = new THREE.Mesh(new THREE.BoxGeometry(alen + 2, 5.5, 5.5), lambert(0x3f4a55));
+  seg.position.set((p0.x + p1.x) / 2, (p0.y + p1.y) / 2, 500);
+  seg.rotation.z = Math.atan2(ady, adx);
+  seg.castShadow = true;
+  scene.add(seg);
+}
+
+/* ---------------- airport runway ---------------- */
+var rw = LAYOUT.runway;
+var rwc = (rw.x0 + rw.x1) / 2;   // -1400
+addBox(rw.x1 - rw.x0, 0.7, rw.w, 0x33363d, rwc, 0.2, rw.z);   // asphalt strip (top ~0.9)
+/* centerline dashes */
+for (var dx = rw.x0 + 70; dx <= rw.x1 - 70; dx += 110){
+  addBox(16, 0.3, 1.4, 0xf5f2e8, dx, 0.9, rw.z, { cast: false });
+}
+/* threshold bars */
+addBox(6, 0.3, rw.w - 10, 0xf5f2e8, rw.x0 + 16, 0.9, rw.z, { cast: false });
+addBox(6, 0.3, rw.w - 10, 0xf5f2e8, rw.x1 - 16, 0.9, rw.z, { cast: false });
+/* edge lights */
+var edgeLightMat = new THREE.MeshLambertMaterial({ color: 0xffdf8e, emissive: 0xffc45e, emissiveIntensity: 0.85 });
+for (var lx = rw.x0 + 40; lx <= rw.x1 - 40; lx += 160){
+  for (var lz = -1; lz <= 1; lz += 2){
+    var el = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.8, 1.8), edgeLightMat);
+    el.position.set(lx, 1.8, rw.z + lz * (rw.w / 2 - 2));
+    scene.add(el);
+  }
+}
+
+/* ---------------- plane (low-poly) ---------------- */
+var plane = new THREE.Group();
+var fusGeo = new THREE.CylinderGeometry(1.7, 1.9, 13, 12);
+fusGeo.rotateZ(-Math.PI / 2);   // nose toward +x
+var fus = new THREE.Mesh(fusGeo, lambert(0xf2f4f6));
+plane.add(fus);
+var noseGeo = new THREE.ConeGeometry(1.7, 3.4, 12);
+noseGeo.rotateZ(-Math.PI / 2);
+var nose = new THREE.Mesh(noseGeo, lambert(0xe6eaee));
+nose.position.set(8.2, 0, 0);
+plane.add(nose);
+var canopy = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.5, 1.9),
+  new THREE.MeshPhongMaterial({ color: 0x223344, shininess: 90, specular: 0x99bbdd }));
+canopy.position.set(2.4, 1.7, 0);
+plane.add(canopy);
+var wing = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.5, 22), lambert(0xdde3e8));
+wing.position.set(0.8, -0.15, 0);
+plane.add(wing);
+var tipL = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.5, 1.6), lambert(0xc0392b));
+tipL.position.set(0.8, -0.15, 10.6);
+plane.add(tipL);
+var tipR = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.5, 1.6), lambert(0xc0392b));
+tipR.position.set(0.8, -0.15, -10.6);
+plane.add(tipR);
+var fin = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.8, 0.45), lambert(0xc0392b));
+fin.position.set(-5.6, 1.9, 0);
+plane.add(fin);
+var tailplane = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.4, 7), lambert(0xdde3e8));
+tailplane.position.set(-5.8, 0.5, 0);
+plane.add(tailplane);
+var engGeo = new THREE.CylinderGeometry(0.75, 0.75, 3.0, 10);
+engGeo.rotateZ(-Math.PI / 2);
+var engL = new THREE.Mesh(engGeo, lambert(0x3a3f45));
+engL.position.set(1.4, -0.55, 4.6);
+plane.add(engL);
+var engR = engL.clone();
+engR.position.set(1.4, -0.55, -4.6);
+plane.add(engR);
+var gearMat = lambert(0x1d1f22);
+var gearGeo = new THREE.CylinderGeometry(0.32, 0.32, 1.7, 8);
+var mainGearL = new THREE.Mesh(gearGeo, gearMat);
+mainGearL.position.set(0.2, -2.15, 2.6);
+plane.add(mainGearL);
+var mainGearR = mainGearL.clone();
+mainGearR.position.set(0.2, -2.15, -2.6);
+plane.add(mainGearR);
+var noseGear = new THREE.Mesh(gearGeo, gearMat);
+noseGear.position.set(4.6, -1.9, 0);
+plane.add(noseGear);
+var wheelGeo = new THREE.CylinderGeometry(0.7, 0.7, 0.45, 10);
+wheelGeo.rotateX(Math.PI / 2);   // axle lateral (z)
+var wheelL = new THREE.Mesh(wheelGeo, gearMat);
+wheelL.position.set(0.2, -3.05, 2.6);
+plane.add(wheelL);
+var wheelR = wheelL.clone();
+wheelR.position.set(0.2, -3.05, -2.6);
+plane.add(wheelR);
+var wheelNose = wheelL.clone();
+wheelNose.position.set(4.6, -2.8, 0);
+plane.add(wheelNose);
+plane.traverse(function(o){ if (o.isMesh) o.castShadow = true; });
+scene.add(plane);
+
+/* plane start: west end of the runway, nose east */
+var PLANE_START = { x: -2180, y: 4.8, z: -3800 };
+plane.position.set(PLANE_START.x, PLANE_START.y, PLANE_START.z);
+
+/* ---------------- clouds (bumpy blobs, drift with wind) ---------------- */
+var cloudGroup = new THREE.Group();
+(function buildClouds(){
+  var cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.92 });
+  for (var i = 0; i < 34; i++){
+    var cloud = new THREE.Group();
+    var cx = -6500 + rng() * 12500;
+    var cz = -6500 + rng() * 12500;
+    var cy = 850 + rng() * 650;
+    var puffs = 3 + Math.floor(rng() * 4);
+    for (var p = 0; p < puffs; p++){
+      var s = 55 + rng() * 70;
+      var puff = new THREE.Mesh(new THREE.SphereGeometry(s, 8, 6), cloudMat);
+      puff.position.set((rng() - 0.5) * 150, (rng() - 0.5) * 26, (rng() - 0.5) * 110);
+      puff.scale.y = 0.52;
+      cloud.add(puff);
+    }
+    cloud.position.set(cx, cy, cz);
+    cloudGroup.add(cloud);
+  }
+  scene.add(cloudGroup);
+})();
+
+/* ---------------- HUD elements ---------------- */
+var tSpd = document.getElementById('t-spd');
+var tAlt = document.getElementById('t-alt');
+var tHdg = document.getElementById('t-hdg');
+var tThr = document.getElementById('t-thr');
+var tVs  = document.getElementById('t-vs');
+var statusEl = document.getElementById('status');
+var statusTimer = null;
+function showStatus(text, bad){
+  statusEl.textContent = text;
+  statusEl.className = bad ? 'bad show' : 'show';
+  if (statusTimer) clearTimeout(statusTimer);
+  statusTimer = setTimeout(function(){ statusEl.className = ''; }, 2600);
+}
+
+/* ---------------- minimap ---------------- */
+var mm = document.getElementById('minimap');
+var mmctx = mm.getContext('2d');
+var MM = { x0: -5600, x1: 3000, z0: -6400, z1: 5200 };  // world bounds (m)
+function mmX(x){ return (x - MM.x0) / (MM.x1 - MM.x0) * mm.width; }
+function mmZ(z){ return (z - MM.z0) / (MM.z1 - MM.z0) * mm.height; }
+function drawMinimap(){
+  var w = mm.width, h = mm.height;
+  mmctx.clearRect(0, 0, w, h);
+  /* water (whole map is bay-ish, then land on top) */
+  mmctx.fillStyle = 'rgba(38, 92, 128, 0.9)';
+  mmctx.fillRect(0, 0, w, h);
+  /* land blocks */
+  mmctx.fillStyle = 'rgba(111, 143, 78, 0.95)';
+  function rect(x0, x1, z0, z1){ mmctx.fillRect(mmX(x0), mmZ(z0), mmX(x1) - mmX(x0), mmZ(z1) - mmZ(z0)); }
+  rect(-5600, 3000, -6400, -3400);           // north strip
+  rect(-5600, 3000, 1100, 5200);             // south strip
+  rect(-5600, -2000, -3400, 1100);           // west strip
+  rect(LAYOUT.coronado.x0, LAYOUT.coronado.x1, LAYOUT.coronado.z0, LAYOUT.coronado.z1); // coronado
+  rect(LAYOUT.pointLoma.x0, LAYOUT.pointLoma.x1, LAYOUT.pointLoma.z0, LAYOUT.pointLoma.z1); // point loma
+  /* downtown slab */
+  mmctx.fillStyle = 'rgba(141, 141, 133, 0.95)';
+  rect(LAYOUT.downtown.x0, LAYOUT.downtown.x1, LAYOUT.downtown.z0, LAYOUT.downtown.z1);
+  /* runway */
+  var rw = LAYOUT.runway;
+  mmctx.fillStyle = 'rgba(240, 240, 235, 0.95)';
+  mmctx.fillRect(mmX(rw.x0), mmZ(rw.z) - 1.5, mmX(rw.x1) - mmX(rw.x0), 3);
+  /* bridge */
+  mmctx.strokeStyle = 'rgba(240, 240, 235, 0.8)';
+  mmctx.lineWidth = 1.5;
+  mmctx.beginPath();
+  mmctx.moveTo(mmX(LAYOUT.bridge.x0), mmZ(LAYOUT.bridge.z));
+  mmctx.lineTo(mmX(LAYOUT.bridge.x1), mmZ(LAYOUT.bridge.z));
+  mmctx.stroke();
+  /* plane: position + heading arrow */
+  var px = mmX(plane.position.x), pz = mmZ(plane.position.z);
+  var fwd = new THREE.Vector3(1, 0, 0).applyQuaternion(plane.quaternion);
+  var ang = Math.atan2(fwd.z, fwd.x);
+  mmctx.save();
+  mmctx.translate(px, pz);
+  mmctx.rotate(ang);
+  mmctx.fillStyle = '#ff5d47';
+  mmctx.beginPath();
+  mmctx.moveTo(8, 0); mmctx.lineTo(-5, 4.5); mmctx.lineTo(-5, -4.5);
+  mmctx.closePath();
+  mmctx.fill();
+  mmctx.restore();
+  /* compass N */
+  mmctx.fillStyle = 'rgba(234, 244, 251, 0.9)';
+  mmctx.font = '10px sans-serif';
+  mmctx.fillText('N', 5, 12);
+}
+
+/* ---------------- flight state ---------------- */
+var F = {
+  throttle: 0,
+  speed: 0,          // m/s along nose
+  vs: 0,             // m/s vertical (for HUD)
+  crashTimer: 0
+};
+var keys = {};
+var crashed = false;
+var camMode = 0;     // 0 chase, 1 cockpit, 2 orbit
+
+/* ground height under the plane (terrain slabs only; water = -1.5) */
+function groundHeightAt(x, z){
+  var g = 0.2;  // default grass slab
+  var bay = LAYOUT.bay;
+  if (z >= bay.z0 && z <= bay.z1 && x >= bay.x0 && x <= bay.x1){
+    g = -1.5;  // bay water
+    var dtw = LAYOUT.downtown;
+    if (x >= dtw.x0 && x <= dtw.x1 && z >= dtw.z0 && z <= dtw.z1) g = 0.4;
+  }
+  var co = LAYOUT.coronado;
+  if (x >= co.x0 && x <= co.x1 && z >= co.z0 && z <= co.z1) g = 0.3;
+  var pl = LAYOUT.pointLoma;
+  if (x >= pl.x0 && x <= pl.x1 && z >= pl.z0 && z <= pl.z1) g = 0.3;
+  var rw = LAYOUT.runway;
+  if (z >= rw.z - 25 && z <= rw.z + 25 && x >= rw.x0 - 100 && x <= rw.x1 + 100) g = Math.max(g, 0.9);
+  return g;
+}
+
+/* reset the plane to the runway */
+function resetPlane(){
+  crashed = false;
+  F.throttle = 0;
+  F.speed = 0;
+  F.vs = 0;
+  F.crashTimer = 0;
+  F._airborne = false;
+  plane.position.set(PLANE_START.x, PLANE_START.y, PLANE_START.z);
+  plane.quaternion.identity();
+  plane.rotation.set(0, 0, 0);
+  showStatus('RESET — LINE UP EAST, FULL THROTTLE');
+}
+
+/* ---------------- physics ---------------- */
+var _fwd = new THREE.Vector3();
+var _up = new THREE.Vector3();
+
+function updatePlane(dt){
+  var p = plane;
+
+  /* --- input --- */
+  if (!crashed){
+    if (keys['KeyW']) F.throttle = Math.min(1, F.throttle + dt * 0.45);
+    if (keys['KeyS']) F.throttle = Math.max(0, F.throttle - dt * 0.6);
+  }
+
+  /* --- thrust & drag --- */
+  var thrust = F.throttle * 11.5;           // m/s^2
+  var drag = 0.00085 * F.speed * F.speed + 0.012 * F.speed;
+  F.speed += (thrust - drag) * dt;
+  if (F.speed < 0) F.speed = 0;
+
+  /* --- ground / air state --- */
+  var gY = groundHeightAt(p.position.x, p.position.z);
+  var floorY = gY + 3.05;                   // gear height
+  var onGround = !F._airborne && p.position.y <= gY + 3.25;
+
+  /* --- control input (needs airflow) --- */
+  var ctrl = Math.min(1, F.speed / 45);
+  var pitchIn = 0, rollIn = 0, yawIn = 0;
+  if (!crashed){
+    if (keys['ArrowUp'])    pitchIn -= 1;
+    if (keys['ArrowDown'])  pitchIn += 1;
+    if (keys['ArrowLeft'])  rollIn -= 1;
+    if (keys['ArrowRight']) rollIn += 1;
+    if (keys['KeyA'])       yawIn -= 1;
+    if (keys['KeyD'])       yawIn += 1;
+  }
+
+  if (onGround){
+    /* taxi / takeoff roll: yaw steers heading, wings stay level */
+    p.rotation.y += yawIn * ctrl * 1.5 * dt;
+    p.rotation.x = 0; p.rotation.z = 0;
+    p.quaternion.setFromEuler(new THREE.Euler(0, p.rotation.y, 0, 'YXZ'));
+  } else {
+    /* flight: pitch/roll/yaw about local axes, gentle auto-level */
+    var e = new THREE.Euler().setFromQuaternion(p.quaternion, 'YXZ');
+    e.x += pitchIn * ctrl * 1.1 * dt;
+    e.z += rollIn * ctrl * 1.7 * dt;
+    e.y += yawIn * ctrl * 0.55 * dt;
+    if (!rollIn)  e.z += -e.z * Math.min(1, dt * 0.55);
+    if (!pitchIn) e.x += -e.x * Math.min(1, dt * 0.35);
+    e.x = Math.max(-1.25, Math.min(1.25, e.x));
+    e.z = Math.max(-1.35, Math.min(1.35, e.z));
+    p.quaternion.setFromEuler(new THREE.Euler(e.x, e.y, e.z, 'YXZ'));
+  }
+
+  /* --- orientation vectors --- */
+  _fwd.set(1, 0, 0).applyQuaternion(p.quaternion);
+  _up.set(0, 1, 0).applyQuaternion(p.quaternion);
+
+  /* --- lift & vertical motion --- */
+  var lift = Math.min(29.4, 9.8 * Math.pow(F.speed / 45, 2));  // level flight ~45 m/s (87 kt), cap 3g
+  if (onGround){
+    /* rotate & take off once lift beats weight */
+    if (F.speed > 20) p.rotation.x = Math.min(p.rotation.x + dt * 0.25, 0.32);
+    p.quaternion.setFromEuler(new THREE.Euler(p.rotation.x, p.rotation.y, 0, 'YXZ'));
+    _fwd.set(1, 0, 0).applyQuaternion(p.quaternion);
+    if (lift > 9.8 * 1.02 && F.speed > 24){
+      F.vs += (lift - 9.8) * dt * 2.2;
+      p.position.y += F.vs * dt;
+      if (F.vs > 2.0){ F._airborne = true; onGround = false; }
+    } else {
+      F.vs = 0;
+    }
+  } else {
+    /* in the air: lift along local up, gravity down */
+    var upEff = Math.max(0.25, _up.y);      // lift drops off in a deep bank
+    F.vs += (-9.8 + lift * upEff) * dt;
+    F.vs *= Math.pow(0.6, dt);               // mild vertical damping
+  }
+
+  /* --- integrate position --- */
+  p.position.x += _fwd.x * F.speed * dt;
+  p.position.z += _fwd.z * F.speed * dt;
+  if (!onGround) p.position.y += (F.vs + F.speed * _fwd.y * 0.6) * dt;
+
+  /* --- building collision --- */
+  if (!crashed){
+    for (var bi = 0; bi < buildings.length; bi++){
+      var b = buildings[bi];
+      if (p.position.y - 3 < b.top && p.position.y + 3 > (b.base || 0) &&
+          p.position.x > b.x - b.hw - 3 && p.position.x < b.x + b.hw + 3 &&
+          p.position.z > b.z - b.hd - 3 && p.position.z < b.z + b.hd + 3){
+        crashed = true;
+        showStatus('CRASHED — HIT A BUILDING', true);
+        break;
+      }
+    }
+  }
+
+  /* --- terrain / water impact --- */
+  if (!crashed && p.position.y < floorY){
+    var impact = -F.vs + F.speed * _fwd.y * 0.6;   // downward m/s
+    if (F._airborne && (impact > 9 || Math.abs(F.speed * _fwd.y) > 14)){
+      crashed = true;
+      showStatus(impact > 14 ? 'HARD LANDING — CRASHED' : 'WENT DOWN', true);
+      p.position.y = floorY;
+    } else {
+      p.position.y = floorY;
+      F.vs = 0;
+      F._airborne = false;
+    }
+  }
+
+  /* --- crash: fall to the surface, then slide to a stop --- */
+  if (crashed){
+    F.speed *= Math.pow(0.2, dt);
+    F.throttle = 0;
+    if (F.speed < 0.3) F.speed = 0;
+    var cg = groundHeightAt(p.position.x, p.position.z) + 2.2;
+    if (p.position.y > cg){
+      F.vs -= 9.8 * dt;
+      p.position.y += F.vs * dt;
+      if (p.position.y <= cg){ p.position.y = cg; F.vs = 0; }
+    } else {
+      p.position.y = cg;
+    }
+  }
+
+  /* --- soft landing callout --- */
+  if (!crashed && !F._airborne && F.speed < 4 && F._wasAir){
+    showStatus('LANDED — NICE');
+  }
+  F._wasAir = F._airborne && F.speed > 5;
+}
+
+/* ---------------- camera ---------------- */
+function updateCamera(dt){
+  var p = plane;
+  var k = 1 - Math.exp(-dt * 4.5);
+  if (camMode === 0){
+    /* chase */
+    var off = new THREE.Vector3(-21, 8.5, 0).applyQuaternion(p.quaternion);
+    var target = p.position.clone().add(off);
+    var look = new THREE.Vector3(6, 1.5, 0).applyQuaternion(p.quaternion).add(p.position);
+    camera.position.lerp(target, k);
+    camera.lookAt(look);
+  } else if (camMode === 1){
+    /* cockpit */
+    var offC = new THREE.Vector3(2.4, 1.9, 0).applyQuaternion(p.quaternion);
+    camera.position.copy(p.position).add(offC);
+    var lookC = new THREE.Vector3(1, 0.15, 0).applyQuaternion(p.quaternion).add(p.position);
+    camera.lookAt(lookC);
+  } else {
+    /* orbit */
+    F._orbit = (F._orbit || 0) + dt * 0.35;
+    var r = 46;
+    var ox = p.position.x + Math.cos(F._orbit) * r;
+    var oz = p.position.z + Math.sin(F._orbit) * r;
+    var oy = p.position.y + 12;
+    camera.position.lerp(new THREE.Vector3(ox, oy, oz), k);
+    camera.lookAt(p.position);
+  }
+}
+
+/* ---------------- input ---------------- */
+window.addEventListener('keydown', function(e){
+  keys[e.code] = true;
+  if (e.code === 'KeyR') resetPlane();
+  if (e.code === 'KeyC'){
+    camMode = (camMode + 1) % 3;
+    showStatus(['CHASE CAM', 'COCKPIT CAM', 'ORBIT CAM'][camMode]);
+  }
+  if (e.code === 'ArrowUp' || e.code === 'ArrowDown' || e.code === 'ArrowLeft' || e.code === 'ArrowRight')
+    e.preventDefault();
+});
+window.addEventListener('keyup', function(e){ keys[e.code] = false; });
+
+/* ---------------- HUD update ---------------- */
+var hdgFrame = 0;
+function updateHUD(){
+  var spdKt = F.speed * 1.94384;
+  var altFt = Math.max(0, (plane.position.y - groundHeightAt(plane.position.x, plane.position.z)) * 3.28084);
+  var _f = new THREE.Vector3(1, 0, 0).applyQuaternion(plane.quaternion);
+  var hdgDeg = (Math.atan2(_f.x, -_f.z) * 180 / Math.PI + 360) % 360;
+  tSpd.innerHTML = Math.round(spdKt) + '<span class="u"> kt</span>';
+  tAlt.innerHTML = Math.round(altFt) + '<span class="u"> ft</span>';
+  tHdg.innerHTML = ('000' + Math.round(hdgDeg)).slice(-3) + '<span class="u">&deg;</span>';
+  tThr.innerHTML = Math.round(F.throttle * 100) + '<span class="u"> %</span>';
+  var vsFpm = F.vs * 196.85;
+  tVs.innerHTML = (vsFpm >= 0 ? '+' : '') + Math.round(vsFpm) + '<span class="u"> fpm</span>';
+  if (++hdgFrame % 3 === 0) drawMinimap();
+}
+
+/* ---------------- resize ---------------- */
+window.addEventListener('resize', function(){
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+/* ---------------- animate ---------------- */
+var lastTime = performance.now();
+var elapsed = 0;
+function animate(now){
+  requestAnimationFrame(animate);
+  var dt = Math.min(0.05, (now - lastTime) / 1000);
+  lastTime = now;
+  elapsed += dt;
+  updateWaterWaves(elapsed);
+  /* clouds drift slowly (gentle oscillation, no wrap pop) */
+  cloudGroup.position.x = Math.sin(elapsed * 0.015) * 400;
+  updatePlane(dt);
+  updateCamera(dt);
+  updateHUD();
+  renderer.render(scene, camera);
+}
+requestAnimationFrame(animate);
+})();
+</script>
+</body>
+</html>

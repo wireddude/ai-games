@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Doodle Climb</title>
+<style>
+  :root { --bg: #1b1e2b; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    overflow: hidden;
+    font-family: "Comic Sans MS", "Chalkboard SE", "Segoe Print", cursive, sans-serif;
+    -webkit-user-select: none; user-select: none;
+  }
+  #wrap {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  canvas {
+    display: block;
+    background: #fdfdf8;
+    border-radius: 10px;
+    box-shadow: 0 10px 50px rgba(0,0,0,.55);
+    touch-action: none;
+  }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="game"></canvas></div>
+
+<script>
+"use strict";
+/* ============================================================================
+   DOODLE CLIMB — a single-file Doodle Jump–style game
+   No external assets, no libraries. Open this file in any browser.
+
+   TUNING: all gameplay-feel numbers live in the CONFIG block below.
+   ==========================================================================*/
+
+/* ----------------------------- CONFIG ----------------------------------- */
+const CONFIG = {
+  // Logical (world) canvas size. The canvas is scaled to fit the viewport.
+  W: 420,
+  H: 700,
+
+  // Physics (pixels / second)
+  GRAVITY: 1500,          // downward acceleration
+  JUMP_VEL: -560,         // upward velocity on a normal bounce (negative = up)
+  SPRING_MULT: 2.5,       // spring launch = JUMP_VEL * SPRING_MULT
+  MAX_FALL: 950,          // terminal velocity (downward)
+  MOVE_ACCEL: 2600,       // horizontal acceleration while a key is held
+  MAX_H_SPEED: 250,       // horizontal speed cap
+  GROUND_FRICTION: 18,    // horizontal drag per second while on a platform (strong stop)
+  AIR_DRAG: 4.5,          // horizontal drag per second while airborne (gentle coast)
+
+  // Player
+  PLAYER_SIZE: 34,        // hitbox width & height
+  CAMERA_LOCK: 0.45,      // fraction of screen height: camera engages above this line
+
+  // Platforms
+  PLAT_W: 66,
+  PLAT_H: 14,
+  GAP_MIN: 52,            // minimum vertical gap between platforms
+  GAP_MAX: 92,            // maximum vertical gap (kept < max jump height ~104px)
+  MOVING_SPEED: 70,       // px/s for blue platforms
+  JETPACK_TIME: 3.0,      // seconds
+  JETPACK_SPEED: 720,     // upward px/s while jetpack is lit
+
+  // Difficulty / spawn rates (all scale with score unless noted)
+  MONSTER_START: 350,     // score at which monsters begin appearing
+  MONSTER_CHANCE: 0.16,   // chance a qualifying platform gets a monster
+  SPRING_CHANCE: 0.13,    // chance a solid platform gets a spring
+  JETPACK_CHANCE: 0.025,  // chance a solid platform gets a jetpack
+  SHOOT_COOLDOWN: 0.22,   // seconds between shots
+  BULLET_SPEED: 640,      // px/s upward
+};
+
+/* ----------------------------- CANVAS SETUP ------------------------------ */
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+let scale = 1, dpr = 1;
+
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  // Fit logical canvas inside the viewport (with a small margin), keep aspect.
+  const margin = 12;
+  const availW = window.innerWidth - margin;
+  const availH = window.innerHeight - margin;
+  scale = Math.min(availW / CONFIG.W, availH / CONFIG.H);
+  canvas.style.width  = (CONFIG.W * scale) + "px";
+  canvas.style.height = (CONFIG.H * scale) + "px";
+  canvas.width  = Math.round(CONFIG.W * scale * dpr);
+  canvas.height = Math.round(CONFIG.H * scale * dpr);
+}
+window.addEventListener("resize", resize);
+resize();
+
+/* ----------------------------- AUDIO ------------------------------------ */
+/* Tiny Web Audio synth — no files. Each SFX is a short oscillator blip.     */
+const AudioSys = {
+  ctx: null,
+  ensure() {
+    if (!this.ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) this.ctx = new AC();
+    }
+    if (this.ctx && this.ctx.state === "suspended") this.ctx.resume();
+  },
+  // Generic blip: type, start freq, end freq, duration, volume
+  blip(type, f0, f1, dur, vol = 0.18, delay = 0) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime + delay;
+    const o = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g).connect(this.ctx.destination);
+    o.start(t); o.stop(t + dur + 0.02);
+  },
+  jump()     { this.blip("square", 220, 520, 0.14, 0.12); },                       // boing-ish
+  spring()   { this.blip("square", 300, 900, 0.25, 0.16); },
+  snap()     { this.blip("sawtooth", 180, 60, 0.12, 0.14); },
+  shoot()    { this.blip("triangle", 900, 200, 0.09, 0.10); },
+  stomp()    { this.blip("square", 500, 90, 0.18, 0.16); },
+  jetpack()  { this.blip("sawtooth", 120, 400, 0.5, 0.08); },
+  gameOver() { // little falling glissando
+    for (let i = 0; i < 6; i++)
+      this.blip("triangle", 600 - i * 80, 500 - i * 80, 0.16, 0.14, i * 0.09);
+  }
+};
+
+/* ----------------------------- INPUT ------------------------------------- */
+const keys = { left: false, right: false, shoot: false };
+window.addEventListener("keydown", (e) => {
+  if (["ArrowLeft","ArrowRight","ArrowUp","Space","KeyA","KeyD"].includes(e.code)) e.preventDefault();
+  if (e.code === "ArrowLeft"  || e.code === "KeyA") keys.left  = true;
+  if (e.code === "ArrowRight" || e.code === "KeyD") keys.right = true;
+  if (e.code === "ArrowUp"    || e.code === "Space") { keys.shoot = true; onAction(); }
+  if (e.code === "Enter") onAction();
+  AudioSys.ensure();
+});
+window.addEventListener("keyup", (e) => {
+  if (e.code === "ArrowLeft"  || e.code === "KeyA") keys.left  = false;
+  if (e.code === "ArrowRight" || e.code === "KeyD") keys.right = false;
+  if (e.code === "ArrowUp"    || e.code === "Space") keys.shoot = false;
+});
+
+// Touch: visible on-screen buttons (LEFT / RIGHT / FIRE) shown on touch devices.
+let touchDir = 0, touchShoot = false;
+const isTouch = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || ('ontouchstart' in window);
+
+// Touch control buttons (logical canvas coords).
+const btnLeft  = { x: 18,             y: CONFIG.H - 100, w: 92, h: 80 };
+const btnRight = { x: CONFIG.W - 110, y: CONFIG.H - 100, w: 92, h: 80 };
+const btnFire  = { x: CONFIG.W/2 - 46, y: CONFIG.H - 100, w: 92, h: 80 };
+
+function canvasPos(t) {
+  const r = canvas.getBoundingClientRect();
+  return { x: (t.clientX - r.left) / r.width  * CONFIG.W,
+           y: (t.clientY - r.top)  / r.height * CONFIG.H };
+}
+
+// Scan every active touch; set touchDir/touchShoot from which button each is on.
+// Recomputed from scratch on every event -> multi-touch (left+fire, left+right) works.
+const touchBtns = { left: false, right: false, fire: false };
+function syncTouch(e) {
+  touchDir = 0; touchShoot = false;
+  touchBtns.left = touchBtns.right = touchBtns.fire = false;
+  for (const t of e.touches) {
+    const p = canvasPos(t);
+    if (inBtn(p.x, p.y, btnLeft))  { touchDir -= 1; touchBtns.left = true; }
+    if (inBtn(p.x, p.y, btnRight)) { touchDir += 1; touchBtns.right = true; }
+    if (inBtn(p.x, p.y, btnFire))  { touchShoot = true; touchBtns.fire = true; }
+  }
+  touchDir = Math.max(-1, Math.min(1, touchDir));
+}
+
+canvas.addEventListener("touchstart", (e) => {
+  e.preventDefault();
+  AudioSys.ensure();
+  if (state === "start" || state === "over") { onAction(); return; }
+  syncTouch(e);
+}, { passive: false });
+canvas.addEventListener("touchmove",   (e) => { e.preventDefault(); if (state === "play") syncTouch(e); }, { passive: false });
+canvas.addEventListener("touchend",    (e) => { e.preventDefault(); if (state === "play") syncTouch(e); }, { passive: false });
+canvas.addEventListener("touchcancel", (e) => { e.preventDefault(); touchDir = 0; touchShoot = false; }, { passive: false });
+
+// Buttons (start / play-again) are drawn on canvas; hit-test in canvas coords.
+canvas.addEventListener("pointerdown", (e) => {
+  AudioSys.ensure(); // unlock audio on click (browser gesture requirement)
+  const r = canvas.getBoundingClientRect();
+  const mx = (e.clientX - r.left) / r.width * CONFIG.W;
+  const my = (e.clientY - r.top) / r.height * CONFIG.H;
+  if (state === "start" && inBtn(mx, my, startBtn)) onAction();
+  if (state === "over"  && inBtn(mx, my, overBtn))  onAction();
+});
+function inBtn(x, y, b) { return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h; }
+const startBtn = { x: CONFIG.W/2 - 80, y: 430, w: 160, h: 54 };
+const overBtn  = { x: CONFIG.W/2 - 90, y: 430, w: 180, h: 54 };
+
+function onAction() {
+  if (state === "start") startGame();
+  else if (state === "over") startGame();
+}
+
+/* ----------------------------- GAME STATE -------------------------------- */
+let state = "start"; // "start" | "play" | "over"
+let player, platforms, monsters, bullets, particles, springs;
+let cameraY, score, best, highY, shootTimer, shakeT = 0, startFloor = null;
+best = Number(localStorage.getItem("doodleclimb.best") || 0);
+
+function startGame() {
+  const ps = CONFIG.PLAYER_SIZE;
+  const groundY = CONFIG.H - 60; // top of the starting ground platform
+  player = {
+    x: CONFIG.W / 2, y: groundY - ps / 2, // spawned standing ON the ground
+    vx: 0, vy: 0,
+    w: ps, h: ps,
+    facing: 1,            // 1 = right, -1 = left (flips the snout/eyes)
+    squash: 1, stretch: 1,// squash-and-stretch multipliers (ease back to 1)
+    onGround: false,
+    jetpack: 0,           // seconds of jetpack remaining
+    invuln: 0,            // seconds of invulnerability (jetpack grants this)
+  };
+  platforms = []; monsters = []; bullets = []; particles = []; springs = [];
+  cameraY = 0; score = 0; highY = player.y; shootTimer = 0;
+
+  // Full-width starting floor: new players can wander on it without dying.
+  // It crumbles away once they've climbed (score >= 15), after which
+  // falling off the bottom is a real game over.
+  startFloor = addPlatform(0, groundY, "green");
+  startFloor.w = CONFIG.W;
+  startFloor.isFloor = true;
+
+  // Pre-fill platforms above the start.
+  let y = CONFIG.H - 60;
+  while (y > -200) {
+    y -= gapFor(score);
+    spawnRow(y);
+  }
+  nextSpawnY = y;
+  state = "play";
+}
+
+let nextSpawnY = 0;
+
+function gapFor(s) {
+  // Vertical gap grows a little with score, clamped below max jump height.
+  const t = Math.min(1, s / 2000);
+  return CONFIG.GAP_MIN + (CONFIG.GAP_MAX - CONFIG.GAP_MIN) * t * Math.random()
+       + Math.random() * 14 * t;
+}
+
+function pickType(s) {
+  // Difficulty-scaled platform type selection.
+  const r = Math.random();
+  if (s > 500 && r < 0.12) return "white";    // disappearing
+  if (s > 300 && r < 0.26) return "brown";    // fragile
+  if (s > 150 && r < 0.46) return "blue";     // moving
+  return "green";
+}
+
+// Create a platform, push it onto the field, and return it.
+function addPlatform(x, y, type) {
+  const p = {
+    x, y, w: CONFIG.PLAT_W, h: CONFIG.PLAT_H, type,
+    vx: type === "blue" ? (Math.random() < 0.5 ? -1 : 1) * CONFIG.MOVING_SPEED : 0,
+    used: false,       // white platforms vanish after one use
+    dead: false,
+    // Spring / jetpack props (only on solid platforms)
+    prop: null,        // "spring" | "jetpack"
+    springAnim: 0,     // 0..1 compression animation timer
+  };
+  platforms.push(p);
+  return p;
+}
+
+function spawnRow(y) {
+  const s = score;
+  const x = Math.random() * (CONFIG.W - CONFIG.PLAT_W);
+  const p = addPlatform(x, y, pickType(s));
+  if (p.type === "green" || p.type === "blue") {
+    const r = Math.random();
+    if (r < CONFIG.JETPACK_CHANCE) p.prop = "jetpack";
+    else if (r < CONFIG.JETPACK_CHANCE + CONFIG.SPRING_CHANCE) p.prop = "spring";
+  }
+
+  // Monster hovers above the platform (never on spring/jetpack platforms).
+  if (s >= CONFIG.MONSTER_START && !p.prop && Math.random() < CONFIG.MONSTER_CHANCE
+      && p.type !== "brown" && p.type !== "white") {
+    monsters.push({
+      x: p.x + p.w / 2, y: y - 46,
+      w: 38, h: 34,
+      baseY: y - 46, t: Math.random() * 6.28,
+      dead: false, squash: 1,
+    });
+  }
+}
+
+/* ----------------------------- FIXED-STEP LOOP --------------------------- */
+/* Physics runs at a fixed 120 Hz via an accumulator, so behavior is
+   identical on 60 Hz and 120 Hz+ displays. Rendering happens every rAF.   */
+const STEP = 1 / 120;
+let last = performance.now(), acc = 0;
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  let dt = (now - last) / 1000;
+  last = now;
+  if (dt > 0.25) dt = 0.25; // tab-switch safety: don't spiral
+  if (state === "play") {
+    acc += dt;
+    while (acc >= STEP) {
+      update(STEP);
+      acc -= STEP;
+      if (state !== "play") break; // game over mid-frame: stop stepping
+    }
+  } else {
+    updateAmbient(dt); // idle animation on menus
+  }
+  render();
+}
+requestAnimationFrame(frame);
+
+/* ----------------------------- UPDATE ------------------------------------ */
+function update(dt) {
+  const p = player;
+
+  /* --- horizontal movement ---
+   Holding a direction accelerates toward MAX_H_SPEED. Releasing applies
+   exponential drag (frame-rate independent) so the character coasts to a
+   smooth stop — strong on the ground, gentler in the air (keeps momentum). */
+  let dir = 0;
+  if (keys.left)  dir -= 1;
+  if (keys.right) dir += 1;
+  if (touchDir)   dir = touchDir;
+  if (dir !== 0) {
+    p.vx += dir * CONFIG.MOVE_ACCEL * dt;
+    p.facing = dir;
+  } else {
+    const drag = p.onGround ? CONFIG.GROUND_FRICTION : CONFIG.AIR_DRAG;
+    p.vx *= Math.exp(-drag * dt);      // exponential decay: same feel at any frame rate
+    if (Math.abs(p.vx) < 2) p.vx = 0;  // settle to a full stop
+  }
+  p.vx = Math.max(-CONFIG.MAX_H_SPEED, Math.min(CONFIG.MAX_H_SPEED, p.vx));
+
+  /* --- jetpack --- */
+  if (p.jetpack > 0) {
+    p.jetpack -= dt;
+    p.vy = -CONFIG.JETPACK_SPEED;
+    p.invuln = Math.max(p.invuln, 0.1);
+    // Exhaust particles
+    for (let i = 0; i < 2; i++) {
+      particles.push({
+        x: p.x + (Math.random() - 0.5) * 14,
+        y: p.y + p.h / 2,
+        vx: (Math.random() - 0.5) * 60,
+        vy: 150 + Math.random() * 120,
+        life: 0.5, maxLife: 0.5,
+        size: 4 + Math.random() * 5,
+        color: Math.random() < 0.5 ? "#ff9f43" : "#ffd93d",
+      });
+    }
+  } else {
+    p.vy += CONFIG.GRAVITY * dt;
+    if (p.vy > CONFIG.MAX_FALL) p.vy = CONFIG.MAX_FALL;
+  }
+
+  p.invuln = Math.max(0, p.invuln - dt);
+  shootTimer = Math.max(0, shootTimer - dt);
+
+  /* --- integrate + screen wrap --- */
+  const prevBottom = p.y + p.h / 2;
+  p.x += p.vx * dt;
+  p.y += p.vy * dt;
+  const half = p.w / 2;
+  if (p.x < -half)      p.x = CONFIG.W + half;   // wrap left -> right
+  else if (p.x > CONFIG.W + half) p.x = -half;   // wrap right -> left
+
+  /* --- shooting --- */
+  if ((keys.shoot || touchShoot) && shootTimer <= 0) {
+    shootTimer = CONFIG.SHOOT_COOLDOWN;
+    bullets.push({ x: p.x, y: p.y - p.h / 2, vy: -CONFIG.BULLET_SPEED });
+    AudioSys.shoot();
+  }
+  for (const b of bullets) b.y += b.vy * dt;
+  bullets = bullets.filter(b => b.y > cameraY - 40);
+
+  /* --- platform update + collision --- */
+  p.onGround = false;
+  const bottom = p.y + p.h / 2;
+  const falling = p.vy > 0;
+
+  for (const pl of platforms) {
+    if (pl.dead) continue;
+    if (pl.vx !== 0) { // moving platforms
+      pl.x += pl.vx * dt;
+      if (pl.x < 0) { pl.x = 0; pl.vx *= -1; }
+      if (pl.x + pl.w > CONFIG.W) { pl.x = CONFIG.W - pl.w; pl.vx *= -1; }
+    }
+    if (pl.springAnim > 0) pl.springAnim = Math.max(0, pl.springAnim - dt * 4);
+
+    // One-way landing: was above the top last step, is at/below it now,
+    // horizontally overlapping, and falling (or jetpack off & falling).
+    const overlapX = p.x + half * 0.7 > pl.x && p.x - half * 0.7 < pl.x + pl.w;
+    if (overlapX && falling && prevBottom <= pl.y + 4 && bottom >= pl.y) {
+      if (pl.type === "brown") {
+        // Fragile: breaks, no bounce.
+        pl.dead = true;
+        AudioSys.snap();
+        burst(pl.x + pl.w/2, pl.y, "#a9714b", 10);
+        continue;
+      }
+      if (pl.type === "white" && pl.used) continue; // already vanished visually
+      if (pl.type === "white") pl.used = true;      // vanishes after this jump
+
+      // Land!
+      p.y = pl.y - p.h / 2;
+      p.onGround = true;
+      applySquash(0.55, 1.35);
+      if (pl.prop === "spring") {
+        p.vy = CONFIG.JUMP_VEL * CONFIG.SPRING_MULT;
+        pl.springAnim = 1;
+        AudioSys.spring();
+      } else if (pl.prop === "jetpack") {
+        p.jetpack = CONFIG.JETPACK_TIME;
+        p.vy = -CONFIG.JETPACK_SPEED;
+        pl.prop = null;
+        AudioSys.jetpack();
+      } else {
+        p.vy = CONFIG.JUMP_VEL;
+        AudioSys.jump();
+      }
+    }
+  }
+  platforms = platforms.filter(pl => !pl.dead && pl.y < cameraY + CONFIG.H + 60);
+
+  /* --- monsters --- */
+  for (const m of monsters) {
+    if (m.dead) continue;
+    m.t += dt;
+    m.y = m.baseY + Math.sin(m.t * 2.2) * 7; // gentle hover bob
+    m.squash += (1 - m.squash) * Math.min(1, dt * 10);
+
+    const dx = Math.abs(p.x - m.x);
+    const dy = p.y - m.y;
+    const hitX = dx < (p.w + m.w) / 2 - 6;
+    if (!hitX) continue;
+
+    if (p.invuln > 0) continue; // jetpack invulnerability: fly right through
+
+    // Stomp: falling and player's bottom near monster's top.
+    if (p.vy > 0 && (p.y + p.h/2) - m.y < m.h * 0.75 && dy < 0) {
+      m.dead = true;
+      m.squash = 0.3;
+      p.vy = CONFIG.JUMP_VEL;
+      AudioSys.stomp();
+      burst(m.x, m.y, "#7b5ea7", 14);
+      score += 25;
+      continue;
+    }
+    // Otherwise: deadly touch.
+    if (Math.abs(dy) < (p.h + m.h) / 2 - 6) {
+      gameOver();
+      return;
+    }
+  }
+  monsters = monsters.filter(m => !m.dead && m.baseY < cameraY + CONFIG.H + 80);
+
+  // Bullets vs monsters.
+  for (const b of bullets) {
+    for (const m of monsters) {
+      if (m.dead) continue;
+      if (Math.abs(b.x - m.x) < m.w / 2 + 4 && Math.abs(b.y - m.y) < m.h / 2 + 4) {
+        m.dead = true; m.squash = 0.3;
+        b.y = -9999;
+        AudioSys.stomp();
+        burst(m.x, m.y, "#7b5ea7", 14);
+        score += 25;
+      }
+    }
+  }
+  bullets = bullets.filter(b => b.y > -9000);
+
+  /* --- camera: lock above the midpoint and scroll down --- */
+  const lockLine = cameraY + CONFIG.H * CONFIG.CAMERA_LOCK;
+  if (p.y < lockLine) {
+    const dy = lockLine - p.y;
+    cameraY -= dy;
+  }
+  // Score = highest point climbed (pixels / 10).
+  if (p.y < highY) {
+    score = Math.max(score, Math.floor((highY - p.y) / 10));
+    highY = p.y;
+    // Player has taken off: crumble the starting floor away.
+    if (startFloor && score >= 15) { startFloor.dead = true; startFloor = null; }
+  }
+
+  /* --- spawn new rows above the screen --- */
+  while (nextSpawnY > cameraY - 160) {
+    nextSpawnY -= gapFor(score);
+    spawnRow(nextSpawnY);
+  }
+
+  /* --- particles --- */
+  for (const pt of particles) {
+    pt.life -= dt;
+    pt.x += pt.vx * dt;
+    pt.y += pt.vy * dt;
+  }
+  particles = particles.filter(pt => pt.life > 0);
+
+  /* --- squash & stretch ease back to normal --- */
+  p.squash  += (1 - p.squash)  * Math.min(1, dt * 9);
+  p.stretch += (1 - p.stretch) * Math.min(1, dt * 9);
+
+  /* --- death: fell below the bottom of the screen --- */
+  if (p.y - p.h / 2 > cameraY + CONFIG.H + 60) gameOver();
+}
+
+function applySquash(sq, st) {
+  player.squash = sq;
+  player.stretch = st;
+}
+
+function burst(x, y, color, n) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const sp = 60 + Math.random() * 160;
+    particles.push({
+      x, y,
+      vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 60,
+      life: 0.5 + Math.random() * 0.3, maxLife: 0.8,
+      size: 3 + Math.random() * 4, color,
+    });
+  }
+}
+
+function gameOver() {
+  state = "over";
+  shakeT = 0.5;
+  AudioSys.gameOver();
+  if (score > best) {
+    best = score;
+    localStorage.setItem("doodleclimb.best", String(best));
+  }
+}
+
+function updateAmbient(dt) {
+  // Gentle idle bob for menu doodles.
+  ambientT += dt;
+}
+let ambientT = 0;
+
+/* ----------------------------- RENDER ------------------------------------ */
+function render() {
+  // Set up transform: CSS pixels -> logical units, DPR-aware.
+  ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+  ctx.clearRect(0, 0, CONFIG.W, CONFIG.H);
+
+  // Screen shake on game over moment (tiny, decays fast).
+  if (shakeT > 0) {
+    shakeT = Math.max(0, shakeT - 0.016);
+    ctx.translate((Math.random() - 0.5) * 6 * shakeT, (Math.random() - 0.5) * 6 * shakeT);
+  }
+
+  drawGrid();
+
+  if (state === "start") {
+    drawStartScreen();
+    return;
+  }
+
+  // World-space drawing: translate by -cameraY.
+  ctx.save();
+  ctx.translate(0, -cameraY);
+
+  for (const pl of platforms) drawPlatform(pl);
+  for (const m of monsters)  drawMonster(m);
+  for (const b of bullets)   drawBullet(b);
+  for (const pt of particles) drawParticle(pt);
+  drawPlayer();
+
+  ctx.restore();
+
+  drawHUD();
+  if (isTouch && state === "play") drawTouchControls();
+  if (state === "over") drawOverScreen();
+}
+
+/* --- On-screen touch buttons (LEFT / RIGHT / FIRE) — drawn only on touch
+    devices. Each glows green while pressed for clear feedback. --- */
+function drawTouchControls() {
+  const btns = [
+    { r: btnLeft,  kind: "left"  },
+    { r: btnRight, kind: "right" },
+    { r: btnFire,  kind: "fire"  },
+  ];
+  for (const { r, kind } of btns) {
+    const pressed = touchBtns[kind];
+    ctx.save();
+    ctx.globalAlpha = pressed ? 0.6 : 0.3;
+    roundRect(r.x, r.y, r.w, r.h, 18);
+    ctx.fillStyle = pressed ? "#67c06b" : "#41506e";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.75)";
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.globalAlpha = pressed ? 1 : 0.8;
+    const cx = r.x + r.w/2, cy = r.y + r.h/2;
+    if (kind === "fire") {
+      // bullet icon: yellow ball + trail
+      ctx.strokeStyle = "rgba(255,255,255,0.7)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + 16); ctx.lineTo(cx, cy + 4);
+      ctx.stroke();
+      ctx.fillStyle = "#fdcb6e";
+      ctx.strokeStyle = "#e17055";
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(cx, cy - 6, 9, 0, 7); ctx.fill(); ctx.stroke();
+    } else {
+      // chevron arrow
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 40px 'Comic Sans MS', 'Chalkboard SE', cursive";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(kind === "left" ? "\u25C0" : "\u25B6", cx, cy + 2);
+    }
+    ctx.restore();
+  }
+}
+
+/* --- graph-paper background (scrolls with camera so climbing feels real) --- */
+function drawGrid() {
+  const minor = 20, major = 100;
+  ctx.save();
+  ctx.fillStyle = "#fdfdf8";
+  ctx.fillRect(0, 0, CONFIG.W, CONFIG.H);
+
+  const offY = (-cameraY) % minor;
+  // Minor lines
+  ctx.strokeStyle = "rgba(120,160,220,0.18)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let y = offY; y < CONFIG.H; y += minor) {
+    ctx.moveTo(0, y); ctx.lineTo(CONFIG.W, y);
+  }
+  for (let x = 0; x <= CONFIG.W; x += minor) {
+    ctx.moveTo(x, 0); ctx.lineTo(x, CONFIG.H);
+  }
+  ctx.stroke();
+  // Major lines
+  const offYm = (-cameraY) % major;
+  ctx.strokeStyle = "rgba(120,160,220,0.32)";
+  ctx.beginPath();
+  for (let y = offYm; y < CONFIG.H; y += major) {
+    ctx.moveTo(0, y); ctx.lineTo(CONFIG.W, y);
+  }
+  for (let x = 0; x <= CONFIG.W; x += major) {
+    ctx.moveTo(x, 0); ctx.lineTo(x, CONFIG.H);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawPlatform(pl) {
+  const { x, y, w, h, type } = pl;
+  let fill, edge;
+  switch (type) {
+    case "blue":  fill = "#5aa9e6"; edge = "#3d7fb8"; break;
+    case "brown": fill = "#a9714b"; edge = "#7c4f30"; break;
+    case "white": fill = "#f2f2f2"; edge = "#c9c9c9"; break;
+    default:      fill = pl.isFloor ? "#67c06b" : "#67c06b"; edge = "#419045";
+  }
+  if (type === "white" && pl.used) {
+    // Vanishing: fade + crumble downward.
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.translate(0, 6);
+  }
+  // Rounded slab
+  roundRect(x, y, w, h, 7);
+  ctx.fillStyle = fill; ctx.fill();
+  ctx.strokeStyle = edge; ctx.lineWidth = 2; ctx.stroke();
+  // Doodle shading line on top
+  ctx.strokeStyle = "rgba(255,255,255,0.55)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x + 6, y + 4); ctx.lineTo(x + w - 6, y + 4);
+  ctx.stroke();
+  if (type === "brown") {
+    // Crack lines
+    ctx.strokeStyle = "rgba(60,35,15,0.5)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x + w*0.3, y); ctx.lineTo(x + w*0.42, y + h*0.6); ctx.lineTo(x + w*0.35, y + h);
+    ctx.moveTo(x + w*0.65, y); ctx.lineTo(x + w*0.6, y + h*0.5);
+    ctx.stroke();
+  }
+  if (type === "white" && pl.used) ctx.restore();
+
+  // Props
+  if (pl.prop === "spring") drawSpring(pl);
+  if (pl.prop === "jetpack") drawJetpack(pl);
+}
+
+function drawSpring(pl) {
+  const cx = pl.x + pl.w / 2;
+  const topY = pl.y;
+  // Compression anim: springAnim 1 -> 0 means compress then extend.
+  const compress = pl.springAnim > 0 ? pl.springAnim * 8 : 0;
+  const hgt = 14 - compress;
+  ctx.save();
+  ctx.strokeStyle = "#d63031";
+  ctx.lineWidth = 3;
+  ctx.lineCap = "round";
+  // Zig-zag coil
+  ctx.beginPath();
+  const coils = 3;
+  for (let i = 0; i <= coils; i++) {
+    const yy = topY - (hgt / coils) * i;
+    const xx = cx + (i % 2 === 0 ? -7 : 7);
+    if (i === 0) ctx.moveTo(cx, topY);
+    else ctx.lineTo(xx, yy);
+  }
+  ctx.lineTo(cx, topY - hgt);
+  ctx.stroke();
+  // Base + cap
+  ctx.fillStyle = "#b71540";
+  roundRect(cx - 10, topY - 3, 20, 5, 2); ctx.fill();
+  roundRect(cx - 9, topY - hgt - 4, 18, 5, 2); ctx.fill();
+  ctx.restore();
+}
+
+function drawJetpack(pl) {
+  const cx = pl.x + pl.w / 2;
+  const y = pl.y - 12;
+  ctx.save();
+  // Tank
+  ctx.fillStyle = "#636e72";
+  roundRect(cx - 9, y - 12, 18, 16, 5); ctx.fill();
+  ctx.strokeStyle = "#2d3436"; ctx.lineWidth = 2; ctx.stroke();
+  // Nozzles
+  ctx.fillStyle = "#fdcb6e";
+  roundRect(cx - 7, y + 2, 5, 5, 1); ctx.fill();
+  roundRect(cx + 2, y + 2, 5, 5, 1); ctx.fill();
+  // Flame flicker
+  const f = 3 + Math.sin(ambientT * 30) * 2;
+  ctx.fillStyle = "#ff7675";
+  ctx.beginPath();
+  ctx.moveTo(cx - 6, y + 7); ctx.lineTo(cx - 4, y + 7 + f); ctx.lineTo(cx - 2, y + 7);
+  ctx.moveTo(cx + 3, y + 7); ctx.lineTo(cx + 5, y + 7 + f); ctx.lineTo(cx + 7, y + 7);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawMonster(m) {
+  ctx.save();
+  ctx.translate(m.x, m.y);
+  ctx.scale(1 / Math.sqrt(m.squash), m.squash); // squash: wider when squashed
+  const r = m.w / 2;
+  // Body: spiky blob
+  ctx.fillStyle = m.dead ? "#c3b1e1" : "#7b5ea7";
+  ctx.strokeStyle = m.dead ? "#9d8bc4" : "#563d7a";
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  const spikes = 9;
+  for (let i = 0; i <= spikes * 2; i++) {
+    const a = (i / (spikes * 2)) * Math.PI * 2;
+    const rr = i % 2 === 0 ? r : r * 0.78;
+    const px = Math.cos(a) * rr, py = Math.sin(a) * rr * 0.92;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  // Eyes
+  ctx.fillStyle = "#fff";
+  ctx.beginPath();
+  ctx.arc(-8, -5, 6, 0, 7); ctx.arc(8, -5, 6, 0, 7);
+  ctx.fill();
+  ctx.fillStyle = "#2d3436";
+  ctx.beginPath();
+  ctx.arc(-7, -4, 2.6, 0, 7); ctx.arc(9, -4, 2.6, 0, 7);
+  ctx.fill();
+  // Frown
+  ctx.strokeStyle = "#2d3436";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(0, 10, 6, Math.PI * 1.15, Math.PI * 1.85);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawBullet(b) {
+  ctx.save();
+  ctx.fillStyle = "#fdcb6e";
+  ctx.strokeStyle = "#e17055";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(b.x, b.y, 5, 0, 7);
+  ctx.fill(); ctx.stroke();
+  // Little motion trail
+  ctx.strokeStyle = "rgba(253,203,110,0.5)";
+  ctx.beginPath();
+  ctx.moveTo(b.x, b.y + 6); ctx.lineTo(b.x, b.y + 16);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawParticle(pt) {
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, pt.life / pt.maxLife);
+  ctx.fillStyle = pt.color;
+  ctx.beginPath();
+  ctx.arc(pt.x, pt.y, pt.size, 0, 7);
+  ctx.fill();
+  ctx.restore();
+}
+
+/* --- the doodler: a cute blob with a snout + eyes that flip with facing --- */
+function drawPlayer() {
+  const p = player;
+  ctx.save();
+  ctx.translate(p.x, p.y);
+
+  // Blink during jetpack invulnerability
+  if (p.invuln > 0 && Math.floor(p.invuln * 12) % 2 === 0) ctx.globalAlpha = 0.45;
+
+  ctx.scale(p.facing * p.squash, p.stretch);
+
+  const s = p.w / 2; // half size
+
+  // Jetpack on the character's back (left side = "back" when facing right)
+  if (p.jetpack > 0) {
+    ctx.fillStyle = "#636e72";
+    roundRect(-s - 8, -s * 0.4, 10, s * 1.1, 4); ctx.fill();
+    ctx.strokeStyle = "#2d3436"; ctx.lineWidth = 2; ctx.stroke();
+  }
+
+  // Body: soft blob
+  ctx.fillStyle = "#ffd93d";
+  ctx.strokeStyle = "#e0a800";
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, s, s * 0.94, 0, 0, Math.PI * 2);
+  ctx.fill(); ctx.stroke();
+
+  // Belly
+  ctx.fillStyle = "rgba(255,255,255,0.5)";
+  ctx.beginPath();
+  ctx.ellipse(2, s * 0.35, s * 0.55, s * 0.4, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Snout (points in facing direction)
+  ctx.fillStyle = "#ffb84d";
+  ctx.strokeStyle = "#e0a800";
+  ctx.beginPath();
+  ctx.ellipse(s * 0.72, s * 0.05, s * 0.42, s * 0.3, 0, 0, Math.PI * 2);
+  ctx.fill(); ctx.stroke();
+  // Nose
+  ctx.fillStyle = "#e07b00";
+  ctx.beginPath();
+  ctx.arc(s * 1.02, s * 0.0, 3, 0, 7);
+  ctx.fill();
+
+  // Eyes (shifted toward facing direction)
+  const eyeX = s * 0.28;
+  const blink = Math.sin(ambientT * 1.3) > 0.985; // occasional blink
+  ctx.fillStyle = "#fff";
+  ctx.beginPath();
+  ctx.arc(eyeX - 5, -s * 0.32, 6.5, 0, 7);
+  ctx.arc(eyeX + 7, -s * 0.32, 6.5, 0, 7);
+  ctx.fill();
+  if (!blink) {
+    ctx.fillStyle = "#2d3436";
+    ctx.beginPath();
+    ctx.arc(eyeX - 3.5, -s * 0.3, 3, 0, 7);
+    ctx.arc(eyeX + 8.5, -s * 0.3, 3, 0, 7);
+    ctx.fill();
+  } else {
+    ctx.strokeStyle = "#2d3436"; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(eyeX - 10, -s * 0.32); ctx.lineTo(eyeX, -s * 0.32);
+    ctx.moveTo(eyeX + 2, -s * 0.32);  ctx.lineTo(eyeX + 12, -s * 0.32);
+    ctx.stroke();
+  }
+
+  // Cheek blush
+  ctx.fillStyle = "rgba(255,120,120,0.45)";
+  ctx.beginPath();
+  ctx.arc(-s * 0.35, s * 0.15, 4, 0, 7);
+  ctx.arc(s * 0.55, s * 0.28, 3.5, 0, 7);
+  ctx.fill();
+
+  // Antenna
+  ctx.strokeStyle = "#e0a800"; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.15, -s * 0.9);
+  ctx.quadraticCurveTo(-s * 0.05, -s * 1.25, s * 0.12, -s * 1.2);
+  ctx.stroke();
+  ctx.fillStyle = "#ff7675";
+  ctx.beginPath();
+  ctx.arc(s * 0.14, -s * 1.22, 3.5, 0, 7);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+/* ----------------------------- UI ---------------------------------------- */
+function drawHUD() {
+  ctx.save();
+  ctx.font = "bold 22px 'Comic Sans MS', 'Chalkboard SE', cursive";
+  ctx.fillStyle = "#41506e";
+  ctx.textAlign = "left";
+  ctx.fillText("Score: " + score, 14, 32);
+  ctx.textAlign = "right";
+  ctx.fillStyle = "#8a6d3b";
+  ctx.fillText("Best: " + best, CONFIG.W - 14, 32);
+  ctx.restore();
+}
+
+function drawButton(b, label) {
+  ctx.save();
+  const pulse = 1 + Math.sin(ambientT * 4) * 0.02;
+  ctx.translate(b.x + b.w / 2, b.y + b.h / 2);
+  ctx.scale(pulse, pulse);
+  ctx.translate(-(b.x + b.w / 2), -(b.y + b.h / 2));
+  roundRect(b.x, b.y, b.w, b.h, 14);
+  ctx.fillStyle = "#67c06b";
+  ctx.fill();
+  ctx.strokeStyle = "#419045";
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold 24px 'Comic Sans MS', 'Chalkboard SE', cursive";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, b.x + b.w / 2, b.y + b.h / 2 + 2);
+  ctx.restore();
+}
+
+function drawStartScreen() {
+  // Doodle a preview character mid-bounce
+  const fake = { x: CONFIG.W/2, y: 250 + Math.sin(ambientT*2.5)*10,
+                 w: 54, h: 54, facing: Math.sin(ambientT*1.1) > 0 ? 1 : -1,
+                 squash: 1, stretch: 1, invuln: 0, jetpack: 0 };
+  const saved = player; player = fake;
+  drawPlayer();
+  player = saved;
+
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#41506e";
+  ctx.font = "bold 46px 'Comic Sans MS', 'Chalkboard SE', cursive";
+  ctx.fillText("Doodle Climb", CONFIG.W/2, 120);
+  ctx.font = "17px 'Comic Sans MS', 'Chalkboard SE', cursive";
+  ctx.fillStyle = "#6b7a99";
+  ctx.fillText("← → / A D  to move", CONFIG.W/2, 330);
+  ctx.fillText("SPACE / ↑  to shoot", CONFIG.W/2, 356);
+  ctx.fillText("Bounce on green & blue, avoid brown!", CONFIG.W/2, 382);
+  ctx.fillText("Stomp or shoot the grumpies.", CONFIG.W/2, 408);
+  ctx.restore();
+  drawButton(startBtn, "Play");
+}
+
+function drawOverScreen() {
+  ctx.save();
+  ctx.fillStyle = "rgba(253,253,248,0.82)";
+  ctx.fillRect(0, 0, CONFIG.W, CONFIG.H);
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#d63031";
+  ctx.font = "bold 44px 'Comic Sans MS', 'Chalkboard SE', cursive";
+  ctx.fillText("Game Over", CONFIG.W/2, 200);
+  ctx.fillStyle = "#41506e";
+  ctx.font = "bold 26px 'Comic Sans MS', 'Chalkboard SE', cursive";
+  ctx.fillText("Score: " + score, CONFIG.W/2, 280);
+  const isBest = score >= best && score > 0;
+  ctx.fillStyle = isBest ? "#e0a800" : "#8a6d3b";
+  ctx.font = "bold 20px 'Comic Sans MS', 'Chalkboard SE', cursive";
+  ctx.fillText(isBest ? "★ New Best: " + best + " ★" : "Best: " + best, CONFIG.W/2, 320);
+  ctx.restore();
+  drawButton(overBtn, "Play Again");
+}
+
+/* ----------------------------- HELPERS ----------------------------------- */
+function roundRect(x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+</script>
+</body>
+</html>
