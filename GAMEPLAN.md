@@ -1,5 +1,30 @@
 # Zelda-style game: project handoff
 
+## Publishing & deployment (ship a new game)
+Two live mirrors of the same site — keep **both** in sync when you add a game:
+- **here.now** (shared with friends, permanent): https://wistful-truffle-vpr4.here.now/
+- **GitHub Pages**: https://wireddude.github.io/ai-games/ (mirrored gitea2 → GitHub)
+
+**here.now — one command:**
+```bash
+./publish_herenow.sh
+```
+Regenerates `manifest.json`, stages a clean copy (root `*.html` + `manifest.json` only — never `.git`/`.herenow`/scripts/subdirs), and does an **in-place update** of the `wistful-truffle-vpr4` site (only re-uploads changed files). Needs a here.now API key in `~/.herenow/credentials`. **Never publish without `--slug wistful-truffle-vpr4`** — that creates a throwaway duplicate site (this bit us once; the stray `floral-ginger-b7sp` was deleted).
+
+**GitHub Pages — check in:**
+```bash
+python3 update_manifest.py
+git add -A
+git -c commit.gpgsign=false commit -m "add <game>"
+GIT_TERMINAL_PROMPT=0 GIT_CONFIG_NOSYSTEM=1 git -c credential.helper=store push ai-games master
+```
+
+**If a GitHub Pages deploy 500s:** check https://githubstatus.com — Pages/Actions outages make `actions/deploy-pages@v5` fail with HTTP 500 (a GitHub-side error, *not* your code; the `punycode` DeprecationWarning in the log is a red herring from GitHub's own action). Once Pages shows **operational**, re-run the failed run at github.com/wireddude/ai-games/actions, or push a no-op nudge commit (e.g. touch `.deploy-nudge`) to re-trigger.
+
+**New scripts (added this session):**
+- `update_manifest.py` — regenerates `manifest.json` from root `*.html` games (same discovery logic as `server.py`); prints added/removed + the next git commands. Stdlib-only.
+- `publish_herenow.sh` — one-command here.now in-place publish (see above).
+
 ## Chess (standalone game) — `chess.html`
 - Single-file chess game playable on desktop and mobile (iPhone/iPad). Full rules: legal move generation, check, checkmate, stalemate, castling, en passant, promotion, 50-move rule.
 - **Stockfish engine** (v10 via jsDelivr CDN): loads `stockfish.js` + `stockfish.wasm` (~2 MB total) into a Blob Worker on page load. Communicates via UCI protocol. 4 difficulty levels: Easy (depth 2), Medium (depth 10), Hard (depth 18), Master (depth 25). Shows live evaluation score + depth in status bar while thinking.
