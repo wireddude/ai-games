@@ -55,11 +55,24 @@ else
   git -c commit.gpgsign=false commit -m "$local_msg" >/dev/null
   echo "  Committed: $local_msg"
 
-  if GIT_TERMINAL_PROMPT=0 GIT_CONFIG_NOSYSTEM=1 git -c credential.helper=store push ai-games master; then
+  # Push: try the documented `store` helper first (token in ~/.git-credentials),
+  # then fall back to `osxkeychain` (token in the macOS keychain — e.g. this
+  # machine). Capture stderr to a log so we only surface it on total failure.
+  push_log="$(mktemp)"
+  push_ok=0
+  if GIT_TERMINAL_PROMPT=0 GIT_CONFIG_NOSYSTEM=1 git -c credential.helper=store push ai-games master 2>"$push_log"; then
+    push_ok=1
+  elif GIT_TERMINAL_PROMPT=0 git -c credential.helper=osxkeychain push ai-games master 2>>"$push_log"; then
+    push_ok=1
+  fi
+  if [[ "$push_ok" -eq 1 ]]; then
     echo "  Pushed to ai-games -> GitHub mirror -> Pages."
   else
+    # Show what went wrong (mask any password, drop harmless keychain noise).
+    sed -E 's#(password=).*#\1<REDACTED>#' "$push_log" | grep -v -- '-25308' >&2
     echo "  !! git push FAILED. Commit is saved locally; re-run ./ship.sh to push." >&2
   fi
+  rm -f "$push_log"
 fi
 
 # ------------------------------------------------------------- summary ------
