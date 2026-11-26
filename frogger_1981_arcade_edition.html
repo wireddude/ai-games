@@ -1,0 +1,1971 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>FROGGER 1981 — Arcade Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #050508;
+            font-family: 'Press Start 2P', monospace;
+            color: #f8fafc;
+        }
+        canvas {
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+        .crt-scanlines {
+            background: linear-gradient(
+                rgba(18, 16, 16, 0) 50%,
+                rgba(0, 0, 0, 0.34) 50%
+            ), linear-gradient(
+                90deg,
+                rgba(255, 0, 0, 0.04),
+                rgba(0, 255, 0, 0.02),
+                rgba(0, 0, 255, 0.04)
+            );
+            background-size: 100% 3px, 6px 100%;
+            pointer-events: none;
+        }
+        .arcade-bezel {
+            background: linear-gradient(180deg, #111827 0%, #090d16 100%);
+            border: 2px solid #22c55e;
+            box-shadow: 0 0 28px rgba(34, 197, 94, 0.22), inset 0 0 18px rgba(0, 0, 0, 0.85);
+        }
+        .dpad-btn {
+            background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+            border: 2px solid #38bdf8;
+            box-shadow: 0 4px 0 #0369a1, 0 0 12px rgba(56, 189, 248, 0.25);
+            transition: transform 0.05s ease, box-shadow 0.05s ease, background-color 0.08s ease;
+        }
+        .dpad-btn:active, .dpad-btn.active {
+            transform: translateY(3px);
+            box-shadow: 0 1px 0 #0369a1, 0 0 16px rgba(56, 189, 248, 0.55);
+            background: #0284c7;
+        }
+        .ctrl-pill {
+            background: #0f172a;
+            border: 1.5px solid #475569;
+            transition: border-color 0.12s, color 0.12s, transform 0.06s;
+        }
+        .ctrl-pill:hover {
+            border-color: #22c55e;
+            color: #86efac;
+        }
+        .ctrl-pill:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-between p-1.5 sm:p-3">
+
+    <!-- Top Arcade Control Strip -->
+    <header class="w-full max-w-2xl flex items-center justify-between gap-2 px-1 py-1 z-20">
+        <div class="flex items-center gap-2">
+            <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span class="text-[10px] sm:text-xs text-emerald-400 tracking-wider">KONAMI 1981</span>
+        </div>
+        <div class="flex items-center gap-1.5 sm:gap-2">
+            <button id="btn-audio" class="ctrl-pill px-2.5 py-1.5 rounded-lg text-[9px] sm:text-[10px] text-amber-300 cursor-pointer">
+                SOUND: ON [M]
+            </button>
+            <button id="btn-crt" class="ctrl-pill px-2.5 py-1.5 rounded-lg text-[9px] sm:text-[10px] text-cyan-300 cursor-pointer">
+                CRT: OFF [V]
+            </button>
+            <button id="btn-pause" class="ctrl-pill px-2.5 py-1.5 rounded-lg text-[9px] sm:text-[10px] text-slate-300 cursor-pointer">
+                PAUSE [P]
+            </button>
+        </div>
+    </header>
+
+    <!-- Center Playfield Cabinet Container -->
+    <main class="relative flex-1 w-full flex items-center justify-center min-h-0 my-1">
+        <div id="cabinet-wrap" class="relative arcade-bezel rounded-xl overflow-hidden flex items-center justify-center">
+            <canvas id="game-canvas"></canvas>
+            <!-- Optional CRT Scanline Overlay (Off by default for crisp pixels) -->
+            <div id="crt-overlay" class="crt-scanlines absolute inset-0 hidden"></div>
+        </div>
+    </main>
+
+    <!-- Bottom Touch D-Pad (Ideal for iPhone / iPad / Touch Screens) -->
+    <footer class="w-full max-w-md flex items-center justify-between gap-3 px-2 pb-1 z-20">
+        <!-- Quick Start / Action Pill -->
+        <button id="btn-action" class="dpad-btn px-3.5 py-3 rounded-xl text-[9px] sm:text-[10px] text-amber-300 font-bold tracking-wider cursor-pointer">
+            START / COIN
+        </button>
+
+        <!-- Tactile Arcade D-Pad -->
+        <div class="grid grid-cols-3 gap-1.5 w-36 sm:w-40">
+            <div></div>
+            <button id="pad-up" aria-label="Hop Up" class="dpad-btn h-10 sm:h-11 rounded-lg flex items-center justify-center text-xs text-white cursor-pointer">▲</button>
+            <div></div>
+            <button id="pad-left" aria-label="Hop Left" class="dpad-btn h-10 sm:h-11 rounded-lg flex items-center justify-center text-xs text-white cursor-pointer">◀</button>
+            <button id="pad-down" aria-label="Hop Down" class="dpad-btn h-10 sm:h-11 rounded-lg flex items-center justify-center text-xs text-white cursor-pointer">▼</button>
+            <button id="pad-right" aria-label="Hop Right" class="dpad-btn h-10 sm:h-11 rounded-lg flex items-center justify-center text-xs text-white cursor-pointer">▶</button>
+        </div>
+    </footer>
+
+    <script>
+        /**
+         * FROGGER 1981 — ARCADE EDITION
+         * Complete Single-File HTML5 Canvas + Procedural Pixel Art + Web Audio Chiptune Synthesizer
+         */
+
+        // =====================================================================
+        // 1. MULTI-VOICE WEB AUDIO CHIPTUNE SYNTHESIZER & SOUND EFFECTS
+        // =====================================================================
+        class FroggerChiptuneSynth {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+                this.musicPlaying = false;
+                this.musicMode = 'none'; // 'none', 'gameplay', 'jingle'
+                this.stepIdx = 0;
+                this.stepTimer = 0;
+                this.jingleQueue = [];
+                this.jingleTimer = 0;
+                this.fastTempo = false;
+
+                // Note frequency lookup (Hz)
+                this.N = {
+                    R: 0,
+                    C3: 130.81, D3: 146.83, E3: 164.81, F3: 174.61, G3: 196.00, A3: 220.00, B3: 246.94,
+                    C4: 261.63, D4: 293.66, E4: 329.63, F4: 349.23, G4: 392.00, Gs4: 415.30, A4: 440.00, Bb4: 466.16, B4: 493.88,
+                    C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46, G5: 783.99, A5: 880.00, B5: 987.77, C6: 1046.50
+                };
+
+                // Classic Frogger Starting Fanfare (inspired by the 1981 arcade intro theme)
+                // Each step: [leadNote, bassNote, durationInEighths]
+                this.startFanfare = [
+                    ['C5', 'C3', 1], ['C5', 'G3', 1], ['A4', 'A3', 1], ['F4', 'F3', 1],
+                    ['C5', 'C3', 1], ['C5', 'G3', 1], ['A4', 'A3', 1], ['F4', 'F3', 1],
+                    ['D5', 'D3', 1], ['D5', 'A3', 1], ['Bb4', 'Bb4', 1], ['G4', 'G3', 1],
+                    ['C5', 'C3', 1.5], ['A4', 'F3', 0.5], ['F4', 'F3', 2]
+                ];
+
+                // Main Bouncy Gameplay Chiptune Loop (inspired by "Inu no Omawarisan" / Frogger Stage BGM)
+                this.gameplayLoop = [
+                    // Phrase A
+                    ['G4', 'C3', 1], ['G4', 'G3', 1], ['E4', 'C3', 1], ['C4', 'G3', 1],
+                    ['G4', 'C3', 1], ['G4', 'G3', 1], ['E4', 'C3', 1], ['R',  'G3', 1],
+                    ['A4', 'F3', 1], ['A4', 'C4', 1], ['G4', 'F3', 1], ['E4', 'C4', 1],
+                    ['D4', 'G3', 1], ['E4', 'D3', 1], ['D4', 'G3', 2],
+                    // Phrase B
+                    ['G4', 'C3', 1], ['G4', 'G3', 1], ['E4', 'C3', 1], ['C4', 'G3', 1],
+                    ['A4', 'F3', 1], ['C5', 'C4', 1], ['A4', 'F3', 1], ['G4', 'C4', 1],
+                    ['E4', 'G3', 1], ['G4', 'D3', 1], ['D4', 'G3', 1], ['B3', 'G3', 1],
+                    ['C4', 'C3', 2], ['R',  'G3', 2],
+                    // Phrase C (Playful call & response)
+                    ['E5', 'C3', 1], ['D5', 'G3', 1], ['C5', 'C3', 1], ['A4', 'F3', 1],
+                    ['G4', 'C3', 1], ['A4', 'G3', 1], ['C5', 'C3', 2],
+                    ['D5', 'G3', 1], ['C5', 'D3', 1], ['B4', 'G3', 1], ['G4', 'D3', 1],
+                    ['A4', 'F3', 1], ['G4', 'G3', 1], ['E4', 'C3', 2]
+                ];
+
+                // Home Bay Reached Jingle
+                this.homeJingle = [
+                    ['C5', 'C3', 0.8], ['E5', 'E3', 0.8], ['G5', 'G3', 0.8], ['C6', 'C4', 1.8]
+                ];
+
+                // Stage Clear Fanfare (all 5 bays filled)
+                this.stageClearJingle = [
+                    ['C5', 'C3', 0.8], ['E5', 'G3', 0.8], ['G5', 'C4', 0.8], ['E5', 'G3', 0.8],
+                    ['F5', 'F3', 0.8], ['A5', 'C4', 0.8], ['C6', 'F4', 1.4], ['G5', 'G3', 0.8],
+                    ['B5', 'D4', 0.8], ['D6', 'G4', 0.8], ['C6', 'C4', 2.4]
+                ];
+
+                // Game Over Jingle
+                this.gameOverJingle = [
+                    ['G4', 'C3', 1.2], ['F4', 'B3', 1.2], ['E4', 'A3', 1.2], ['D4', 'G3', 1.2],
+                    ['C4', 'C3', 2.8]
+                ];
+            }
+
+            init() {
+                if (this.ctx) {
+                    if (this.ctx.state === 'suspended') {
+                        this.ctx.resume().catch(() => {});
+                    }
+                    return;
+                }
+                try {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                } catch (e) {
+                    console.warn("Web Audio unavailable:", e);
+                }
+            }
+
+            toggleMute() {
+                this.muted = !this.muted;
+                return this.muted;
+            }
+
+            playTone(freq, type, startTime, duration, volume = 0.11, slideToFreq = null) {
+                if (this.muted || !this.ctx || !freq || freq <= 0) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, startTime);
+                if (slideToFreq) {
+                    osc.frequency.exponentialRampToValueAtTime(slideToFreq, startTime + duration);
+                }
+
+                gain.gain.setValueAtTime(0.001, startTime);
+                gain.gain.linearRampToValueAtTime(volume, startTime + 0.012);
+                gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(startTime);
+                osc.stop(startTime + duration + 0.015);
+            }
+
+            playNoise(startTime, duration, filterFreq = 800, volume = 0.18, filterType = 'lowpass') {
+                if (this.muted || !this.ctx) return;
+                const len = Math.max(1, Math.floor(this.ctx.sampleRate * duration));
+                const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+                const data = buf.getChannelData(0);
+                for (let i = 0; i < len; i++) {
+                    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * duration * 0.45));
+                }
+
+                const src = this.ctx.createBufferSource();
+                src.buffer = buf;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = filterType;
+                filter.frequency.setValueAtTime(filterFreq, startTime);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(volume, startTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+                src.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                src.start(startTime);
+            }
+
+            // Classic Arcade Sound Effects
+            playCoin() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.playTone(987.77, 'square', now, 0.08, 0.11);        // B5
+                this.playTone(1318.51, 'square', now + 0.08, 0.26, 0.11); // E6
+            }
+
+            playHop() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                // Classic upward dual-chirp frog hop
+                this.playTone(240, 'square', now, 0.065, 0.11, 560);
+                this.playTone(360, 'triangle', now + 0.02, 0.065, 0.09, 740);
+            }
+
+            playSquash() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.playNoise(now, 0.34, 420, 0.24, 'lowpass');
+                this.playTone(220, 'sawtooth', now, 0.32, 0.14, 52);
+            }
+
+            playSplash() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.playNoise(now, 0.42, 1350, 0.22, 'bandpass');
+                this.playTone(380, 'triangle', now, 0.28, 0.09, 110);
+            }
+
+            playTimeWarning() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.playTone(880, 'square', now, 0.055, 0.08);
+            }
+
+            playBonusPickup() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.playTone(587.33, 'square', now, 0.07, 0.1);
+                this.playTone(880.00, 'square', now + 0.07, 0.14, 0.1);
+            }
+
+            playExtraLife() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const notes = [523.25, 659.25, 783.99, 1046.5, 783.99, 1046.5];
+                notes.forEach((f, idx) => {
+                    this.playTone(f, 'square', now + idx * 0.08, 0.09, 0.11);
+                });
+            }
+
+            startStartFanfare(onComplete = null) {
+                this.queueJingle(this.startFanfare, 0.145, () => {
+                    this.startGameplayMusic();
+                    if (onComplete) onComplete();
+                });
+            }
+
+            startGameplayMusic() {
+                this.musicMode = 'gameplay';
+                this.musicPlaying = true;
+                this.stepIdx = 0;
+                this.stepTimer = 0;
+            }
+
+            stopMusic() {
+                this.musicMode = 'none';
+                this.musicPlaying = false;
+            }
+
+            queueJingle(notesArray, stepSec = 0.14, onComplete = null) {
+                this.musicMode = 'jingle';
+                this.jingleQueue = notesArray.map(n => ({
+                    lead: this.N[n[0]] || 0,
+                    bass: this.N[n[1]] || 0,
+                    dur: n[2] * stepSec
+                }));
+                this.jingleTimer = 0;
+                this.jingleCallback = onComplete;
+            }
+
+            update(dt) {
+                if (!this.ctx || this.musicMode === 'none') return;
+
+                if (this.musicMode === 'jingle') {
+                    this.jingleTimer -= dt;
+                    if (this.jingleTimer <= 0) {
+                        if (this.jingleQueue.length === 0) {
+                            this.musicMode = 'none';
+                            if (this.jingleCallback) {
+                                const cb = this.jingleCallback;
+                                this.jingleCallback = null;
+                                cb();
+                            }
+                            return;
+                        }
+                        const step = this.jingleQueue.shift();
+                        const now = this.ctx.currentTime;
+                        if (step.lead > 0) this.playTone(step.lead, 'square', now, step.dur * 0.88, 0.085);
+                        if (step.bass > 0) this.playTone(step.bass, 'triangle', now, step.dur * 0.9, 0.09);
+                        this.jingleTimer = step.dur;
+                    }
+                    return;
+                }
+
+                if (this.musicMode === 'gameplay' && this.musicPlaying) {
+                    this.stepTimer -= dt;
+                    if (this.stepTimer <= 0) {
+                        const item = this.gameplayLoop[this.stepIdx % this.gameplayLoop.length];
+                        this.stepIdx++;
+                        const eighthDur = this.fastTempo ? 0.115 : 0.155;
+                        const dur = item[2] * eighthDur;
+                        const now = this.ctx.currentTime;
+
+                        const leadFreq = this.N[item[0]] || 0;
+                        const bassFreq = this.N[item[1]] || 0;
+
+                        if (leadFreq > 0) {
+                            this.playTone(leadFreq, 'square', now, dur * 0.82, 0.065);
+                        }
+                        if (bassFreq > 0) {
+                            this.playTone(bassFreq, 'triangle', now, dur * 0.85, 0.075);
+                        }
+                        this.stepTimer = dur;
+                    }
+                }
+            }
+        }
+
+        const audio = new FroggerChiptuneSynth();
+
+        // =====================================================================
+        // 2. PROCEDURAL 16x16 RETRO PIXEL-ART SPRITE GENERATOR
+        // =====================================================================
+        // Renders authentic 1981 Konami-style pixel sprites to offscreen canvases
+        const SPRITES = {};
+
+        function createPixelSprite(w, h, drawFn) {
+            const c = document.createElement('canvas');
+            c.width = w;
+            c.height = h;
+            const ctx = c.getContext('2d');
+            ctx.imageSmoothingEnabled = false;
+            drawFn(ctx, w, h);
+            return c;
+        }
+
+        function drawPixelGrid(ctx, rows, palette, scale = 1) {
+            for (let y = 0; y < rows.length; y++) {
+                const row = rows[y];
+                for (let x = 0; x < row.length; x++) {
+                    const ch = row[x];
+                    if (ch !== '.' && palette[ch]) {
+                        ctx.fillStyle = palette[ch];
+                        ctx.fillRect(x * scale, y * scale, scale, scale);
+                    }
+                }
+            }
+        }
+
+        function buildAllSprites() {
+            // Frog Palette: G = bright green, D = dark green, Y = yellow belly/trim, R = red eyes
+            const frogPal = { G: '#22c55e', D: '#15803d', Y: '#facc15', R: '#ef4444' };
+            const ladyPal = { G: '#f472b6', D: '#db2777', Y: '#fef08a', R: '#38bdf8' };
+
+            const frogIdleRows = [
+                '....R......R....',
+                '...RGR....RGR...',
+                '...GGGGGGGGGG...',
+                '..DGGGGGGGGGGD..',
+                '.DDGYYGGGGYYGDD.',
+                'DD.GGGGGGGGGG.DD',
+                'D..GGGGGGGGGG..D',
+                '...DGGGGGGGGD...',
+                '..DDGGGGGGGGDD..',
+                '.DD.DGGGGGGD.DD.',
+                'DD...DDDDDD...DD',
+                'D.....Y..Y.....D',
+                '................',
+                '................',
+                '................',
+                '................'
+            ];
+
+            const frogLeapRows = [
+                '....R......R....',
+                '...RGR....RGR...',
+                '...GGGGGGGGGG...',
+                '..DGGGGGGGGGGD..',
+                '.DDGYYGGGGYYGDD.',
+                'DD.GGGGGGGGGG.DD',
+                '...DGGGGGGGGD...',
+                '....GGGGGGGG....',
+                '....DGGGGGGD....',
+                '.....DDDDDD.....',
+                '....DD....DD....',
+                '...DD......DD...',
+                '..DD........DD..',
+                '.DD..........DD.',
+                'DD............DD',
+                '................'
+            ];
+
+            function makeRotatedFrog(baseRows, pal, dir) {
+                const base = createPixelSprite(16, 16, ctx => drawPixelGrid(ctx, baseRows, pal, 1));
+                return createPixelSprite(16, 16, ctx => {
+                    ctx.save();
+                    ctx.translate(8, 8);
+                    const angles = { up: 0, right: Math.PI / 2, down: Math.PI, left: -Math.PI / 2 };
+                    ctx.rotate(angles[dir] || 0);
+                    ctx.drawImage(base, -8, -8);
+                    ctx.restore();
+                });
+            }
+
+            ['up', 'down', 'left', 'right'].forEach(dir => {
+                SPRITES[`frog_idle_${dir}`] = makeRotatedFrog(frogIdleRows, frogPal, dir);
+                SPRITES[`frog_leap_${dir}`] = makeRotatedFrog(frogLeapRows, frogPal, dir);
+                SPRITES[`lady_idle_${dir}`] = makeRotatedFrog(frogIdleRows, ladyPal, dir);
+            });
+
+            // Skull / Squash Death Frame
+            SPRITES.skull = createPixelSprite(16, 16, ctx => {
+                const pal = { W: '#f8fafc', G: '#94a3b8', R: '#ef4444' };
+                const rows = [
+                    '....WWWWWWWW....',
+                    '...WWWWWWWWWW...',
+                    '..WWWWWWWWWWWW..',
+                    '..WWWRRWWWRRWW..',
+                    '..WWWRRWWWRRWW..',
+                    '..WWWWWWWWWWWW..',
+                    '...WWWWGGWWWW...',
+                    '....WWWWWWWW....',
+                    '....W.W.W.WW....',
+                    '.....WWWWWW.....',
+                    '..RR........RR..',
+                    '...RR......RR...',
+                    '....RRRRRRRR....',
+                    '...RR......RR...',
+                    '..RR........RR..',
+                    '................'
+                ];
+                drawPixelGrid(ctx, rows, pal, 1);
+            });
+
+            // 5 Retro Highway Vehicles (16x16 or 32x16)
+            // 1. Yellow Dune Buggy (Row 5, moving left)
+            SPRITES.car_yellow = createPixelSprite(16, 16, ctx => {
+                const pal = { Y: '#facc15', O: '#ca8a04', B: '#38bdf8', K: '#1e293b', R: '#ef4444' };
+                const rows = [
+                    '................',
+                    '....KKKKKKKK....',
+                    '...K..OOOO..K...',
+                    '..YYYYYYYYYYYY..',
+                    '.YBBYYYYYYYYRRY.',
+                    'YBBBYYYYYYYYYYYY',
+                    'YYYYYYYYYYYYYYYY',
+                    '.YYYYYYYYYYYYYY.',
+                    '..KKK......KKK..',
+                    '.KKKKK....KKKKK.',
+                    '..KKK......KKK..',
+                    '................',
+                    '................',
+                    '................',
+                    '................',
+                    '................'
+                ];
+                drawPixelGrid(ctx, rows, pal, 1);
+            });
+
+            // 2. Bulldozer / Tractor (Row 4, moving right)
+            SPRITES.bulldozer = createPixelSprite(16, 16, ctx => {
+                const pal = { O: '#f97316', Y: '#fde047', K: '#334155', G: '#94a3b8' };
+                const rows = [
+                    '................',
+                    '...OOOOOO.......',
+                    '...OYYYYO...GG..',
+                    '...OYYYYO..GGG..',
+                    '..OOOOOOOO.GGG..',
+                    '.OOOOOOOOOOGGG..',
+                    '.OOOOOOOOOOGGG..',
+                    '.KKKKKKKKKKGGG..',
+                    'KKKKKKKKKKKKGG..',
+                    '.KKKKKKKKKK.....',
+                    '................',
+                    '................',
+                    '................',
+                    '................',
+                    '................',
+                    '................'
+                ];
+                drawPixelGrid(ctx, rows, pal, 1);
+            });
+
+            // 3. Pink/Purple Retro Sedan (Row 3, moving left)
+            SPRITES.car_pink = createPixelSprite(16, 16, ctx => {
+                const pal = { P: '#ec4899', M: '#a21caf', C: '#67e8f9', K: '#1e293b', W: '#fef08a' };
+                const rows = [
+                    '................',
+                    '....PPPPPPPP....',
+                    '...PCCCCCCCCP...',
+                    '..PCCCCCCCCCCP..',
+                    '.WPPPPPPPPPPPPM.',
+                    'WPPPPPPPPPPPPPPM',
+                    'PPPPPPPPPPPPPPPM',
+                    '.PPPPPPPPPPPPPM.',
+                    '..KKK......KKK..',
+                    '.KKKKK....KKKKK.',
+                    '..KKK......KKK..',
+                    '................',
+                    '................',
+                    '................',
+                    '................',
+                    '................'
+                ];
+                drawPixelGrid(ctx, rows, pal, 1);
+            });
+
+            // 4. Fast White/Red Formula Race Car (Row 2, moving right)
+            SPRITES.race_car = createPixelSprite(16, 16, ctx => {
+                const pal = { W: '#f8fafc', R: '#ef4444', B: '#0284c7', K: '#0f172a' };
+                const rows = [
+                    '................',
+                    '.RR.............',
+                    '.RR...BBBB......',
+                    'RRRRWWWWWWWW....',
+                    'WWWWWWWWWWWWWRR.',
+                    'RRRRWWWWWWWWWRRR',
+                    'WWWWWWWWWWWWWRR.',
+                    '.KKK........KKK.',
+                    'KKKKK......KKKKK',
+                    '.KKK........KKK.',
+                    '................',
+                    '................',
+                    '................',
+                    '................',
+                    '................',
+                    '................'
+                ];
+                drawPixelGrid(ctx, rows, pal, 1);
+            });
+
+            // 5. Semi Truck (Row 1, 2-tiles wide = 32x16, moving left)
+            SPRITES.truck = createPixelSprite(32, 16, ctx => {
+                const pal = { W: '#e2e8f0', B: '#38bdf8', R: '#ef4444', K: '#1e293b', G: '#94a3b8' };
+                const rows = [
+                    '................................',
+                    '..BBBBBB..WWWWWWWWWWWWWWWWWWWW..',
+                    '.BGGGGGB..WBBBBBBBBBBBBBBBBBBW..',
+                    '.BGGGGGB..WBBBBBBBBBBBBBBBBBBW..',
+                    'RBBBBBBB..WWWWWWWWWWWWWWWWWWWW..',
+                    'RBBBBBBBBWWWWWWWWWWWWWWWWWWWWWW.',
+                    'BBBBBBBBWWWWWWWWWWWWWWWWWWWWWWW.',
+                    '.BBBBBBB..GGGGGGGGGGGGGGGGGGGG..',
+                    '..KKK........KKK..........KKK...',
+                    '.KKKKK......KKKKK........KKKKK..',
+                    '..KKK........KKK..........KKK...',
+                    '................................',
+                    '................................',
+                    '................................',
+                    '................................',
+                    '................................'
+                ];
+                drawPixelGrid(ctx, rows, pal, 1);
+            });
+
+            // Diving Turtle Frames (Swim A, Swim B, Warning Flash, Submerged Bubbles)
+            const turtlePal = { R: '#ef4444', O: '#f97316', G: '#22c55e', Y: '#fde047' };
+            const turtleSwimA = [
+                '................',
+                '....GGGG........',
+                '...GGGGGG.......',
+                '....G..RRRRRR...',
+                '......RRRRRRRR..',
+                '.GG..RRRRORRRRG.',
+                'GGG..RRORORRRRG.',
+                '.....RRRRORRRR..',
+                '......RRRRRRRR..',
+                '....G..RRRRRR...',
+                '...GGGGGG.......',
+                '....GGGG........',
+                '................',
+                '................',
+                '................',
+                '................'
+            ];
+            const turtleSwimB = [
+                '................',
+                '......GGGG......',
+                '.....GGGGGG.....',
+                '.......RRRRRR...',
+                '......RRRRRRRR..',
+                '.GG..RRRRORRRRG.',
+                'GGG..RRORORRRRG.',
+                '.....RRRRORRRR..',
+                '......RRRRRRRR..',
+                '.......RRRRRR...',
+                '.....GGGGGG.....',
+                '......GGGG......',
+                '................',
+                '................',
+                '................',
+                '................'
+            ];
+            SPRITES.turtle_0 = createPixelSprite(16, 16, ctx => drawPixelGrid(ctx, turtleSwimA, turtlePal, 1));
+            SPRITES.turtle_1 = createPixelSprite(16, 16, ctx => drawPixelGrid(ctx, turtleSwimB, turtlePal, 1));
+            SPRITES.turtle_warn = createPixelSprite(16, 16, ctx => drawPixelGrid(ctx, turtleSwimA, { R: '#fde047', O: '#38bdf8', G: '#ffffff', Y: '#ef4444' }, 1));
+            SPRITES.turtle_submerged = createPixelSprite(16, 16, ctx => {
+                ctx.strokeStyle = '#38bdf8';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(4, 4, 3, 3);
+                ctx.strokeRect(9, 8, 4, 4);
+                ctx.strokeRect(5, 11, 2, 2);
+            });
+
+            // Bonus Fly in Home Bay
+            SPRITES.fly = createPixelSprite(16, 16, ctx => {
+                const pal = { W: '#e0f2fe', Y: '#facc15', K: '#1e293b', R: '#ef4444' };
+                const rows = [
+                    '................',
+                    '...WWW....WWW...',
+                    '..WWWWW..WWWWW..',
+                    '..WWWWW..WWWWW..',
+                    '....WWWKKWWW....',
+                    '.....KRRRRK.....',
+                    '.....KYYYYK.....',
+                    '....KKYYYYKK....',
+                    '.....KYYYYK.....',
+                    '......KKKK......',
+                    '................',
+                    '................',
+                    '................',
+                    '................',
+                    '................',
+                    '................'
+                ];
+                drawPixelGrid(ctx, rows, pal, 1);
+            });
+
+            // Crocodile Head Warning in Home Bay
+            SPRITES.bay_croc = createPixelSprite(16, 16, ctx => {
+                const pal = { G: '#16a34a', L: '#4ade80', Y: '#facc15', W: '#ffffff' };
+                const rows = [
+                    '................',
+                    '....GGGGGGGG....',
+                    '...GYYGGGGYYG...',
+                    '...GGGGGGGGGG...',
+                    '..LLLLLLLLLLLL..',
+                    '..W.W.W.W.W.WW..',
+                    '................',
+                    '..W.W.W.W.W.WW..',
+                    '..LLLLLLLLLLLL..',
+                    '...GGGGGGGGGG...',
+                    '................',
+                    '................',
+                    '................',
+                    '................',
+                    '................',
+                    '................'
+                ];
+                drawPixelGrid(ctx, rows, pal, 1);
+            });
+        }
+
+        buildAllSprites();
+
+        // =====================================================================
+        // 3. CLASSIC 13-ROW FROGGER ARCADE GRID & GAME STATE
+        // =====================================================================
+        // Logical Playfield Resolution: 14 columns x 16 rows (32px tile = 448 x 512)
+        // Row 0: HUD Score Header (1UP / HI-SCORE)
+        // Row 1: Top Goal Row (5 Home Bays)
+        // Rows 2..6: 5 River Rows
+        // Row 7: Center Safe Median Strip
+        // Rows 8..12: 5 Highway Traffic Rows
+        // Row 13: Bottom Starting Safe Zone
+        // Rows 14..15: Lives, Stage Flags & Countdown Timer Bar
+        const TILE = 32;
+        const COLS = 14;
+        const LOGICAL_W = COLS * TILE; // 448
+        const LOGICAL_H = 16 * TILE;   // 512
+
+        // Exact X positions (in tile units) for the 5 Home Bays across 14 columns
+        const BAY_COLS = [1.0, 3.75, 6.5, 9.25, 12.0];
+
+        const state = {
+            phase: 'title', // 'title', 'intro', 'playing', 'dying', 'stage_clear', 'gameover'
+            paused: false,
+            score: 0,
+            highScore: parseInt(localStorage.getItem('frogger_1981_hi') || '0', 10),
+            nextExtraLifeScore: 10000,
+            stage: 1,
+            lives: 3,
+            timeLeft: 30,
+            maxTime: 30,
+            lowTimeBeepTimer: 0,
+            highestRowReached: 13,
+            bays: [false, false, false, false, false],
+            bayBonus: {
+                active: false,
+                bayIndex: -1,
+                type: 'fly', // 'fly' or 'croc'
+                timer: 0
+            },
+            frog: {
+                col: 6.5,
+                row: 13,
+                startX: 6.5 * TILE,
+                startY: 13 * TILE,
+                targetX: 6.5 * TILE,
+                targetY: 13 * TILE,
+                x: 6.5 * TILE,
+                y: 13 * TILE,
+                dir: 'up',
+                hopping: false,
+                hopTimer: 0,
+                hopDuration: 0.11,
+                carryingLady: false,
+                deadTimer: 0,
+                deathType: 'squash'
+            },
+            lanes: [],
+            snakes: [],
+            popups: [],
+            particles: [],
+            stageClearTimer: 0,
+            stageClearBonus: 0,
+            crtEnabled: false
+        };
+
+        // =====================================================================
+        // 4. SCORING, EXTRA LIVES & STAGE CONFIGURATION
+        // =====================================================================
+        function addScore(pts, popupX = null, popupY = null, customLabel = null) {
+            state.score += pts;
+            if (state.score > state.highScore) {
+                state.highScore = state.score;
+                localStorage.setItem('frogger_1981_hi', String(state.highScore));
+            }
+            if (state.score >= state.nextExtraLifeScore) {
+                state.nextExtraLifeScore += 10000;
+                state.lives = Math.min(7, state.lives + 1);
+                audio.playExtraLife();
+                spawnPopup(LOGICAL_W * 0.5, 7 * TILE, '1UP!', '#38bdf8');
+            }
+            if (popupX !== null && popupY !== null) {
+                spawnPopup(popupX, popupY, customLabel || `${pts}`, '#fde047');
+            }
+        }
+
+        function spawnPopup(x, y, text, color = '#fde047') {
+            state.popups.push({ x, y, text, color, life: 1.0 });
+        }
+
+        function spawnSplashParticles(x, y, color = '#38bdf8') {
+            for (let i = 0; i < 16; i++) {
+                const ang = (Math.PI * 2 * i) / 16;
+                const spd = 35 + Math.random() * 55;
+                state.particles.push({
+                    x: x + 16,
+                    y: y + 16,
+                    vx: Math.cos(ang) * spd,
+                    vy: Math.sin(ang) * spd,
+                    color,
+                    life: 0.45
+                });
+            }
+        }
+
+        function resetFrogToStart() {
+            const f = state.frog;
+            f.col = 6.5;
+            f.row = 13;
+            f.x = f.col * TILE;
+            f.y = f.row * TILE;
+            f.startX = f.x;
+            f.startY = f.y;
+            f.targetX = f.x;
+            f.targetY = f.y;
+            f.dir = 'up';
+            f.hopping = false;
+            f.hopTimer = 0;
+            f.carryingLady = false;
+            state.highestRowReached = 13;
+            state.timeLeft = state.maxTime;
+            state.lowTimeBeepTimer = 0;
+            audio.fastTempo = false;
+        }
+
+        function buildStageEntities(stageNum) {
+            const speedScale = 1 + (stageNum - 1) * 0.16;
+            state.lanes = [];
+            state.snakes = [];
+
+            // --- 5 RIVER ROWS (Rows 2..6, top to bottom) ---
+            // Row 2: Long Logs (4 tiles wide, sometimes with snapping Crocodile)
+            const r2Items = [];
+            for (let i = 0; i < 3; i++) {
+                const hasCroc = stageNum >= 2 && i === 1;
+                r2Items.push({
+                    x: i * 5.8 * TILE,
+                    widthTiles: 4,
+                    isCroc: hasCroc,
+                    mouthOpen: false,
+                    mouthTimer: i * 0.9
+                });
+            }
+            state.lanes.push({
+                row: 2,
+                type: 'log',
+                speed: 44 * speedScale,
+                items: r2Items
+            });
+
+            // Row 3: Diving Turtles (groups of 2, moving left, periodically diving)
+            const r3Items = [];
+            for (let i = 0; i < 4; i++) {
+                r3Items.push({
+                    x: i * 4.2 * TILE,
+                    count: 2,
+                    canDive: i % 2 === 0,
+                    diveCycle: i * 1.4,
+                    submerged: false,
+                    warning: false
+                });
+            }
+            state.lanes.push({
+                row: 3,
+                type: 'turtle',
+                speed: -52 * speedScale,
+                items: r3Items
+            });
+
+            // Row 4: Extra-Long Logs (5 tiles wide, moving right, with optional Lady Frog passenger!)
+            const r4Items = [];
+            for (let i = 0; i < 2; i++) {
+                r4Items.push({
+                    x: i * 8.2 * TILE,
+                    widthTiles: 5,
+                    hasLadyFrog: i === 0,
+                    ladyOffsetTiles: 1.5,
+                    ladyDir: 1
+                });
+            }
+            state.lanes.push({
+                row: 4,
+                type: 'log',
+                speed: 64 * speedScale,
+                items: r4Items
+            });
+
+            // Row 5: Medium Logs (3 tiles wide, moving right)
+            const r5Items = [];
+            for (let i = 0; i < 3; i++) {
+                r5Items.push({
+                    x: i * 5.4 * TILE,
+                    widthTiles: 3
+                });
+            }
+            state.lanes.push({
+                row: 5,
+                type: 'log',
+                speed: 36 * speedScale,
+                items: r5Items
+            });
+
+            // Row 6: Diving Turtles (groups of 3, moving left, one group periodically diving)
+            const r6Items = [];
+            for (let i = 0; i < 3; i++) {
+                r6Items.push({
+                    x: i * 5.4 * TILE,
+                    count: 3,
+                    canDive: i === 0 || (stageNum >= 3 && i === 2),
+                    diveCycle: i * 1.7,
+                    submerged: false,
+                    warning: false
+                });
+            }
+            state.lanes.push({
+                row: 6,
+                type: 'turtle',
+                speed: -44 * speedScale,
+                items: r6Items
+            });
+
+            // --- 5 HIGHWAY ROWS (Rows 8..12, top to bottom) ---
+            // Row 8: Fast Semi Trucks (2 tiles wide) moving left
+            state.lanes.push({
+                row: 8,
+                type: 'vehicle',
+                sprite: 'truck',
+                widthTiles: 2,
+                speed: -58 * speedScale,
+                items: [{ x: 1 * TILE }, { x: 6.5 * TILE }, { x: 12 * TILE }]
+            });
+
+            // Row 9: Fast Formula Race Cars moving right
+            state.lanes.push({
+                row: 9,
+                type: 'vehicle',
+                sprite: 'race_car',
+                widthTiles: 1,
+                speed: 88 * speedScale,
+                items: [{ x: 2 * TILE }, { x: 9 * TILE }]
+            });
+
+            // Row 10: Pink/Purple Sedans moving left
+            state.lanes.push({
+                row: 10,
+                type: 'vehicle',
+                sprite: 'car_pink',
+                widthTiles: 1,
+                speed: -46 * speedScale,
+                items: [{ x: 0.5 * TILE }, { x: 5.2 * TILE }, { x: 10.0 * TILE }]
+            });
+
+            // Row 11: Bulldozers / Tractors moving right
+            state.lanes.push({
+                row: 11,
+                type: 'vehicle',
+                sprite: 'bulldozer',
+                widthTiles: 1,
+                speed: 38 * speedScale,
+                items: [{ x: 1.5 * TILE }, { x: 6.2 * TILE }, { x: 11.2 * TILE }]
+            });
+
+            // Row 12: Yellow Dune Buggies moving left
+            state.lanes.push({
+                row: 12,
+                type: 'vehicle',
+                sprite: 'car_yellow',
+                widthTiles: 1,
+                speed: -50 * speedScale,
+                items: [{ x: 2 * TILE }, { x: 6.8 * TILE }, { x: 11.5 * TILE }]
+            });
+
+            // Stage 2+: Add Slithering Snakes along the Center Safe Median Strip (Row 7)
+            if (stageNum >= 2) {
+                const snakeCount = Math.min(2, stageNum - 1);
+                for (let s = 0; s < snakeCount; s++) {
+                    state.snakes.push({
+                        x: (s * 7 + 2) * TILE,
+                        row: 7,
+                        speed: (s % 2 === 0 ? 1 : -1) * (42 + stageNum * 6),
+                        phase: s * 1.5
+                    });
+                }
+            }
+        }
+
+        function startNewGame() {
+            audio.init();
+            audio.playCoin();
+            state.score = 0;
+            state.nextExtraLifeScore = 10000;
+            state.stage = 1;
+            state.lives = 3;
+            state.bays = [false, false, false, false, false];
+            state.bayBonus.active = false;
+            state.popups = [];
+            state.particles = [];
+            state.paused = false;
+
+            buildStageEntities(1);
+            resetFrogToStart();
+            state.phase = 'playing';
+            audio.startStartFanfare();
+        }
+
+        // =====================================================================
+        // 5. PLAYER MOVEMENT, COLLISION & BAY GOAL RESOLUTION
+        // =====================================================================
+        function tryHop(dir) {
+            if (state.phase === 'title' || state.phase === 'gameover') {
+                startNewGame();
+                return;
+            }
+            if (state.phase !== 'playing' || state.paused) return;
+
+            const f = state.frog;
+            if (f.hopping) return;
+
+            f.dir = dir;
+            let nextX = f.x;
+            let nextRow = f.row;
+
+            if (dir === 'up') nextRow -= 1;
+            else if (dir === 'down') nextRow += 1;
+            else if (dir === 'left') nextX -= TILE;
+            else if (dir === 'right') nextX += TILE;
+
+            // Clamp horizontal bounds on safe rows (7 and 13) and highway rows (8..12)
+            if (nextRow >= 7) {
+                nextX = Math.max(0, Math.min((COLS - 1) * TILE, nextX));
+            }
+            if (nextRow > 13) return; // Cannot hop below bottom row
+
+            // Check Top Goal Row (Row 1) — Must land inside one of the 5 open home bays!
+            if (nextRow === 1) {
+                const hopCol = nextX / TILE;
+                let matchedBay = -1;
+                for (let b = 0; b < BAY_COLS.length; b++) {
+                    if (Math.abs(hopCol - BAY_COLS[b]) <= 0.62) {
+                        matchedBay = b;
+                        break;
+                    }
+                }
+
+                if (matchedBay === -1) {
+                    // Hopped into solid wall between home bays
+                    killFrog('squash');
+                    return;
+                }
+                if (state.bays[matchedBay]) {
+                    // Bay already occupied!
+                    killFrog('squash');
+                    return;
+                }
+                if (
+                    state.bayBonus.active &&
+                    state.bayBonus.bayIndex === matchedBay &&
+                    state.bayBonus.type === 'croc'
+                ) {
+                    // Chomp! Crocodile was lurking inside the bay
+                    killFrog('squash');
+                    return;
+                }
+
+                // Valid Home Bay Landing!
+                audio.playHop();
+                completeHomeBay(matchedBay);
+                return;
+            }
+
+            audio.playHop();
+            f.startX = f.x;
+            f.startY = f.y;
+            f.targetX = nextX;
+            f.targetY = nextRow * TILE;
+            f.row = nextRow;
+            f.hopping = true;
+            f.hopTimer = 0;
+
+            // +10 points for each new forward row reached during this frog's life
+            if (nextRow < state.highestRowReached && nextRow >= 2) {
+                state.highestRowReached = nextRow;
+                addScore(10);
+            }
+        }
+
+        function completeHomeBay(bayIdx) {
+            state.bays[bayIdx] = true;
+            const bayX = BAY_COLS[bayIdx] * TILE;
+
+            // Base home bay score + remaining time bonus
+            const timeBonus = Math.ceil(state.timeLeft) * 10;
+            let totalEarned = 50 + timeBonus;
+            let bonusText = `+${totalEarned}`;
+
+            // Bonus Fly inside bay (+200 pts)
+            if (state.bayBonus.active && state.bayBonus.bayIndex === bayIdx && state.bayBonus.type === 'fly') {
+                totalEarned += 200;
+                bonusText = `FLY +${totalEarned}`;
+                state.bayBonus.active = false;
+                audio.playBonusPickup();
+            }
+
+            // Carrying Lady Frog home (+200 pts)
+            if (state.frog.carryingLady) {
+                totalEarned += 200;
+                bonusText = `LADY +${totalEarned}`;
+                audio.playBonusPickup();
+            }
+
+            addScore(totalEarned, bayX + 16, 1.5 * TILE, bonusText);
+            spawnSplashParticles(bayX, 1 * TILE, '#22c55e');
+
+            // Check if all 5 home bays are filled -> Stage Clear!
+            if (state.bays.every(filled => filled)) {
+                state.phase = 'stage_clear';
+                state.stageClearTimer = 2.6;
+                state.stageClearBonus = 1000;
+                addScore(1000, LOGICAL_W * 0.5, 6.5 * TILE, 'STAGE BONUS 1000!');
+                audio.queueJingle(audio.stageClearJingle, 0.13, () => {
+                    audio.startGameplayMusic();
+                });
+                return;
+            }
+
+            audio.queueJingle(audio.homeJingle, 0.12, () => {
+                if (state.phase === 'playing') {
+                    audio.startGameplayMusic();
+                }
+            });
+            resetFrogToStart();
+        }
+
+        function killFrog(type = 'squash') {
+            if (state.phase !== 'playing') return;
+            state.phase = 'dying';
+            const f = state.frog;
+            f.hopping = false;
+            f.deadTimer = 1.25;
+            f.deathType = type;
+            audio.stopMusic();
+
+            if (type === 'splash') {
+                audio.playSplash();
+                spawnSplashParticles(f.x, f.y, '#38bdf8');
+            } else {
+                audio.playSquash();
+                spawnSplashParticles(f.x, f.y, '#ef4444');
+            }
+        }
+
+        // =====================================================================
+        // 6. MAIN SIMULATION UPDATE LOOP
+        // =====================================================================
+        function updateSimulation(dt) {
+            audio.update(dt);
+
+            // Update Popups & Particles in all active states
+            for (let i = state.popups.length - 1; i >= 0; i--) {
+                const p = state.popups[i];
+                p.life -= dt;
+                p.y -= 22 * dt;
+                if (p.life <= 0) state.popups.splice(i, 1);
+            }
+            for (let i = state.particles.length - 1; i >= 0; i--) {
+                const pt = state.particles[i];
+                pt.life -= dt;
+                pt.x += pt.vx * dt;
+                pt.y += pt.vy * dt;
+                if (pt.life <= 0) state.particles.splice(i, 1);
+            }
+
+            if (state.paused) return;
+
+            if (state.phase === 'stage_clear') {
+                state.stageClearTimer -= dt;
+                if (state.stageClearTimer <= 0) {
+                    state.stage++;
+                    state.bays = [false, false, false, false, false];
+                    state.bayBonus.active = false;
+                    buildStageEntities(state.stage);
+                    resetFrogToStart();
+                    state.phase = 'playing';
+                }
+                return;
+            }
+
+            if (state.phase === 'dying') {
+                state.frog.deadTimer -= dt;
+                if (state.frog.deadTimer <= 0) {
+                    state.lives--;
+                    if (state.lives <= 0) {
+                        state.phase = 'gameover';
+                        audio.queueJingle(audio.gameOverJingle, 0.16);
+                    } else {
+                        resetFrogToStart();
+                        state.phase = 'playing';
+                        audio.startGameplayMusic();
+                    }
+                }
+                return;
+            }
+
+            if (state.phase !== 'playing') return;
+
+            // --- Countdown Timer ---
+            state.timeLeft -= dt;
+            if (state.timeLeft <= 6.0) {
+                audio.fastTempo = true;
+                state.lowTimeBeepTimer -= dt;
+                if (state.lowTimeBeepTimer <= 0) {
+                    state.lowTimeBeepTimer = 0.65;
+                    audio.playTimeWarning();
+                }
+            }
+            if (state.timeLeft <= 0) {
+                state.timeLeft = 0;
+                killFrog('squash');
+                return;
+            }
+
+            // --- Home Bay Bonus Fly / Crocodile Spawner ---
+            if (state.bayBonus.active) {
+                state.bayBonus.timer -= dt;
+                if (state.bayBonus.timer <= 0) {
+                    state.bayBonus.active = false;
+                }
+            } else if (Math.random() < dt * 0.28) {
+                const openBays = [];
+                state.bays.forEach((filled, idx) => {
+                    if (!filled) openBays.push(idx);
+                });
+                if (openBays.length > 0) {
+                    state.bayBonus.active = true;
+                    state.bayBonus.bayIndex = openBays[Math.floor(Math.random() * openBays.length)];
+                    state.bayBonus.type = (state.stage >= 2 && Math.random() < 0.35) ? 'croc' : 'fly';
+                    state.bayBonus.timer = 5.5;
+                }
+            }
+
+            // --- Update River Logs, Diving Turtles & Highway Traffic ---
+            const wrapSpan = (COLS + 5) * TILE;
+            state.lanes.forEach(lane => {
+                lane.items.forEach(item => {
+                    item.x += lane.speed * dt;
+                    const itemWidthPx = (item.widthTiles || item.count || 1) * TILE;
+
+                    if (lane.speed > 0 && item.x > LOGICAL_W + TILE) {
+                        item.x -= wrapSpan;
+                    } else if (lane.speed < 0 && item.x < -itemWidthPx - TILE) {
+                        item.x += wrapSpan;
+                    }
+
+                    // Crocodile jaw animation on logs
+                    if (item.isCroc) {
+                        item.mouthTimer += dt;
+                        item.mouthOpen = Math.sin(item.mouthTimer * 2.2) > 0.35;
+                    }
+
+                    // Lady Frog walking back and forth along her log
+                    if (item.hasLadyFrog) {
+                        item.ladyOffsetTiles += item.ladyDir * 0.85 * dt;
+                        if (item.ladyOffsetTiles > item.widthTiles - 1.2) item.ladyDir = -1;
+                        if (item.ladyOffsetTiles < 0.3) item.ladyDir = 1;
+                    }
+
+                    // Diving Turtles periodic warning flash & submersion
+                    if (lane.type === 'turtle' && item.canDive) {
+                        item.diveCycle = (item.diveCycle + dt) % 6.2;
+                        item.warning = item.diveCycle >= 3.4 && item.diveCycle < 4.8;
+                        item.submerged = item.diveCycle >= 4.8;
+                    }
+                });
+            });
+
+            // --- Update Slithering Median Snakes (Stage 2+) ---
+            state.snakes.forEach(snk => {
+                snk.phase += dt * 7;
+                snk.x += snk.speed * dt;
+                if (snk.speed > 0 && snk.x > LOGICAL_W + TILE) snk.x = -TILE * 2;
+                if (snk.speed < 0 && snk.x < -TILE * 2) snk.x = LOGICAL_W + TILE;
+            });
+
+            // --- Interpolate Frog Hop Animation ---
+            const f = state.frog;
+            if (f.hopping) {
+                f.hopTimer += dt;
+                const t = Math.min(1, f.hopTimer / f.hopDuration);
+                f.x = f.startX + (f.targetX - f.startX) * t;
+                f.y = f.startY + (f.targetY - f.startY) * t;
+                if (t >= 1) {
+                    f.hopping = false;
+                }
+            }
+
+            // --- Evaluate Row Hazards (River Support vs Highway / Snake Collisions) ---
+            const frogCenterX = f.x + TILE * 0.5;
+
+            // 1. River Rows (2..6)
+            if (f.row >= 2 && f.row <= 6 && !f.hopping) {
+                const lane = state.lanes.find(l => l.row === f.row);
+                let supported = false;
+
+                if (lane) {
+                    for (let i = 0; i < lane.items.length; i++) {
+                        const item = lane.items[i];
+                        if (lane.type === 'log') {
+                            const left = item.x + 4;
+                            const right = item.x + item.widthTiles * TILE - 4;
+                            if (frogCenterX >= left && frogCenterX <= right) {
+                                // Check if stepping right into open crocodile jaws!
+                                if (item.isCroc && item.mouthOpen && frogCenterX > right - TILE * 0.95) {
+                                    killFrog('squash');
+                                    return;
+                                }
+                                // Pick up Lady Frog passenger for bonus!
+                                if (item.hasLadyFrog) {
+                                    const ladyX = item.x + item.ladyOffsetTiles * TILE + 16;
+                                    if (Math.abs(frogCenterX - ladyX) < 22) {
+                                        item.hasLadyFrog = false;
+                                        f.carryingLady = true;
+                                        audio.playBonusPickup();
+                                        spawnPopup(f.x + 16, f.y, 'LADY FROG!', '#f472b6');
+                                    }
+                                }
+                                supported = true;
+                                f.x += lane.speed * dt;
+                                break;
+                            }
+                        } else if (lane.type === 'turtle') {
+                            if (!item.submerged) {
+                                const left = item.x + 3;
+                                const right = item.x + item.count * TILE - 3;
+                                if (frogCenterX >= left && frogCenterX <= right) {
+                                    supported = true;
+                                    f.x += lane.speed * dt;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Drown if in water without log/turtle OR carried off the left/right screen edge
+                if (!supported || f.x < -TILE * 0.45 || f.x > LOGICAL_W - TILE * 0.55) {
+                    killFrog('splash');
+                    return;
+                }
+            }
+
+            // 2. Median Snakes (Row 7)
+            if (f.row === 7) {
+                for (let s = 0; s < state.snakes.length; s++) {
+                    const snk = state.snakes[s];
+                    if (Math.abs(frogCenterX - (snk.x + TILE * 0.7)) < 22) {
+                        killFrog('squash');
+                        return;
+                    }
+                }
+            }
+
+            // 3. Highway Rows (8..12)
+            if (f.row >= 8 && f.row <= 12) {
+                const lane = state.lanes.find(l => l.row === f.row);
+                if (lane) {
+                    const frogHitLeft = f.x + 6;
+                    const frogHitRight = f.x + TILE - 6;
+                    for (let i = 0; i < lane.items.length; i++) {
+                        const item = lane.items[i];
+                        const vLeft = item.x + 3;
+                        const vRight = item.x + lane.widthTiles * TILE - 3;
+                        if (frogHitRight > vLeft && frogHitLeft < vRight) {
+                            killFrog('squash');
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
+        // =====================================================================
+        // 7. RETRO 1981 ARCADE CANVAS RENDERER
+        // =====================================================================
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            const headerH = document.querySelector('header').offsetHeight || 38;
+            const footerH = document.querySelector('footer').offsetHeight || 56;
+            const availW = window.innerWidth - 16;
+            const availH = window.innerHeight - headerH - footerH - 22;
+
+            const aspect = LOGICAL_W / LOGICAL_H; // 7 : 8
+            let drawH = Math.max(240, availH);
+            let drawW = drawH * aspect;
+
+            if (drawW > availW) {
+                drawW = availW;
+                drawH = drawW / aspect;
+            }
+
+            canvas.style.width = `${Math.floor(drawW)}px`;
+            canvas.style.height = `${Math.floor(drawH)}px`;
+            canvas.width = LOGICAL_W;
+            canvas.height = LOGICAL_H;
+            ctx.imageSmoothingEnabled = false;
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+
+        function drawSafeMedianPattern(rowIdx) {
+            const y = rowIdx * TILE;
+            ctx.fillStyle = '#3b0764';
+            ctx.fillRect(0, y, LOGICAL_W, TILE);
+
+            // Classic purple brick / Greek-key style arcade curb pattern
+            ctx.fillStyle = '#7e22ce';
+            for (let c = 0; c < COLS; c++) {
+                const x = c * TILE;
+                ctx.fillRect(x + 2, y + 2, TILE - 4, 4);
+                ctx.fillRect(x + 2, y + TILE - 6, TILE - 4, 4);
+                ctx.fillRect(x + 6, y + 9, 8, 14);
+                ctx.fillRect(x + 18, y + 9, 8, 14);
+            }
+        }
+
+        function drawLog(x, y, widthTiles, isCroc = false, mouthOpen = false) {
+            const w = widthTiles * TILE;
+            const padY = 4;
+            const h = TILE - padY * 2;
+
+            // Main Bark Body
+            ctx.fillStyle = '#92400e';
+            ctx.fillRect(x + 3, y + padY, w - 6, h);
+
+            // Top Highlight & Bottom Shadow
+            ctx.fillStyle = '#b45309';
+            ctx.fillRect(x + 4, y + padY + 2, w - 8, 5);
+            ctx.fillStyle = '#451a03';
+            ctx.fillRect(x + 4, y + padY + h - 4, w - 8, 4);
+
+            // Wood Grain Lines
+            ctx.fillStyle = '#78350f';
+            for (let gx = x + 14; gx < x + w - 16; gx += 22) {
+                ctx.fillRect(gx, y + padY + 9, 12, 2);
+                ctx.fillRect(gx + 5, y + padY + 14, 10, 2);
+            }
+
+            // Left Cut Wood Cap
+            ctx.fillStyle = '#fde68a';
+            ctx.fillRect(x + 1, y + padY + 2, 5, h - 4);
+            ctx.fillStyle = '#d97706';
+            ctx.fillRect(x + 3, y + padY + 6, 2, h - 12);
+
+            if (isCroc) {
+                // Animated Crocodile Head on Right End of Log
+                const headX = x + w - TILE;
+                ctx.fillStyle = '#15803d';
+                ctx.fillRect(headX, y + 5, TILE - 2, TILE - 10);
+                // Yellow Croc Eyes
+                ctx.fillStyle = '#facc15';
+                ctx.fillRect(headX + 4, y + 6, 4, 4);
+                ctx.fillRect(headX + 4, y + TILE - 10, 4, 4);
+
+                if (mouthOpen) {
+                    // Snapping open jaws with white teeth
+                    ctx.fillStyle = '#090d16';
+                    ctx.fillRect(headX + 12, y + 7, TILE - 12, TILE - 14);
+                    ctx.fillStyle = '#ffffff';
+                    for (let tx = headX + 14; tx < headX + TILE - 2; tx += 5) {
+                        ctx.fillRect(tx, y + 7, 2, 3);
+                        ctx.fillRect(tx, y + TILE - 10, 2, 3);
+                    }
+                }
+            } else {
+                // Right Cut Wood Cap
+                ctx.fillStyle = '#fde68a';
+                ctx.fillRect(x + w - 6, y + padY + 2, 5, h - 4);
+            }
+        }
+
+        function drawGoalRowAndBays() {
+            // Lush Green Top Bank
+            ctx.fillStyle = '#15803d';
+            ctx.fillRect(0, TILE * 0.75, LOGICAL_W, TILE * 1.25);
+
+            // Pixel Foliage Highlights
+            ctx.fillStyle = '#22c55e';
+            for (let x = 4; x < LOGICAL_W; x += 16) {
+                ctx.fillRect(x, TILE * 0.85, 8, 4);
+            }
+
+            // Carve out the 5 Dark Water Home Bays
+            BAY_COLS.forEach((col, idx) => {
+                const bx = col * TILE - 3;
+                const by = TILE + 2;
+                const bw = TILE + 6;
+                const bh = TILE - 2;
+
+                ctx.fillStyle = '#040b24';
+                ctx.fillRect(bx, by, bw, bh);
+
+                // Lilypad ring inside bay
+                ctx.strokeStyle = '#166534';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(bx + 3, by + 3, bw - 6, bh - 6);
+
+                if (state.bays[idx]) {
+                    // Draw happy rescued frog inside bay
+                    ctx.drawImage(SPRITES.frog_idle_down, col * TILE, by + 1, TILE, TILE);
+                } else if (state.bayBonus.active && state.bayBonus.bayIndex === idx) {
+                    const spr = state.bayBonus.type === 'croc' ? SPRITES.bay_croc : SPRITES.fly;
+                    ctx.drawImage(spr, col * TILE, by + 1, TILE, TILE);
+                }
+            });
+        }
+
+        function drawHUDAndFooter() {
+            // Top Score Header (Row 0)
+            ctx.fillStyle = '#030508';
+            ctx.fillRect(0, 0, LOGICAL_W, TILE * 0.85);
+
+            ctx.font = '10px "Press Start 2P", monospace';
+            ctx.textAlign = 'left';
+            ctx.fillStyle = '#f87171';
+            ctx.fillText('1UP', 14, 12);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(String(state.score).padStart(6, '0'), 14, 25);
+
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#f87171';
+            ctx.fillText('HI-SCORE', LOGICAL_W * 0.5, 12);
+            ctx.fillStyle = '#facc15';
+            ctx.fillText(String(state.highScore).padStart(6, '0'), LOGICAL_W * 0.5, 25);
+
+            ctx.textAlign = 'right';
+            ctx.fillStyle = '#38bdf8';
+            ctx.fillText(`STAGE ${String(state.stage).padStart(2, '0')}`, LOGICAL_W - 14, 12);
+            const filledCount = state.bays.filter(Boolean).length;
+            ctx.fillStyle = '#4ade80';
+            ctx.fillText(`BAYS ${filledCount}/5`, LOGICAL_W - 14, 25);
+
+            // Bottom Arcade Status Strip (Rows 14..15)
+            const footerY = 14 * TILE;
+            ctx.fillStyle = '#030508';
+            ctx.fillRect(0, footerY, LOGICAL_W, TILE * 2);
+
+            // Remaining Frog Life Icons
+            const displayLives = Math.max(0, state.lives - 1);
+            for (let i = 0; i < displayLives; i++) {
+                ctx.drawImage(SPRITES.frog_idle_up, 10 + i * 22, footerY + 6, 20, 20);
+            }
+
+            // Stage Pennant Flags
+            for (let s = 0; s < Math.min(state.stage, 8); s++) {
+                const fx = LOGICAL_W - 22 - s * 16;
+                ctx.fillStyle = '#facc15';
+                ctx.fillRect(fx, footerY + 8, 2, 16);
+                ctx.fillStyle = '#ef4444';
+                ctx.fillRect(fx + 2, footerY + 8, 9, 7);
+            }
+
+            // Classic Countdown Timer Bar (Bottom Right)
+            const barMaxW = 210;
+            const barH = 14;
+            const barX = LOGICAL_W - barMaxW - 58;
+            const barY = footerY + 34;
+
+            const ratio = Math.max(0, state.timeLeft / state.maxTime);
+            const fillW = Math.floor(barMaxW * ratio);
+
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(barX, barY, barMaxW, barH);
+
+            ctx.fillStyle = ratio <= 0.22 ? '#ef4444' : '#22c55e';
+            ctx.fillRect(barX + (barMaxW - fillW), barY, fillW, barH);
+
+            ctx.font = '10px "Press Start 2P", monospace';
+            ctx.textAlign = 'right';
+            ctx.fillStyle = ratio <= 0.22 ? '#ef4444' : '#facc15';
+            ctx.fillText('TIME', LOGICAL_W - 10, barY + 12);
+        }
+
+        function drawTitleScreen(timeSec) {
+            ctx.fillStyle = 'rgba(3, 5, 12, 0.84)';
+            ctx.fillRect(18, 2.3 * TILE, LOGICAL_W - 36, 10.6 * TILE);
+
+            ctx.strokeStyle = '#22c55e';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(18, 2.3 * TILE, LOGICAL_W - 36, 10.6 * TILE);
+
+            ctx.textAlign = 'center';
+            ctx.font = '26px "Press Start 2P", monospace';
+            ctx.fillStyle = '#22c55e';
+            ctx.fillText('FROGGER', LOGICAL_W * 0.5, 4.1 * TILE);
+
+            ctx.font = '9px "Press Start 2P", monospace';
+            ctx.fillStyle = '#38bdf8';
+            ctx.fillText('1981 KONAMI ARCADE TRIBUTE', LOGICAL_W * 0.5, 4.9 * TILE);
+
+            // Animated Cast Showcase
+            const animFrame = Math.floor(timeSec * 4) % 2;
+            ctx.drawImage(
+                animFrame === 0 ? SPRITES.frog_idle_up : SPRITES.frog_leap_up,
+                LOGICAL_W * 0.5 - 16,
+                5.4 * TILE,
+                32,
+                32
+            );
+
+            ctx.font = '9px "Press Start 2P", monospace';
+            ctx.fillStyle = '#fde047';
+            ctx.fillText('- POINT TABLE -', LOGICAL_W * 0.5, 7.1 * TILE);
+
+            ctx.fillStyle = '#e2e8f0';
+            ctx.fillText('FORWARD STEP ...... 10 PTS', LOGICAL_W * 0.5, 7.8 * TILE);
+            ctx.fillText('SAFE HOME BAY ..... 50 PTS', LOGICAL_W * 0.5, 8.4 * TILE);
+            ctx.fillText('FLY / LADY FROG .. 200 PTS', LOGICAL_W * 0.5, 9.0 * TILE);
+            ctx.fillText('ALL 5 BAYS CLEAR .1000 PTS', LOGICAL_W * 0.5, 9.6 * TILE);
+
+            ctx.fillStyle = '#f472b6';
+            ctx.fillText('1UP AT 10,000 POINTS', LOGICAL_W * 0.5, 10.4 * TILE);
+
+            if (Math.floor(timeSec * 2.5) % 2 === 0) {
+                ctx.font = '11px "Press Start 2P", monospace';
+                ctx.fillStyle = '#facc15';
+                ctx.fillText('PRESS START OR SPACE', LOGICAL_W * 0.5, 11.7 * TILE);
+            }
+        }
+
+        function render(timeSec) {
+            // 1. Deep Blue River Zone (Rows 1..6)
+            ctx.fillStyle = '#040b24';
+            ctx.fillRect(0, TILE, LOGICAL_W, 6 * TILE);
+
+            // Subtle Animated Water Ripples
+            ctx.fillStyle = '#0c1f5e';
+            for (let r = 2; r <= 6; r++) {
+                const shift = Math.sin(timeSec * 2.2 + r) * 14;
+                for (let x = 16; x < LOGICAL_W; x += 64) {
+                    ctx.fillRect(x + shift, r * TILE + 14, 18, 2);
+                }
+            }
+
+            // 2. Black Asphalt Highway Zone (Rows 8..12)
+            ctx.fillStyle = '#06070c';
+            ctx.fillRect(0, 8 * TILE, LOGICAL_W, 5 * TILE);
+
+            // Dashed Highway Lane Markings
+            ctx.fillStyle = '#334155';
+            for (let r = 9; r <= 12; r++) {
+                for (let x = 8; x < LOGICAL_W; x += 32) {
+                    ctx.fillRect(x, r * TILE - 1, 14, 2);
+                }
+            }
+
+            // 3. Top Goal Row & Both Purple Safe Zones
+            drawGoalRowAndBays();
+            drawSafeMedianPattern(7);
+            drawSafeMedianPattern(13);
+
+            // 4. Draw River Logs & Diving Turtles
+            const swimFrame = Math.floor(timeSec * 5) % 2;
+            state.lanes.forEach(lane => {
+                const y = lane.row * TILE;
+                if (lane.type === 'log') {
+                    lane.items.forEach(item => {
+                        drawLog(item.x, y, item.widthTiles, item.isCroc, item.mouthOpen);
+                        if (item.hasLadyFrog) {
+                            const lx = item.x + item.ladyOffsetTiles * TILE;
+                            const ladyDir = item.ladyDir > 0 ? 'right' : 'left';
+                            ctx.drawImage(SPRITES[`lady_idle_${ladyDir}`], lx, y, TILE, TILE);
+                        }
+                    });
+                } else if (lane.type === 'turtle') {
+                    lane.items.forEach(item => {
+                        for (let t = 0; t < item.count; t++) {
+                            const tx = item.x + t * TILE;
+                            let spr = SPRITES[`turtle_${swimFrame}`];
+                            if (item.submerged) spr = SPRITES.turtle_submerged;
+                            else if (item.warning) spr = (Math.floor(timeSec * 12) % 2 === 0) ? SPRITES.turtle_warn : SPRITES.turtle_0;
+                            ctx.drawImage(spr, tx, y, TILE, TILE);
+                        }
+                    });
+                }
+            });
+
+            // 5. Draw Median Snakes (Stage 2+)
+            state.snakes.forEach(snk => {
+                const sy = snk.row * TILE + 10;
+                const wiggle = Math.sin(snk.phase) * 3;
+                ctx.fillStyle = '#a855f7';
+                ctx.fillRect(snk.x, sy + wiggle, 14, 8);
+                ctx.fillStyle = '#facc15';
+                ctx.fillRect(snk.x + 12, sy - wiggle, 16, 8);
+                ctx.fillStyle = '#22c55e';
+                ctx.fillRect(snk.x + 26, sy + wiggle, 12, 9);
+                // Red forked tongue
+                ctx.fillStyle = '#ef4444';
+                const tongueX = snk.speed > 0 ? snk.x + 38 : snk.x - 6;
+                ctx.fillRect(tongueX, sy + 3 + wiggle, 6, 2);
+            });
+
+            // 6. Draw Player Frog (Idle, Mid-Leap, or Squash/Splash Skull)
+            const f = state.frog;
+            if (state.phase === 'playing' || state.phase === 'stage_clear') {
+                const sprKey = f.hopping ? `frog_leap_${f.dir}` : `frog_idle_${f.dir}`;
+                const spr = f.carryingLady
+                    ? SPRITES[`lady_idle_${f.dir}`]
+                    : SPRITES[sprKey];
+                ctx.drawImage(spr, Math.round(f.x), Math.round(f.y), TILE, TILE);
+            } else if (state.phase === 'dying') {
+                ctx.drawImage(SPRITES.skull, Math.round(f.x), Math.round(f.y), TILE, TILE);
+            }
+
+            // 7. Draw Highway Vehicles
+            state.lanes.forEach(lane => {
+                if (lane.type !== 'vehicle') return;
+                const y = lane.row * TILE;
+                const w = lane.widthTiles * TILE;
+                const spr = SPRITES[lane.sprite];
+                lane.items.forEach(item => {
+                    ctx.drawImage(spr, Math.round(item.x), y, w, TILE);
+                });
+            });
+
+            // 8. Draw Particles & Floating Score Popups
+            state.particles.forEach(pt => {
+                ctx.fillStyle = pt.color;
+                ctx.fillRect(Math.round(pt.x), Math.round(pt.y), 3, 3);
+            });
+
+            state.popups.forEach(pop => {
+                ctx.font = '10px "Press Start 2P", monospace';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = pop.color;
+                ctx.fillText(pop.text, Math.round(pop.x), Math.round(pop.y));
+            });
+
+            // 9. Draw Arcade HUD & Footer
+            drawHUDAndFooter();
+
+            // 10. Overlays for Title, Pause, Stage Clear, Game Over
+            if (state.phase === 'title') {
+                drawTitleScreen(timeSec);
+            } else if (state.phase === 'stage_clear') {
+                ctx.fillStyle = 'rgba(3, 5, 12, 0.78)';
+                ctx.fillRect(44, 5.5 * TILE, LOGICAL_W - 88, 3.2 * TILE);
+                ctx.strokeStyle = '#facc15';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(44, 5.5 * TILE, LOGICAL_W - 88, 3.2 * TILE);
+
+                ctx.textAlign = 'center';
+                ctx.font = '15px "Press Start 2P", monospace';
+                ctx.fillStyle = '#22c55e';
+                ctx.fillText(`STAGE ${state.stage} CLEAR!`, LOGICAL_W * 0.5, 6.8 * TILE);
+                ctx.font = '10px "Press Start 2P", monospace';
+                ctx.fillStyle = '#fde047';
+                ctx.fillText('ALL 5 HOME BAYS SAFE', LOGICAL_W * 0.5, 7.8 * TILE);
+            } else if (state.phase === 'gameover') {
+                ctx.fillStyle = 'rgba(3, 5, 12, 0.86)';
+                ctx.fillRect(44, 5.0 * TILE, LOGICAL_W - 88, 4.4 * TILE);
+                ctx.strokeStyle = '#ef4444';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(44, 5.0 * TILE, LOGICAL_W - 88, 4.4 * TILE);
+
+                ctx.textAlign = 'center';
+                ctx.font = '18px "Press Start 2P", monospace';
+                ctx.fillStyle = '#ef4444';
+                ctx.fillText('GAME OVER', LOGICAL_W * 0.5, 6.3 * TILE);
+
+                ctx.font = '10px "Press Start 2P", monospace';
+                ctx.fillStyle = '#ffffff';
+                ctx.fillText(`FINAL SCORE: ${state.score}`, LOGICAL_W * 0.5, 7.3 * TILE);
+
+                if (Math.floor(timeSec * 2.5) % 2 === 0) {
+                    ctx.fillStyle = '#facc15';
+                    ctx.fillText('PRESS START TO RETRY', LOGICAL_W * 0.5, 8.5 * TILE);
+                }
+            } else if (state.paused) {
+                ctx.fillStyle = 'rgba(3, 5, 12, 0.72)';
+                ctx.fillRect(80, 6.2 * TILE, LOGICAL_W - 160, 2.2 * TILE);
+                ctx.strokeStyle = '#38bdf8';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(80, 6.2 * TILE, LOGICAL_W - 160, 2.2 * TILE);
+
+                ctx.textAlign = 'center';
+                ctx.font = '16px "Press Start 2P", monospace';
+                ctx.fillStyle = '#38bdf8';
+                ctx.fillText('PAUSED', LOGICAL_W * 0.5, 7.55 * TILE);
+            }
+        }
+
+        // =====================================================================
+        // 8. KEYBOARD, TOUCH D-PAD & SWIPE CONTROLS
+        // =====================================================================
+        window.addEventListener('keydown', (e) => {
+            audio.init();
+            if (e.repeat) return;
+
+            if (e.code === 'KeyM') {
+                const muted = audio.toggleMute();
+                document.getElementById('btn-audio').textContent = muted ? 'SOUND: OFF [M]' : 'SOUND: ON [M]';
+                return;
+            }
+            if (e.code === 'KeyV') {
+                state.crtEnabled = !state.crtEnabled;
+                const crtEl = document.getElementById('crt-overlay');
+                crtEl.classList.toggle('hidden', !state.crtEnabled);
+                document.getElementById('btn-crt').textContent = state.crtEnabled ? 'CRT: ON [V]' : 'CRT: OFF [V]';
+                return;
+            }
+            if (e.code === 'KeyP') {
+                if (state.phase === 'playing') {
+                    state.paused = !state.paused;
+                }
+                return;
+            }
+            if (e.code === 'Enter' || e.code === 'Space') {
+                if (state.phase === 'title' || state.phase === 'gameover') {
+                    startNewGame();
+                    return;
+                }
+            }
+
+            if (e.code === 'ArrowUp' || e.code === 'KeyW') tryHop('up');
+            else if (e.code === 'ArrowDown' || e.code === 'KeyS') tryHop('down');
+            else if (e.code === 'ArrowLeft' || e.code === 'KeyA') tryHop('left');
+            else if (e.code === 'ArrowRight' || e.code === 'KeyD') tryHop('right');
+        });
+
+        // Header & D-Pad Button Wiring
+        document.getElementById('btn-audio').addEventListener('click', () => {
+            audio.init();
+            const muted = audio.toggleMute();
+            document.getElementById('btn-audio').textContent = muted ? 'SOUND: OFF [M]' : 'SOUND: ON [M]';
+        });
+
+        document.getElementById('btn-crt').addEventListener('click', () => {
+            state.crtEnabled = !state.crtEnabled;
+            document.getElementById('crt-overlay').classList.toggle('hidden', !state.crtEnabled);
+            document.getElementById('btn-crt').textContent = state.crtEnabled ? 'CRT: ON [V]' : 'CRT: OFF [V]';
+        });
+
+        document.getElementById('btn-pause').addEventListener('click', () => {
+            if (state.phase === 'playing') state.paused = !state.paused;
+        });
+
+        document.getElementById('btn-action').addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            audio.init();
+            if (state.phase === 'title' || state.phase === 'gameover') {
+                startNewGame();
+            } else if (state.paused) {
+                state.paused = false;
+            } else {
+                tryHop('up');
+            }
+        });
+
+        function bindPadButton(id, dir) {
+            const btn = document.getElementById(id);
+            btn.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                audio.init();
+                btn.classList.add('active');
+                tryHop(dir);
+            });
+            const release = () => btn.classList.remove('active');
+            btn.addEventListener('pointerup', release);
+            btn.addEventListener('pointerleave', release);
+            btn.addEventListener('pointercancel', release);
+        }
+
+        bindPadButton('pad-up', 'up');
+        bindPadButton('pad-down', 'down');
+        bindPadButton('pad-left', 'left');
+        bindPadButton('pad-right', 'right');
+
+        // Direct Swipe & Tap Gestures on the Game Canvas
+        let touchStartX = 0;
+        let touchStartY = 0;
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            audio.init();
+            if (e.touches.length > 0) {
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            if (state.phase === 'title' || state.phase === 'gameover') {
+                startNewGame();
+                return;
+            }
+            if (e.changedTouches.length > 0) {
+                const dx = e.changedTouches[0].clientX - touchStartX;
+                const dy = e.changedTouches[0].clientY - touchStartY;
+                const absX = Math.abs(dx);
+                const absY = Math.abs(dy);
+
+                if (Math.max(absX, absY) < 16) {
+                    // Quick tap on canvas hops forward!
+                    tryHop('up');
+                } else if (absX > absY) {
+                    tryHop(dx > 0 ? 'right' : 'left');
+                } else {
+                    tryHop(dy > 0 ? 'down' : 'up');
+                }
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('mousedown', () => {
+            audio.init();
+            if (state.phase === 'title' || state.phase === 'gameover') {
+                startNewGame();
+            }
+        });
+
+        // =====================================================================
+        // 9. WINDOW ONLOAD & MAIN ANIMATION LOOP
+        // =====================================================================
+        let lastFrameTime = performance.now();
+
+        function mainLoop(now) {
+            requestAnimationFrame(mainLoop);
+            const dt = Math.min((now - lastFrameTime) / 1000, 0.05);
+            lastFrameTime = now;
+            const timeSec = now / 1000;
+
+            updateSimulation(dt);
+            render(timeSec);
+        }
+
+        window.onload = function () {
+            buildStageEntities(1);
+            resizeCanvas();
+            requestAnimationFrame(mainLoop);
+        };
+    </script>
+</body>
+</html>

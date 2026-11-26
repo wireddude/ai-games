@@ -1,0 +1,2471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>DONKEY KONG 1981 — Arcade Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #030306;
+            font-family: 'Press Start 2P', monospace;
+            color: #f8fafc;
+        }
+        canvas {
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+        .crt-scanlines {
+            background: linear-gradient(
+                rgba(18, 16, 16, 0) 50%,
+                rgba(0, 0, 0, 0.34) 50%
+            ), linear-gradient(
+                90deg,
+                rgba(255, 0, 0, 0.04),
+                rgba(0, 255, 0, 0.02),
+                rgba(0, 0, 255, 0.04)
+            );
+            background-size: 100% 3px, 6px 100%;
+            pointer-events: none;
+        }
+        .cabinet-bezel {
+            background: #000000;
+            border: 2px solid #ef4444;
+            box-shadow: 0 0 28px rgba(239, 68, 68, 0.25), inset 0 0 18px rgba(0, 0, 0, 0.9);
+        }
+        .arcade-btn {
+            background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+            border: 2px solid #38bdf8;
+            box-shadow: 0 4px 0 #0369a1, 0 0 12px rgba(56, 189, 248, 0.22);
+            transition: transform 0.05s ease, box-shadow 0.05s ease, background-color 0.08s ease;
+        }
+        .arcade-btn:active, .arcade-btn.active {
+            transform: translateY(3px);
+            box-shadow: 0 1px 0 #0369a1, 0 0 16px rgba(56, 189, 248, 0.55);
+            background: #0284c7;
+        }
+        .jump-btn {
+            background: linear-gradient(180deg, #dc2626 0%, #991b1b 100%);
+            border: 2px solid #fca5a5;
+            box-shadow: 0 4px 0 #7f1d1d, 0 0 14px rgba(239, 68, 68, 0.35);
+            transition: transform 0.05s ease, box-shadow 0.05s ease, background-color 0.08s ease;
+        }
+        .jump-btn:active, .jump-btn.active {
+            transform: translateY(3px);
+            box-shadow: 0 1px 0 #7f1d1d, 0 0 20px rgba(239, 68, 68, 0.7);
+            background: #ef4444;
+        }
+        .ctrl-pill {
+            background: #0f172a;
+            border: 1.5px solid #475569;
+            transition: border-color 0.12s, color 0.12s, transform 0.06s;
+        }
+        .ctrl-pill:hover {
+            border-color: #ef4444;
+            color: #fca5a5;
+        }
+        .ctrl-pill:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-between p-1.5 sm:p-3">
+
+    <!-- Top Arcade Header Controls -->
+    <header class="w-full max-w-2xl flex items-center justify-between gap-2 px-1 py-0.5 z-20">
+        <div class="flex items-center gap-2">
+            <span class="inline-block w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></span>
+            <span class="text-[9px] sm:text-xs text-red-400 tracking-wider">NINTENDO 1981</span>
+        </div>
+        <div class="flex items-center gap-1.5 sm:gap-2">
+            <button id="btn-audio" class="ctrl-pill px-2 py-1.5 rounded-lg text-[8px] sm:text-[10px] text-amber-300 cursor-pointer">
+                SOUND: ON [M]
+            </button>
+            <button id="btn-crt" class="ctrl-pill px-2 py-1.5 rounded-lg text-[8px] sm:text-[10px] text-cyan-300 cursor-pointer">
+                CRT: OFF [V]
+            </button>
+            <button id="btn-pause" class="ctrl-pill px-2 py-1.5 rounded-lg text-[8px] sm:text-[10px] text-slate-300 cursor-pointer">
+                PAUSE [P]
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Playfield Container -->
+    <main class="relative flex-1 w-full flex items-center justify-center min-h-0 my-1">
+        <div id="cabinet-wrap" class="relative cabinet-bezel rounded-xl overflow-hidden flex items-center justify-center">
+            <canvas id="game-canvas"></canvas>
+            <div id="crt-overlay" class="crt-scanlines absolute inset-0 hidden"></div>
+        </div>
+    </main>
+
+    <!-- Mobile / Tablet Arcade Deck (Tactile D-Pad + Jump Button) -->
+    <footer class="w-full max-w-lg flex items-center justify-between gap-3 px-2 pb-1 z-20">
+        <!-- Left: 4-Way Arcade D-Pad -->
+        <div class="grid grid-cols-3 gap-1.5 w-36 sm:w-40">
+            <div></div>
+            <button id="pad-up" aria-label="Climb Up" class="arcade-btn h-10 sm:h-11 rounded-lg flex items-center justify-center text-xs text-white cursor-pointer">▲</button>
+            <div></div>
+            <button id="pad-left" aria-label="Move Left" class="arcade-btn h-10 sm:h-11 rounded-lg flex items-center justify-center text-xs text-white cursor-pointer">◀</button>
+            <button id="pad-down" aria-label="Climb Down" class="arcade-btn h-10 sm:h-11 rounded-lg flex items-center justify-center text-xs text-white cursor-pointer">▼</button>
+            <button id="pad-right" aria-label="Move Right" class="arcade-btn h-10 sm:h-11 rounded-lg flex items-center justify-center text-xs text-white cursor-pointer">▶</button>
+        </div>
+
+        <!-- Center Quick Start / Stage Select Pill -->
+        <button id="btn-start-mobile" class="ctrl-pill px-3 py-2.5 rounded-xl text-[8px] sm:text-[10px] text-amber-300 tracking-wider cursor-pointer">
+            START / 1P
+        </button>
+
+        <!-- Right: Red Arcade Jump Button -->
+        <button id="pad-jump" aria-label="Jump" class="jump-btn w-20 h-20 sm:w-22 sm:h-22 rounded-full flex flex-col items-center justify-center text-[10px] sm:text-xs text-white font-bold tracking-wider cursor-pointer">
+            <span>JUMP</span>
+        </button>
+    </footer>
+
+    <script>
+        /**
+         * DONKEY KONG 1981 — ARCADE EDITION
+         * Complete Single-File HTML5 Canvas + Procedural Pixel Art + Web Audio Chiptune Synthesizer
+         */
+
+        // =====================================================================
+        // 1. PROCEDURAL WEB AUDIO 8-BIT CHIPTUNE & ARCADE SOUND ENGINE
+        // =====================================================================
+        class DonkeyKongAudio {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+                this.mode = 'none'; // 'none', 'walk', 'hammer', 'jingle'
+                this.stepIdx = 0;
+                this.stepTimer = 0;
+                this.jingleQueue = [];
+                this.jingleTimer = 0;
+                this.jingleCallback = null;
+                this.isWalking = false;
+                this.stepSoundToggle = 0;
+
+                // Note frequencies (Hz)
+                this.N = {
+                    R: 0,
+                    G2: 98.00, A2: 110.00, Bb2: 116.54, B2: 123.47,
+                    C3: 130.81, D3: 146.83, Eb3: 155.56, E3: 164.81, F3: 174.61, Fs3: 185.00, G3: 196.00, Ab3: 207.65, A3: 220.00, Bb3: 233.08, B3: 246.94,
+                    C4: 261.63, D4: 293.66, Eb4: 311.13, E4: 329.63, F4: 349.23, Fs4: 369.99, G4: 392.00, Ab4: 415.30, A4: 440.00, Bb4: 466.16, B4: 493.88,
+                    C5: 523.25, D5: 587.33, Eb5: 622.25, E5: 659.25, F5: 698.46, Fs5: 739.99, G5: 783.99, A5: 880.00, Bb5: 932.33, B5: 987.77, C6: 1046.50
+                };
+
+                // Classic 1981 Donkey Kong Stage Start Fanfare ("How High Can You Get?")
+                this.startFanfare = [
+                    ['C4', 'C3', 0.9], ['E4', 'C3', 0.9], ['G4', 'E3', 0.9], ['C5', 'G3', 1.8],
+                    ['A4', 'F3', 0.9], ['C5', 'A3', 0.9], ['G4', 'E3', 1.8],
+                    ['F4', 'D3', 0.9], ['A4', 'F3', 0.9], ['G4', 'E3', 0.9], ['E4', 'C3', 0.9],
+                    ['D4', 'G2', 1.2], ['G4', 'B2', 1.2], ['C4', 'C3', 2.4]
+                ];
+
+                // Iconic Donkey Kong Walking Bassline Loop (C minor / blues ostinato)
+                this.walkBassLoop = [
+                    ['R', 'C3', 1], ['R', 'Eb3', 1], ['R', 'G3', 1], ['R', 'A3', 1],
+                    ['R', 'Bb3', 1], ['R', 'A3', 1], ['R', 'G3', 1], ['R', 'Eb3', 1],
+                    ['R', 'C3', 1], ['R', 'Eb3', 1], ['R', 'G3', 1], ['R', 'A3', 1],
+                    ['R', 'Bb3', 1], ['R', 'G3', 1], ['R', 'F3', 1], ['R', 'D3', 1]
+                ];
+
+                // Iconic Hammer Power-Up Chiptune Theme
+                this.hammerLoop = [
+                    ['C5', 'C3', 0.7], ['G4', 'G3', 0.7], ['E4', 'C3', 0.7], ['G4', 'G3', 0.7],
+                    ['C5', 'C3', 0.7], ['E5', 'E3', 0.7], ['D5', 'G3', 0.7], ['B4', 'D3', 0.7],
+                    ['C5', 'C3', 0.7], ['G4', 'G3', 0.7], ['E4', 'C3', 0.7], ['G4', 'G3', 0.7],
+                    ['A4', 'F3', 0.7], ['B4', 'G3', 0.7], ['C5', 'C3', 1.4]
+                ];
+
+                // Stage Clear / Pauline Rescue Fanfare
+                this.stageClearJingle = [
+                    ['G4', 'C3', 0.8], ['C5', 'E3', 0.8], ['E5', 'G3', 0.8], ['G5', 'C4', 1.4],
+                    ['E5', 'G3', 0.8], ['G5', 'C4', 2.2]
+                ];
+
+                // 100m Kong Collapse Victory Fanfare
+                this.victoryJingle = [
+                    ['C5', 'C3', 0.8], ['E5', 'E3', 0.8], ['G5', 'G3', 0.8], ['C6', 'C4', 1.2],
+                    ['B5', 'G3', 0.8], ['C6', 'C4', 0.8], ['D6', 'G3', 0.8], ['E6', 'C4', 1.2],
+                    ['D6', 'G3', 0.8], ['C6', 'C4', 2.6]
+                ];
+
+                // Death Jingle
+                this.deathJingle = [
+                    ['Eb5', 'C3', 0.7], ['D5', 'B2', 0.7], ['Db5', 'Bb2', 0.7], ['C5', 'A2', 0.7],
+                    ['B4', 'Ab2', 0.7], ['Bb4', 'G2', 0.7], ['A4', 'F2', 0.7], ['G4', 'C2', 2.2]
+                ];
+
+                // Game Over Jingle
+                this.gameOverJingle = [
+                    ['C4', 'C3', 1.1], ['G3', 'G2', 1.1], ['E3', 'E2', 1.1],
+                    ['A3', 'F2', 1.0], ['B3', 'G2', 1.0], ['A3', 'F2', 1.0], ['Ab3', 'E2', 1.0],
+                    ['Bb3', 'G2', 1.0], ['Ab3', 'E2', 1.0], ['G3', 'C2', 2.8]
+                ];
+            }
+
+            init() {
+                if (this.ctx) {
+                    if (this.ctx.state === 'suspended') {
+                        this.ctx.resume().catch(() => {});
+                    }
+                    return;
+                }
+                try {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                } catch (e) {
+                    console.warn("Web Audio unavailable:", e);
+                }
+            }
+
+            toggleMute() {
+                this.muted = !this.muted;
+                return this.muted;
+            }
+
+            playTone(freq, type, startTime, duration, volume = 0.11, slideToFreq = null) {
+                if (this.muted || !this.ctx || !freq || freq <= 0) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, startTime);
+                if (slideToFreq) {
+                    osc.frequency.exponentialRampToValueAtTime(slideToFreq, startTime + duration);
+                }
+
+                gain.gain.setValueAtTime(0.001, startTime);
+                gain.gain.linearRampToValueAtTime(volume, startTime + 0.01);
+                gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(startTime);
+                osc.stop(startTime + duration + 0.015);
+            }
+
+            playNoise(startTime, duration, freq = 500, volume = 0.16) {
+                if (this.muted || !this.ctx) return;
+                const len = Math.max(1, Math.floor(this.ctx.sampleRate * duration));
+                const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+                const data = buf.getChannelData(0);
+                for (let i = 0; i < len; i++) {
+                    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * duration * 0.45));
+                }
+                const src = this.ctx.createBufferSource();
+                src.buffer = buf;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(freq, startTime);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(volume, startTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+                src.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                src.start(startTime);
+            }
+
+            // Arcade Sound Effects
+            playCoin() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.playTone(987.77, 'square', now, 0.08, 0.11);
+                this.playTone(1318.51, 'square', now + 0.08, 0.25, 0.11);
+            }
+
+            playJump() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                // Classic upward Jumpman boing
+                this.playTone(195, 'square', now, 0.16, 0.11, 540);
+                this.playTone(260, 'triangle', now + 0.03, 0.14, 0.08, 680);
+            }
+
+            playStep() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.stepSoundToggle = 1 - this.stepSoundToggle;
+                const freq = this.stepSoundToggle === 0 ? 155 : 195;
+                this.playTone(freq, 'triangle', now, 0.045, 0.08);
+            }
+
+            playBarrelJumpScore() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.playTone(587.33, 'square', now, 0.06, 0.09);
+                this.playTone(880.00, 'square', now + 0.06, 0.12, 0.09);
+            }
+
+            playSmash() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.playNoise(now, 0.22, 750, 0.22);
+                this.playTone(320, 'sawtooth', now, 0.18, 0.13, 95);
+                this.playTone(783.99, 'square', now + 0.12, 0.14, 0.09);
+            }
+
+            playRivetPop() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.playTone(440, 'square', now, 0.06, 0.1, 660);
+                this.playTone(880, 'triangle', now + 0.06, 0.1, 0.1);
+            }
+
+            playItemPickup() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.playTone(659.25, 'square', now, 0.07, 0.1);
+                this.playTone(783.99, 'square', now + 0.07, 0.07, 0.1);
+                this.playTone(1046.5, 'square', now + 0.14, 0.16, 0.1);
+            }
+
+            playKongRoar() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.playNoise(now, 0.26, 260, 0.22);
+                this.playTone(135, 'sawtooth', now, 0.24, 0.14, 78);
+            }
+
+            playExtraLife() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                [523.25, 659.25, 783.99, 1046.5, 783.99, 1046.5].forEach((f, idx) => {
+                    this.playTone(f, 'square', now + idx * 0.08, 0.09, 0.11);
+                });
+            }
+
+            startWalkLoop() {
+                this.mode = 'walk';
+                this.stepIdx = 0;
+                this.stepTimer = 0;
+            }
+
+            startHammerLoop() {
+                this.mode = 'hammer';
+                this.stepIdx = 0;
+                this.stepTimer = 0;
+            }
+
+            stopMusic() {
+                this.mode = 'none';
+            }
+
+            queueJingle(notesArray, stepSec = 0.13, onComplete = null) {
+                this.mode = 'jingle';
+                this.jingleQueue = notesArray.map(n => ({
+                    lead: this.N[n[0]] || 0,
+                    bass: this.N[n[1]] || 0,
+                    dur: n[2] * stepSec
+                }));
+                this.jingleTimer = 0;
+                this.jingleCallback = onComplete;
+            }
+
+            update(dt) {
+                if (!this.ctx || this.mode === 'none') return;
+
+                if (this.mode === 'jingle') {
+                    this.jingleTimer -= dt;
+                    if (this.jingleTimer <= 0) {
+                        if (this.jingleQueue.length === 0) {
+                            this.mode = 'none';
+                            if (this.jingleCallback) {
+                                const cb = this.jingleCallback;
+                                this.jingleCallback = null;
+                                cb();
+                            }
+                            return;
+                        }
+                        const step = this.jingleQueue.shift();
+                        const now = this.ctx.currentTime;
+                        if (step.lead > 0) this.playTone(step.lead, 'square', now, step.dur * 0.88, 0.085);
+                        if (step.bass > 0) this.playTone(step.bass, 'triangle', now, step.dur * 0.9, 0.095);
+                        this.jingleTimer = step.dur;
+                    }
+                    return;
+                }
+
+                if (this.mode === 'hammer') {
+                    this.stepTimer -= dt;
+                    if (this.stepTimer <= 0) {
+                        const item = this.hammerLoop[this.stepIdx % this.hammerLoop.length];
+                        this.stepIdx++;
+                        const dur = item[2] * 0.135;
+                        const now = this.ctx.currentTime;
+                        if (this.N[item[0]]) this.playTone(this.N[item[0]], 'square', now, dur * 0.85, 0.075);
+                        if (this.N[item[1]]) this.playTone(this.N[item[1]], 'triangle', now, dur * 0.88, 0.085);
+                        this.stepTimer = dur;
+                    }
+                    return;
+                }
+
+                if (this.mode === 'walk') {
+                    this.stepTimer -= dt;
+                    if (this.stepTimer <= 0) {
+                        const item = this.walkBassLoop[this.stepIdx % this.walkBassLoop.length];
+                        this.stepIdx++;
+                        const dur = item[2] * 0.165;
+                        const now = this.ctx.currentTime;
+                        if (this.N[item[1]]) {
+                            this.playTone(this.N[item[1]], 'triangle', now, dur * 0.86, 0.095);
+                        }
+                        this.stepTimer = dur;
+                    }
+                }
+            }
+        }
+
+        const audio = new DonkeyKongAudio();
+
+        // =====================================================================
+        // 2. PROCEDURAL 1981 ARCADE PIXEL-ART SPRITE ATLAS
+        // =====================================================================
+        const SPRITES = {};
+
+        function makeCanvas(w, h, drawFn) {
+            const c = document.createElement('canvas');
+            c.width = w;
+            c.height = h;
+            const ctx = c.getContext('2d');
+            ctx.imageSmoothingEnabled = false;
+            drawFn(ctx, w, h);
+            return c;
+        }
+
+        function drawGrid(ctx, rows, pal, scale = 1) {
+            for (let y = 0; y < rows.length; y++) {
+                const row = rows[y];
+                for (let x = 0; x < row.length; x++) {
+                    const ch = row[x];
+                    if (ch !== '.' && pal[ch]) {
+                        ctx.fillStyle = pal[ch];
+                        ctx.fillRect(x * scale, y * scale, scale, scale);
+                    }
+                }
+            }
+        }
+
+        function flipHorizontal(srcCanvas) {
+            return makeCanvas(srcCanvas.width, srcCanvas.height, ctx => {
+                ctx.translate(srcCanvas.width, 0);
+                ctx.scale(-1, 1);
+                ctx.drawImage(srcCanvas, 0, 0);
+            });
+        }
+
+        function buildSprites() {
+            // Classic 1981 Jumpman Palette:
+            // R = Red cap/overalls, B = Blue shirt/arms, S = Skin peach, H = Dark hair/mustache, Y = Gold buttons/shoes
+            const jmPal = {
+                R: '#ef4444',
+                B: '#2563eb',
+                S: '#fdba74',
+                H: '#78350f',
+                Y: '#facc15'
+            };
+
+            const jmIdleRight = [
+                '....RRRRR.......',
+                '...RRRRRRRRR....',
+                '...HHHSSHS......',
+                '..HSHSSSHSSS....',
+                '..HSHHSSSHHHH...',
+                '..HHSSSSHHHH....',
+                '....SSSSSSS.....',
+                '...BBRRRRBB.....',
+                '..BBBRRRRBBB....',
+                '.BBBBBRRRRBBBB..',
+                '.SS.RYRRRRYR.SS.',
+                '....RRRRRRRR....',
+                '...RRRR..RRRR...',
+                '..HHH......HHH..',
+                '.HHHH......HHHH.',
+                '................'
+            ];
+
+            const jmRunRight = [
+                '....RRRRR.......',
+                '...RRRRRRRRR....',
+                '...HHHSSHS......',
+                '..HSHSSSHSSS....',
+                '..HSHHSSSHHHH...',
+                '..HHSSSSHHHH....',
+                '....SSSSSSS.....',
+                '..BBBBRRRRBB....',
+                '.SS.BBRRRRBBB...',
+                '....RRRRRRRR.SS.',
+                '...RRRRRRRRR....',
+                '..RRRR...RRRR...',
+                '.HHH.......HHH..',
+                'HHHH........HHH.',
+                '................',
+                '................'
+            ];
+
+            const jmJumpRight = [
+                '..........SSS...',
+                '....RRRRR.BBB...',
+                '...RRRRRRRRBB...',
+                '...HHHSSHSBB....',
+                '..HSHSSSHSS.....',
+                '..HSHHSSSHHHH...',
+                '....SSSSSSS.....',
+                '..BBBBRRRR......',
+                '.SS.RRRRRRRR....',
+                '....RRRRRRRRR...',
+                '..RRRRR..RRRRR..',
+                '.HHHH......HHHH.',
+                '................',
+                '................',
+                '................',
+                '................'
+            ];
+
+            const jmClimb0 = [
+                '....RRRRRR......',
+                '...RRRRRRRR.....',
+                '...HHHHHHHH.....',
+                '..HHHHHHHHHH....',
+                '.SS.BBRRRRBB....',
+                '.SSBBBRRRRBBB...',
+                '...BBRRRRRRBB...',
+                '....RRRRRRRR....',
+                '....RRRRRRRR....',
+                '...RRRR..RRRR...',
+                '..HHHH....RRRR..',
+                '.HHHH......HHHH.',
+                '................',
+                '................',
+                '................',
+                '................'
+            ];
+
+            SPRITES.jm_idle_r = makeCanvas(16, 16, ctx => drawGrid(ctx, jmIdleRight, jmPal));
+            SPRITES.jm_idle_l = flipHorizontal(SPRITES.jm_idle_r);
+            SPRITES.jm_run_r = makeCanvas(16, 16, ctx => drawGrid(ctx, jmRunRight, jmPal));
+            SPRITES.jm_run_l = flipHorizontal(SPRITES.jm_run_r);
+            SPRITES.jm_jump_r = makeCanvas(16, 16, ctx => drawGrid(ctx, jmJumpRight, jmPal));
+            SPRITES.jm_jump_l = flipHorizontal(SPRITES.jm_jump_r);
+            SPRITES.jm_climb_0 = makeCanvas(16, 16, ctx => drawGrid(ctx, jmClimb0, jmPal));
+            SPRITES.jm_climb_1 = flipHorizontal(SPRITES.jm_climb_0);
+
+            // Dead Jumpman Angel Halo Frame
+            SPRITES.jm_dead = makeCanvas(16, 16, ctx => {
+                drawGrid(ctx, jmIdleRight, jmPal);
+                ctx.fillStyle = '#fde047';
+                ctx.fillRect(4, 0, 8, 2);
+            });
+
+            // Hammer Sprite (14x14)
+            SPRITES.hammer = makeCanvas(14, 14, ctx => {
+                const pal = { H: '#d97706', W: '#fef08a', Y: '#facc15' };
+                const rows = [
+                    '...HHHHHHH....',
+                    '..HWWWWWWWH...',
+                    '..HHHHHHHHH...',
+                    '...HHHHHHH....',
+                    '......Y.......',
+                    '......Y.......',
+                    '......Y.......',
+                    '......Y.......',
+                    '......Y.......',
+                    '......Y.......',
+                    '......Y.......',
+                    '..............',
+                    '..............',
+                    '..............'
+                ];
+                drawGrid(ctx, rows, pal);
+            });
+
+            // Donkey Kong (36x32 pixel sprite: Idle, Chest Beat, Barrel Throw)
+            const dkPal = {
+                B: '#92400e', // fur brown
+                D: '#451a03', // dark fur
+                S: '#fdba74', // face/chest skin
+                W: '#ffffff',
+                R: '#ef4444'
+            };
+
+            const dkIdleRows = [
+                '...........BBBBBBBBBB...............',
+                '.........BBBBBBBBBBBBBB.............',
+                '........BBBBSSSSSSSSBBBB............',
+                '.......BBBBSSWWSSWWSSBBBB...........',
+                '.......BBBBSSDWSSDWSSBBBB...........',
+                '......BBBBBSSSSSSSSSSBBBBB..........',
+                '......BBBBSSSSDDDDSSSSBBBB..........',
+                '.....BBBBSSSSSSSSSSSSSSBBBB.........',
+                '....BBBBBBSSSSSSSSSSSSBBBBBB........',
+                '...BBBBBBBBSSSSSSSSSSBBBBBBBB.......',
+                '..BBBBBBBBBBSSSSSSSSBBBBBBBBBB......',
+                '.BBBBBBBBBBBBSSSSSSBBBBBBBBBBBB.....',
+                'BBBBBB..BBBBBBBBBBBBBBBB..BBBBBB....',
+                'BBBBB...BBBBBBBBBBBBBBBB...BBBBB....',
+                'BBBB....BBBBBBBBBBBBBBBB....BBBB....',
+                'SSSS....BBBBBBBBBBBBBBBB....SSSS....',
+                'SSSS....BBBBBBBBBBBBBBBB....SSSS....',
+                '.........BBBBBBBBBBBBBB.............',
+                '.........BBBBBB..BBBBBB.............',
+                '........BBBBBB....BBBBBB............',
+                '.......BBBBBB......BBBBBB...........',
+                '......SSSSSS........SSSSSS..........',
+                '.....SSSSSSSS......SSSSSSSS.........',
+                '....................................'
+            ];
+
+            const dkThrowRows = [
+                '...........BBBBBBBBBB...............',
+                '.........BBBBBBBBBBBBBB.............',
+                '........BBBBSSSSSSSSBBBB............',
+                '.......BBBBSSWWSSWWSSBBBB...........',
+                '.......BBBBSSDWSSDWSSBBBB...........',
+                '......BBBBBSSSSSSSSSSBBBBB..........',
+                '......BBBBSSSSRRRRSSSSBBBB..........',
+                '.....BBBBSSSSSSSSSSSSSSBBBB.........',
+                '....BBBBBBSSSSSSSSSSSSBBBBBB........',
+                '...BBBBBBBBSSSSSSSSSSBBBBBBBB..SSSS.',
+                '..BBBBBBBBBBSSSSSSSSBBBBBBBBBB.SSSS.',
+                '.BBBBBBBBBBBBSSSSSSBBBBBBBBBBBBBBB..',
+                'BBBBBB..BBBBBBBBBBBBBBBB..BBBBBBB...',
+                'BBBBB...BBBBBBBBBBBBBBBB............',
+                'BBBB....BBBBBBBBBBBBBBBB............',
+                'SSSS....BBBBBBBBBBBBBBBB............',
+                '.........BBBBBBBBBBBBBB.............',
+                '.........BBBBBB..BBBBBB.............',
+                '........BBBBBB....BBBBBB............',
+                '.......BBBBBB......BBBBBB...........',
+                '......SSSSSS........SSSSSS..........',
+                '.....SSSSSSSS......SSSSSSSS.........',
+                '....................................',
+                '....................................'
+            ];
+
+            SPRITES.dk_idle = makeCanvas(36, 24, ctx => drawGrid(ctx, dkIdleRows, dkPal));
+            SPRITES.dk_chest = flipHorizontal(SPRITES.dk_idle);
+            SPRITES.dk_throw = makeCanvas(36, 24, ctx => drawGrid(ctx, dkThrowRows, dkPal));
+
+            // Pauline (16x22 pixel sprite)
+            const paulinePal = {
+                H: '#b45309', // auburn hair
+                S: '#fed7aa', // skin
+                P: '#f472b6', // pink dress
+                W: '#ffffff',
+                Y: '#facc15'
+            };
+            const paulineRows = [
+                '.....HHHHHH.....',
+                '....HHHHHHHH....',
+                '...HHHSSSSHHH...',
+                '...HHSSWWSSHH...',
+                '...HHHSSSSHHH...',
+                '....HHSSSSHH....',
+                '.....PPPPPP.....',
+                '....PPPPPPPP....',
+                '...SSPPPPPPSS...',
+                '..SS.PPPPPP.SS..',
+                '.....PPPPPP.....',
+                '....PPPPPPPP....',
+                '...PPPPPPPPPP...',
+                '..PPPPPPPPPPPP..',
+                '..WWWWWWWWWWWW..',
+                '.....SS..SS.....',
+                '.....SS..SS.....',
+                '....PP....PP....',
+                '................',
+                '................'
+            ];
+            SPRITES.pauline_0 = makeCanvas(16, 20, ctx => drawGrid(ctx, paulineRows, paulinePal));
+            SPRITES.pauline_1 = flipHorizontal(SPRITES.pauline_0);
+
+            // Rolling Barrels (Brown & Wild Blue)
+            function makeBarrelSprite(mainCol, trimCol, hoopCol) {
+                return makeCanvas(12, 12, ctx => {
+                    const pal = { M: mainCol, T: trimCol, H: hoopCol };
+                    const rows = [
+                        '...HHHHHH...',
+                        '..MMMMMMMM..',
+                        '.MTTTTTTTTM.',
+                        'MHHHHHHHHHHM',
+                        'MMMMMMMMMMMM',
+                        'MTTTTTTTTTTM',
+                        'MTTTTTTTTTTM',
+                        'MMMMMMMMMMMM',
+                        'MHHHHHHHHHHM',
+                        '.MTTTTTTTTM.',
+                        '..MMMMMMMM..',
+                        '...HHHHHH...'
+                    ];
+                    drawGrid(ctx, rows, pal);
+                });
+            }
+            SPRITES.barrel_brown = makeBarrelSprite('#d97706', '#92400e', '#fde047');
+            SPRITES.barrel_blue = makeBarrelSprite('#2563eb', '#1d4ed8', '#67e8f9');
+
+            // Oil Drum (16x22)
+            SPRITES.oil_drum = makeCanvas(16, 22, ctx => {
+                ctx.fillStyle = '#1d4ed8';
+                ctx.fillRect(2, 2, 12, 19);
+                ctx.fillStyle = '#38bdf8';
+                ctx.fillRect(1, 2, 14, 2);
+                ctx.fillRect(1, 10, 14, 2);
+                ctx.fillRect(1, 19, 14, 2);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 6px monospace';
+                ctx.fillText('OIL', 3, 17);
+            });
+
+            // Fireball Enemy (12x12)
+            SPRITES.fireball_0 = makeCanvas(12, 12, ctx => {
+                const pal = { R: '#ef4444', O: '#f97316', Y: '#fef08a', W: '#ffffff' };
+                const rows = [
+                    '.....R......',
+                    '....ROR.....',
+                    '...ROOOR....',
+                    '..ROYYYOR...',
+                    '.ROYYYYYOR..',
+                    'ROYYWWWYOR..',
+                    'ROYYWWWYYOR.',
+                    '.ROYYYYYOR..',
+                    '..ROOOOOR...',
+                    '...RRRRR....',
+                    '............',
+                    '............'
+                ];
+                drawGrid(ctx, rows, pal);
+            });
+            SPRITES.fireball_1 = flipHorizontal(SPRITES.fireball_0);
+
+            // Cement Tub (50m Pie Factory, 16x10)
+            SPRITES.cement_tub = makeCanvas(16, 10, ctx => {
+                ctx.fillStyle = '#94a3b8';
+                ctx.fillRect(1, 3, 14, 7);
+                ctx.fillStyle = '#e2e8f0';
+                ctx.fillRect(0, 2, 16, 2);
+                ctx.fillStyle = '#475569';
+                ctx.fillRect(3, 5, 10, 3);
+            });
+
+            // Bouncing Spring / Jack (75m Elevators, 12x14)
+            SPRITES.spring_open = makeCanvas(12, 14, ctx => {
+                ctx.strokeStyle = '#38bdf8';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(2, 1);
+                ctx.lineTo(10, 4);
+                ctx.lineTo(2, 7);
+                ctx.lineTo(10, 10);
+                ctx.lineTo(2, 13);
+                ctx.stroke();
+            });
+            SPRITES.spring_closed = makeCanvas(12, 14, ctx => {
+                ctx.strokeStyle = '#facc15';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(2, 5);
+                ctx.lineTo(10, 7);
+                ctx.lineTo(2, 9);
+                ctx.lineTo(10, 11);
+                ctx.lineTo(2, 13);
+                ctx.stroke();
+            });
+
+            // Pauline's Bonus Items (Parasol, Purse, Hat)
+            SPRITES.item_parasol = makeCanvas(14, 14, ctx => {
+                const pal = { P: '#f472b6', W: '#ffffff', Y: '#facc15' };
+                const rows = [
+                    '....PPPPPP....',
+                    '..PPWWWWWWPP..',
+                    '.PPPPPPPPPPPP.',
+                    'PPWWPPPPPPWWPP',
+                    '......YY......',
+                    '......YY......',
+                    '......YY......',
+                    '......YY......',
+                    '......YY......',
+                    '....YYYY......',
+                    '..............',
+                    '..............',
+                    '..............',
+                    '..............'
+                ];
+                drawGrid(ctx, rows, pal);
+            });
+
+            SPRITES.item_purse = makeCanvas(14, 14, ctx => {
+                const pal = { P: '#ec4899', Y: '#facc15', W: '#fce7f3' };
+                const rows = [
+                    '....YYYYYY....',
+                    '...Y......Y...',
+                    '...Y......Y...',
+                    '..PPPPPPPPPP..',
+                    '.PPPPYYYYPPPP.',
+                    '.PPPPPPPPPPPP.',
+                    '.PPPPWWWWPPPP.',
+                    '.PPPPPPPPPPPP.',
+                    '..PPPPPPPPPP..',
+                    '..............',
+                    '..............',
+                    '..............',
+                    '..............',
+                    '..............'
+                ];
+                drawGrid(ctx, rows, pal);
+            });
+
+            SPRITES.item_hat = makeCanvas(14, 14, ctx => {
+                const pal = { P: '#f472b6', R: '#ef4444', Y: '#fde047' };
+                const rows = [
+                    '..............',
+                    '..............',
+                    '....PPPPPP....',
+                    '...PPPPPPPP...',
+                    '...RRRRRRRR...',
+                    '.PPPPPPPPPPPP.',
+                    'PPPPPPPPPPPPPP',
+                    '.YYYYYYYYYYYY.',
+                    '..............',
+                    '..............',
+                    '..............',
+                    '..............',
+                    '..............',
+                    '..............'
+                ];
+                drawGrid(ctx, rows, pal);
+            });
+        }
+
+        buildSprites();
+
+        // =====================================================================
+        // 3. LOGICAL ARCADE RESOLUTION & STAGE GEOMETRY ENGINE
+        // =====================================================================
+        // Native 1981 Arcade Vertical Aspect Ratio: 224 x 256 (scaled 2x -> 448 x 512)
+        const W = 448;
+        const H = 512;
+
+        const STAGE_NAMES = ['25m', '50m', '75m', '100m'];
+
+        const state = {
+            phase: 'title', // 'title', 'stage_intro', 'playing', 'dying', 'stage_clear', 'gameover'
+            paused: false,
+            score: 0,
+            highScore: parseInt(localStorage.getItem('donkey_kong_1981_hi') || '0', 10),
+            nextExtraLife: 7000,
+            loop: 1,          // L=01, L=02...
+            stageIdx: 0,      // 0: 25m, 1: 50m, 2: 75m, 3: 100m
+            lives: 3,
+            bonusTimer: 5000,
+            bonusTickAccum: 0,
+            introTimer: 0,
+            clearTimer: 0,
+            crtEnabled: false,
+            keys: {},
+            touch: { left: false, right: false, up: false, down: false, jump: false },
+
+            // Level Geometry & Entities
+            girders: [],      // { x1, y1, x2, y2, type: 'red'|'pink'|'blue', conveyorDir: 0|-1|1 }
+            ladders: [],      // { x, topY, bottomY, broken: bool, retracting: bool, currentTopY }
+            elevators: [],    // { x, y, w, dir: -1|1, minY, maxY, speed }
+            rivets: [],       // { x, y, removed: bool }
+            hammers: [],      // { x, y, collected: bool }
+            bonusItems: [],   // { x, y, kind: 'parasol'|'purse'|'hat', collected: bool }
+            barrels: [],      // { x, y, vx, vy, onGround, onLadder, isBlue, rot, scoredJump }
+            fireballs: [],    // { x, y, vx, vy, climbing, climbDir, timer }
+            cementTubs: [],   // { x, y, vx, row }
+            springs: [],      // { x, y, vx, vy, bounceCount }
+            popups: [],       // { x, y, text, color, life }
+            oilDrum: null,    // { x, y, lit: bool }
+            kong: { x: 46, y: 74, anim: 'idle', timer: 0, fallingY: 0 },
+            pauline: { x: 184, y: 38, helpTimer: 0 },
+
+            player: {
+                x: 68,
+                y: 472,
+                vx: 0,
+                vy: 0,
+                w: 16,
+                h: 20,
+                facing: 1,
+                onGround: false,
+                onLadder: false,
+                ladderRef: null,
+                hammerTimer: 0,
+                hammerSwingPhase: 0,
+                walkAnimTimer: 0,
+                stepSoundTimer: 0,
+                deadTimer: 0,
+                conveyorPush: 0
+            }
+        };
+
+        // Helper: Evaluate platform Y at given X for a sloped or flat girder
+        function getGirderYAtX(g, x) {
+            if (g.x2 === g.x1) return g.y1;
+            const t = (x - g.x1) / (g.x2 - g.x1);
+            return g.y1 + t * (g.y2 - g.y1);
+        }
+
+        // =====================================================================
+        // 4. AUTHENTIC 4-STAGE LAYOUT BUILDER (25m, 50m, 75m, 100m)
+        // =====================================================================
+        function buildCurrentStage() {
+            state.girders = [];
+            state.ladders = [];
+            state.elevators = [];
+            state.rivets = [];
+            state.hammers = [];
+            state.bonusItems = [];
+            state.barrels = [];
+            state.fireballs = [];
+            state.cementTubs = [];
+            state.springs = [];
+            state.popups = [];
+            state.oilDrum = null;
+
+            const p = state.player;
+            p.vx = 0;
+            p.vy = 0;
+            p.onGround = false;
+            p.onLadder = false;
+            p.ladderRef = null;
+            p.hammerTimer = 0;
+            p.conveyorPush = 0;
+
+            state.bonusTimer = Math.min(8000, 5000 + (state.loop - 1) * 1000);
+            state.bonusTickAccum = 0;
+
+            const st = state.stageIdx;
+
+            if (st === 0) {
+                // -------------------------------------------------------------
+                // STAGE 1: 25m (CLASSIC SLANTED GIRDERS)
+                // -------------------------------------------------------------
+                state.girders = [
+                    // Bottom deck (flat left half, gently rising right half)
+                    { x1: 12, y1: 488, x2: 224, y2: 488, type: 'red' },
+                    { x1: 224, y1: 488, x2: 436, y2: 474, type: 'red' },
+                    // Tier 2 (slopes down to left)
+                    { x1: 12, y1: 404, x2: 404, y2: 428, type: 'red' },
+                    // Tier 3 (slopes down to right)
+                    { x1: 44, y1: 354, x2: 436, y2: 330, type: 'red' },
+                    // Tier 4 (slopes down to left)
+                    { x1: 12, y1: 256, x2: 404, y2: 280, type: 'red' },
+                    // Tier 5 (slopes down to right)
+                    { x1: 44, y1: 206, x2: 436, y2: 182, type: 'red' },
+                    // Tier 6 (Kong top platform: flat on left, slopes right)
+                    { x1: 12, y1: 118, x2: 268, y2: 118, type: 'red' },
+                    { x1: 268, y1: 118, x2: 404, y2: 128, type: 'red' },
+                    // Pauline's Rescue Ledge at Top
+                    { x1: 168, y1: 68, x2: 264, y2: 68, type: 'red' }
+                ];
+
+                state.ladders = [
+                    // Bottom -> Tier 2
+                    { x: 368, topY: 425, bottomY: 479, broken: false },
+                    { x: 164, topY: 413, bottomY: 488, broken: true },
+                    // Tier 2 -> Tier 3
+                    { x: 76, topY: 352, bottomY: 408, broken: false },
+                    { x: 224, topY: 343, bottomY: 417, broken: false },
+                    // Tier 3 -> Tier 4
+                    { x: 368, topY: 277, bottomY: 334, broken: false },
+                    { x: 140, topY: 264, bottomY: 348, broken: true },
+                    // Tier 4 -> Tier 5
+                    { x: 76, topY: 204, bottomY: 260, broken: false },
+                    { x: 248, topY: 193, bottomY: 270, broken: false },
+                    // Tier 5 -> Tier 6
+                    { x: 368, topY: 125, bottomY: 186, broken: false },
+                    { x: 196, topY: 118, bottomY: 197, broken: true },
+                    // Tier 6 -> Pauline's Top Ledge
+                    { x: 244, topY: 68, bottomY: 118, broken: false }
+                ];
+
+                state.hammers = [
+                    { x: 46, y: 218, collected: false },
+                    { x: 318, y: 374, collected: false }
+                ];
+
+                state.bonusItems = [
+                    { x: 315, y: 256, kind: 'parasol', collected: false },
+                    { x: 112, y: 178, kind: 'purse', collected: false }
+                ];
+
+                state.oilDrum = { x: 24, y: 466, lit: true };
+                state.kong = { x: 48, y: 94, anim: 'idle', timer: 0.4, fallingY: 0 };
+                state.pauline = { x: 192, y: 48, helpTimer: 0 };
+                p.x = 68;
+                p.y = 468;
+                p.facing = 1;
+
+                // Spawn initial fireball out of the lit oil drum
+                spawnFireball(44, 474);
+            } else if (st === 1) {
+                // -------------------------------------------------------------
+                // STAGE 2: 50m (CONVEYOR BELTS / PIE FACTORY)
+                // -------------------------------------------------------------
+                state.girders = [
+                    // Bottom floor
+                    { x1: 12, y1: 488, x2: 436, y2: 488, type: 'pink' },
+                    // Tier 2 (left & right platforms)
+                    { x1: 12, y1: 408, x2: 196, y2: 408, type: 'pink' },
+                    { x1: 252, y1: 408, x2: 436, y2: 408, type: 'pink' },
+                    // Tier 3 (Conveyor belts moving toward center oil drum)
+                    { x1: 12, y1: 328, x2: 204, y2: 328, type: 'blue', conveyorDir: 1 },
+                    { x1: 244, y1: 328, x2: 436, y2: 328, type: 'blue', conveyorDir: -1 },
+                    // Tier 4 (Upper solid girders)
+                    { x1: 12, y1: 248, x2: 436, y2: 248, type: 'pink' },
+                    // Tier 5 (Top Conveyor Belt carrying Kong & cement tubs)
+                    { x1: 12, y1: 168, x2: 436, y2: 168, type: 'blue', conveyorDir: 1 },
+                    // Pauline's Rescue Ledge
+                    { x1: 176, y1: 92, x2: 272, y2: 92, type: 'pink' }
+                ];
+
+                state.ladders = [
+                    // Bottom -> Tier 2
+                    { x: 48, topY: 408, bottomY: 488, broken: false },
+                    { x: 400, topY: 408, bottomY: 488, broken: false },
+                    // Tier 2 -> Tier 3
+                    { x: 140, topY: 328, bottomY: 408, broken: false },
+                    { x: 308, topY: 328, bottomY: 408, broken: false },
+                    // Tier 3 -> Tier 4
+                    { x: 48, topY: 248, bottomY: 328, broken: false },
+                    { x: 400, topY: 248, bottomY: 328, broken: false },
+                    // Tier 4 -> Tier 5 (including retractable center ladder!)
+                    { x: 132, topY: 168, bottomY: 248, broken: false },
+                    { x: 224, topY: 168, bottomY: 248, broken: false, retracting: true, retractPhase: 0 },
+                    { x: 316, topY: 168, bottomY: 248, broken: false },
+                    // Tier 5 -> Pauline
+                    { x: 252, topY: 92, bottomY: 168, broken: false }
+                ];
+
+                state.hammers = [
+                    { x: 224, y: 204, collected: false },
+                    { x: 84, y: 368, collected: false }
+                ];
+
+                state.bonusItems = [
+                    { x: 406, y: 228, kind: 'hat', collected: false },
+                    { x: 44, y: 228, kind: 'purse', collected: false },
+                    { x: 356, y: 388, kind: 'parasol', collected: false }
+                ];
+
+                // Center Oil Drum Fire Hazard on Tier 3
+                state.oilDrum = { x: 216, y: 306, lit: true };
+                state.kong = { x: 64, y: 144, anim: 'idle', timer: 0, fallingY: 0 };
+                state.pauline = { x: 196, y: 72, helpTimer: 0 };
+                p.x = 224;
+                p.y = 468;
+                p.facing = 1;
+
+                // Seed initial cement tubs on the conveyor belts
+                state.cementTubs.push({ x: 36, y: 158, vx: 42, row: 5 });
+                state.cementTubs.push({ x: 380, y: 318, vx: -46, row: 3 });
+                spawnFireball(216, 314);
+            } else if (st === 2) {
+                // -------------------------------------------------------------
+                // STAGE 3: 75m (DUAL ELEVATORS & BOUNCING SPRINGS)
+                // -------------------------------------------------------------
+                state.girders = [
+                    // Starting bottom-left ledge & safe bottom islands
+                    { x1: 12, y1: 488, x2: 112, y2: 488, type: 'red' },
+                    { x1: 172, y1: 472, x2: 268, y2: 472, type: 'red' },
+                    { x1: 316, y1: 454, x2: 436, y2: 454, type: 'red' },
+                    // Mid-left platform (between left & right elevator shafts)
+                    { x1: 12, y1: 320, x2: 108, y2: 320, type: 'red' },
+                    { x1: 172, y1: 344, x2: 268, y2: 344, type: 'red' },
+                    { x1: 172, y1: 244, x2: 268, y2: 244, type: 'red' },
+                    // Right-side cascading platforms
+                    { x1: 324, y1: 364, x2: 436, y2: 364, type: 'red' },
+                    { x1: 324, y1: 280, x2: 436, y2: 280, type: 'red' },
+                    { x1: 324, y1: 196, x2: 436, y2: 196, type: 'red' },
+                    // Top Kong Girder (where bouncing springs arc across!)
+                    { x1: 12, y1: 136, x2: 332, y2: 148, type: 'red' },
+                    // Pauline's Rescue Ledge
+                    { x1: 228, y1: 78, x2: 324, y2: 78, type: 'red' }
+                ];
+
+                state.ladders = [
+                    // Left lower -> mid-left
+                    { x: 40, topY: 320, bottomY: 488, broken: false },
+                    // Center island connector
+                    { x: 220, topY: 344, bottomY: 472, broken: false },
+                    { x: 196, topY: 244, bottomY: 344, broken: false },
+                    // Right cascading ladders
+                    { x: 408, topY: 364, bottomY: 454, broken: false },
+                    { x: 352, topY: 280, bottomY: 364, broken: false },
+                    { x: 408, topY: 196, bottomY: 280, broken: false },
+                    // Top Kong girder -> Pauline
+                    { x: 296, topY: 78, bottomY: 146, broken: false }
+                ];
+
+                // Dual Vertical Elevator Shafts
+                state.elevators = [
+                    { x: 140, y: 380, w: 36, dir: -1, minY: 165, maxY: 475, speed: 54 },
+                    { x: 294, y: 220, w: 36, dir: 1, minY: 165, maxY: 465, speed: 54 }
+                ];
+
+                state.bonusItems = [
+                    { x: 26, y: 298, kind: 'parasol', collected: false },
+                    { x: 412, y: 174, kind: 'purse', collected: false },
+                    { x: 220, y: 224, kind: 'hat', collected: false }
+                ];
+
+                state.kong = { x: 36, y: 112, anim: 'idle', timer: 0.5, fallingY: 0 };
+                state.pauline = { x: 246, y: 58, helpTimer: 0 };
+                p.x = 34;
+                p.y = 468;
+                p.facing = 1;
+
+                spawnFireball(212, 330);
+            } else {
+                // -------------------------------------------------------------
+                // STAGE 4: 100m (RIVETS FINALE — REMOVE ALL 8 YELLOW RIVETS!)
+                // -------------------------------------------------------------
+                // Each tier has a gap where the yellow rivet sits; walking over removes it!
+                state.girders = [
+                    // Tier 1 (Bottom)
+                    { x1: 12, y1: 488, x2: 436, y2: 488, type: 'blue' },
+                    // Tier 2 (Left, Center, Right segments separated by 2 rivets)
+                    { x1: 28, y1: 404, x2: 112, y2: 404, type: 'blue' },
+                    { x1: 128, y1: 404, x2: 320, y2: 404, type: 'blue' },
+                    { x1: 336, y1: 404, x2: 420, y2: 404, type: 'blue' },
+                    // Tier 3
+                    { x1: 44, y1: 320, x2: 112, y2: 320, type: 'blue' },
+                    { x1: 128, y1: 320, x2: 320, y2: 320, type: 'blue' },
+                    { x1: 336, y1: 320, x2: 404, y2: 320, type: 'blue' },
+                    // Tier 4
+                    { x1: 60, y1: 236, x2: 112, y2: 236, type: 'blue' },
+                    { x1: 128, y1: 236, x2: 320, y2: 236, type: 'blue' },
+                    { x1: 336, y1: 236, x2: 388, y2: 236, type: 'blue' },
+                    // Tier 5 (Kong's Center Support Deck)
+                    { x1: 76, y1: 152, x2: 112, y2: 152, type: 'blue' },
+                    { x1: 128, y1: 152, x2: 320, y2: 152, type: 'blue' },
+                    { x1: 336, y1: 152, x2: 372, y2: 152, type: 'blue' },
+                    // Pauline's Top Ledge
+                    { x1: 172, y1: 76, x2: 276, y2: 76, type: 'blue' }
+                ];
+
+                // 8 Yellow Rivets at x=120 and x=328 across Tiers 2, 3, 4, 5
+                [404, 320, 236, 152].forEach(ry => {
+                    state.rivets.push({ x: 120, y: ry, removed: false });
+                    state.rivets.push({ x: 328, y: ry, removed: false });
+                });
+
+                state.ladders = [
+                    // Tier 1 -> Tier 2
+                    { x: 44, topY: 404, bottomY: 488, broken: false },
+                    { x: 224, topY: 404, bottomY: 488, broken: false },
+                    { x: 404, topY: 404, bottomY: 488, broken: false },
+                    // Tier 2 -> Tier 3
+                    { x: 64, topY: 320, bottomY: 404, broken: false },
+                    { x: 164, topY: 320, bottomY: 404, broken: false },
+                    { x: 284, topY: 320, bottomY: 404, broken: false },
+                    { x: 384, topY: 320, bottomY: 404, broken: false },
+                    // Tier 3 -> Tier 4
+                    { x: 80, topY: 236, bottomY: 320, broken: false },
+                    { x: 224, topY: 236, bottomY: 320, broken: false },
+                    { x: 368, topY: 236, bottomY: 320, broken: false },
+                    // Tier 4 -> Tier 5
+                    { x: 94, topY: 152, bottomY: 236, broken: false },
+                    { x: 354, topY: 152, bottomY: 236, broken: false },
+                    // Tier 5 -> Pauline
+                    { x: 184, topY: 76, bottomY: 152, broken: false },
+                    { x: 264, topY: 76, bottomY: 152, broken: false }
+                ];
+
+                state.hammers = [
+                    { x: 224, y: 274, collected: false },
+                    { x: 96, y: 190, collected: false }
+                ];
+
+                state.bonusItems = [
+                    { x: 392, y: 384, kind: 'parasol', collected: false },
+                    { x: 56, y: 384, kind: 'purse', collected: false },
+                    { x: 364, y: 216, kind: 'hat', collected: false }
+                ];
+
+                state.kong = { x: 206, y: 128, anim: 'chest', timer: 0, fallingY: 0 };
+                state.pauline = { x: 216, y: 56, helpTimer: 0 };
+                p.x = 76;
+                p.y = 468;
+                p.facing = 1;
+
+                // Spawn roaming Firefoxes on the rivet tiers
+                spawnFireball(340, 474);
+                spawnFireball(160, 310);
+                if (state.loop >= 2) {
+                    spawnFireball(280, 226);
+                }
+            }
+        }
+
+        function spawnFireball(x, y) {
+            state.fireballs.push({
+                x,
+                y,
+                vx: (Math.random() > 0.5 ? 1 : -1) * (36 + state.loop * 6),
+                vy: 0,
+                climbing: false,
+                climbDir: -1,
+                decisionTimer: 0.8 + Math.random() * 1.2
+            });
+        }
+
+        // =====================================================================
+        // 5. SCORING, POPUPS & GAME FLOW TRANSITIONS
+        // =====================================================================
+        function addScore(pts, px = null, py = null, customLabel = null) {
+            state.score += pts;
+            if (state.score > state.highScore) {
+                state.highScore = state.score;
+                localStorage.setItem('donkey_kong_1981_hi', String(state.highScore));
+            }
+            if (state.score >= state.nextExtraLife) {
+                state.nextExtraLife += 7000;
+                state.lives = Math.min(6, state.lives + 1);
+                audio.playExtraLife();
+                spawnPopup(W * 0.5, 110, '1UP!', '#38bdf8');
+            }
+            if (px !== null && py !== null) {
+                spawnPopup(px, py, customLabel || `${pts}`, '#fde047');
+            }
+        }
+
+        function spawnPopup(x, y, text, color = '#fde047') {
+            state.popups.push({ x, y, text, color, life: 0.95 });
+        }
+
+        function startNewGame() {
+            audio.init();
+            audio.playCoin();
+            state.score = 0;
+            state.nextExtraLife = 7000;
+            state.loop = 1;
+            state.stageIdx = 0;
+            state.lives = 3;
+            state.paused = false;
+
+            beginStageIntro();
+        }
+
+        function beginStageIntro() {
+            buildCurrentStage();
+            state.phase = 'stage_intro';
+            state.introTimer = 2.1;
+            audio.queueJingle(audio.startFanfare, 0.135, () => {
+                if (state.phase === 'stage_intro') {
+                    state.phase = 'playing';
+                    audio.startWalkLoop();
+                }
+            });
+        }
+
+        function triggerPlayerDeath() {
+            if (state.phase !== 'playing') return;
+            state.phase = 'dying';
+            state.player.deadTimer = 1.6;
+            state.player.hammerTimer = 0;
+            audio.queueJingle(audio.deathJingle, 0.13);
+        }
+
+        function completeCurrentStage() {
+            if (state.phase !== 'playing') return;
+            state.phase = 'stage_clear';
+            state.clearTimer = 2.8;
+            state.player.hammerTimer = 0;
+
+            // Award remaining BONUS timer points
+            const bonusEarned = Math.max(0, Math.floor(state.bonusTimer / 100) * 100);
+            addScore(bonusEarned, W * 0.5, 120, `BONUS ${bonusEarned}`);
+
+            if (state.stageIdx === 3) {
+                // 100m Rivets collapse! Kong tumbles down to the bottom floor
+                state.kong.fallingY = state.kong.y;
+                audio.queueJingle(audio.victoryJingle, 0.13);
+            } else {
+                audio.queueJingle(audio.stageClearJingle, 0.14);
+            }
+        }
+
+        // =====================================================================
+        // 6. JUMPMAN PHYSICS, LADDERS, ELEVATORS, RIVETS & ENEMY AI
+        // =====================================================================
+        function findSupportBelow(x, footY, prevFootY) {
+            let bestY = null;
+            let bestGirder = null;
+
+            // 1. Check Girders (prevent falling through rivets that haven't been removed; fall through removed rivet gaps!)
+            for (let i = 0; i < state.girders.length; i++) {
+                const g = state.girders[i];
+                if (x >= g.x1 - 4 && x <= g.x2 + 4) {
+                    const gy = getGirderYAtX(g, Math.max(g.x1, Math.min(g.x2, x)));
+                    if (prevFootY <= gy + 6 && footY >= gy - 2) {
+                        if (bestY === null || gy < bestY) {
+                            bestY = gy;
+                            bestGirder = g;
+                        }
+                    }
+                }
+            }
+
+            // 2. Check Unremoved Rivets (act as solid bridges until stepped on)
+            for (let r = 0; r < state.rivets.length; r++) {
+                const rv = state.rivets[r];
+                if (!rv.removed && Math.abs(x - rv.x) <= 10) {
+                    if (prevFootY <= rv.y + 6 && footY >= rv.y - 2) {
+                        if (bestY === null || rv.y < bestY) {
+                            bestY = rv.y;
+                            bestGirder = { conveyorDir: 0 };
+                        }
+                    }
+                }
+            }
+
+            // 3. Check Moving Elevators (75m)
+            for (let e = 0; e < state.elevators.length; e++) {
+                const el = state.elevators[e];
+                if (Math.abs(x - el.x) <= el.w * 0.5 + 3) {
+                    if (prevFootY <= el.y + 8 && footY >= el.y - 3) {
+                        if (bestY === null || el.y < bestY) {
+                            bestY = el.y;
+                            bestGirder = { conveyorDir: 0, elevator: el };
+                        }
+                    }
+                }
+            }
+
+            return bestY !== null ? { y: bestY, girder: bestGirder } : null;
+        }
+
+        function updateGameplay(dt) {
+            // Update floating score popups
+            for (let i = state.popups.length - 1; i >= 0; i--) {
+                state.popups[i].life -= dt;
+                state.popups[i].y -= 24 * dt;
+                if (state.popups[i].life <= 0) state.popups.splice(i, 1);
+            }
+
+            if (state.paused) return;
+
+            if (state.phase === 'stage_intro') {
+                state.introTimer -= dt;
+                if (state.introTimer <= 0) {
+                    state.phase = 'playing';
+                    audio.startWalkLoop();
+                }
+                return;
+            }
+
+            if (state.phase === 'dying') {
+                state.player.deadTimer -= dt;
+                if (state.player.deadTimer <= 0) {
+                    state.lives--;
+                    if (state.lives <= 0) {
+                        state.phase = 'gameover';
+                        audio.queueJingle(audio.gameOverJingle, 0.16);
+                    } else {
+                        beginStageIntro();
+                    }
+                }
+                return;
+            }
+
+            if (state.phase === 'stage_clear') {
+                state.clearTimer -= dt;
+                if (state.stageIdx === 3 && state.kong.fallingY < 454) {
+                    state.kong.fallingY += 210 * dt;
+                }
+                if (state.clearTimer <= 0) {
+                    state.stageIdx++;
+                    if (state.stageIdx >= 4) {
+                        state.stageIdx = 0;
+                        state.loop++;
+                    }
+                    beginStageIntro();
+                }
+                return;
+            }
+
+            if (state.phase !== 'playing') return;
+
+            // --- Bonus Countdown Timer (ticks down by 100 every ~1.6s) ---
+            state.bonusTickAccum += dt;
+            if (state.bonusTickAccum >= 1.6) {
+                state.bonusTickAccum -= 1.6;
+                state.bonusTimer = Math.max(0, state.bonusTimer - 100);
+                if (state.bonusTimer === 0) {
+                    triggerPlayerDeath();
+                    return;
+                }
+            }
+
+            // --- Pauline "HELP!" Animation ---
+            state.pauline.helpTimer += dt;
+
+            // --- Retractable Ladder Animation (50m Conveyor Stage) ---
+            state.ladders.forEach(lad => {
+                if (lad.retracting) {
+                    lad.retractPhase += dt * 1.45;
+                    const retractAmt = Math.max(0, Math.sin(lad.retractPhase)) * 42;
+                    lad.currentTopY = lad.topY + retractAmt;
+                } else {
+                    lad.currentTopY = lad.topY;
+                }
+            });
+
+            // --- Moving Elevators (75m) ---
+            state.elevators.forEach(el => {
+                el.y += el.dir * el.speed * dt;
+                if (el.dir < 0 && el.y < el.minY) el.y = el.maxY;
+                if (el.dir > 0 && el.y > el.maxY) el.y = el.minY;
+            });
+
+            // --- Donkey Kong Barrel Throwing & Animations ---
+            updateKongAndHazards(dt);
+
+            // --- Player Input & Movement ---
+            const p = state.player;
+            const leftHeld = state.keys['ArrowLeft'] || state.keys['KeyA'] || state.touch.left;
+            const rightHeld = state.keys['ArrowRight'] || state.keys['KeyD'] || state.touch.right;
+            const upHeld = state.keys['ArrowUp'] || state.keys['KeyW'] || state.touch.up;
+            const downHeld = state.keys['ArrowDown'] || state.keys['KeyS'] || state.touch.down;
+            const jumpHeld = state.keys['Space'] || state.keys['KeyZ'] || state.keys['KeyK'] || state.touch.jump;
+
+            // Hammer Power-Up Timer
+            if (p.hammerTimer > 0) {
+                p.hammerTimer -= dt;
+                p.hammerSwingPhase += dt * 16;
+                if (p.hammerTimer <= 0) {
+                    p.hammerTimer = 0;
+                    audio.startWalkLoop();
+                }
+            }
+
+            const moveSpeed = 94;
+            const climbSpeed = 62;
+            const gravity = 520;
+            const jumpVel = -196;
+
+            // Check Ladder Engagement (cannot climb while holding the Hammer!)
+            if (p.hammerTimer <= 0 && !p.onLadder && p.onGround && (upHeld || downHeld)) {
+                for (let i = 0; i < state.ladders.length; i++) {
+                    const lad = state.ladders[i];
+                    const effTop = lad.currentTopY !== undefined ? lad.currentTopY : lad.topY;
+                    if (Math.abs(p.x - lad.x) <= 9) {
+                        if (upHeld && p.y <= lad.bottomY + 6 && p.y >= effTop + 4) {
+                            // Do not allow climbing past gap of broken ladders
+                            if (lad.broken && p.y <= effTop + (lad.bottomY - effTop) * 0.56) {
+                                continue;
+                            }
+                            p.onLadder = true;
+                            p.ladderRef = lad;
+                            p.x = lad.x;
+                            p.vx = 0;
+                            p.vy = 0;
+                            break;
+                        }
+                        if (downHeld && Math.abs(p.y - effTop) <= 8) {
+                            if (lad.broken) continue; // Cannot climb down broken top ladders
+                            p.onLadder = true;
+                            p.ladderRef = lad;
+                            p.x = lad.x;
+                            p.vx = 0;
+                            p.vy = 0;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (p.onLadder && p.ladderRef) {
+                const lad = p.ladderRef;
+                const effTop = lad.currentTopY !== undefined ? lad.currentTopY : lad.topY;
+                const maxClimbY = lad.broken
+                    ? effTop + (lad.bottomY - effTop) * 0.52
+                    : effTop;
+
+                let climbingMove = 0;
+                if (upHeld) climbingMove = -1;
+                else if (downHeld) climbingMove = 1;
+
+                p.y += climbingMove * climbSpeed * dt;
+                if (climbingMove !== 0) {
+                    p.walkAnimTimer += dt * 10;
+                    p.stepSoundTimer -= dt;
+                    if (p.stepSoundTimer <= 0) {
+                        p.stepSoundTimer = 0.16;
+                        audio.playStep();
+                    }
+                }
+
+                // Stop at broken ladder gap
+                if (lad.broken && p.y < maxClimbY) {
+                    p.y = maxClimbY;
+                }
+
+                // Dismount at top or bottom of full ladder
+                if (!lad.broken && p.y <= effTop) {
+                    p.y = effTop;
+                    p.onLadder = false;
+                    p.onGround = true;
+                    p.ladderRef = null;
+                } else if (p.y >= lad.bottomY) {
+                    p.y = lad.bottomY;
+                    p.onLadder = false;
+                    p.onGround = true;
+                    p.ladderRef = null;
+                }
+            } else {
+                // Horizontal Walk / Air Control
+                let dirX = 0;
+                if (leftHeld) { dirX = -1; p.facing = -1; }
+                else if (rightHeld) { dirX = 1; p.facing = 1; }
+
+                p.vx = dirX * moveSpeed + (p.onGround ? p.conveyorPush : 0);
+
+                // Jump Trigger
+                if (jumpHeld && p.onGround && p.hammerTimer <= 0) {
+                    p.vy = jumpVel;
+                    p.onGround = false;
+                    audio.playJump();
+                }
+
+                const prevY = p.y;
+                p.vy += gravity * dt;
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+
+                // Keep within horizontal screen walls
+                p.x = Math.max(16, Math.min(W - 16, p.x));
+
+                // Check Ground / Girder / Rivet / Elevator Landing
+                p.conveyorPush = 0;
+                if (p.vy >= 0) {
+                    const sup = findSupportBelow(p.x, p.y, prevY);
+                    if (sup) {
+                        p.y = sup.y;
+                        p.vy = 0;
+                        p.onGround = true;
+                        if (sup.girder && sup.girder.conveyorDir) {
+                            p.conveyorPush = sup.girder.conveyorDir * 32;
+                        }
+                        if (sup.girder && sup.girder.elevator) {
+                            p.y = sup.girder.elevator.y;
+                        }
+                    } else {
+                        p.onGround = false;
+                    }
+                }
+
+                // Footstep animation & sound
+                if (p.onGround && dirX !== 0) {
+                    p.walkAnimTimer += dt * 14;
+                    p.stepSoundTimer -= dt;
+                    if (p.stepSoundTimer <= 0) {
+                        p.stepSoundTimer = 0.14;
+                        audio.playStep();
+                    }
+                } else if (p.onGround) {
+                    p.walkAnimTimer = 0;
+                }
+
+                // Fall off bottom pit (75m Elevators or 100m Rivet gaps) -> Fatal!
+                if (p.y > H + 12) {
+                    triggerPlayerDeath();
+                    return;
+                }
+            }
+
+            // --- Check Rivet Removal (100m Stage) ---
+            if (state.stageIdx === 3 && p.onGround) {
+                for (let r = 0; r < state.rivets.length; r++) {
+                    const rv = state.rivets[r];
+                    if (!rv.removed && Math.abs(p.x - rv.x) <= 9 && Math.abs(p.y - rv.y) <= 6) {
+                        rv.removed = true;
+                        audio.playRivetPop();
+                        addScore(100, rv.x, rv.y - 12, '100');
+                    }
+                }
+                if (state.rivets.length > 0 && state.rivets.every(rv => rv.removed)) {
+                    completeCurrentStage();
+                    return;
+                }
+            }
+
+            // --- Check Hammer Pickup ---
+            for (let h = 0; h < state.hammers.length; h++) {
+                const ham = state.hammers[h];
+                if (!ham.collected && Math.abs(p.x - ham.x) <= 14 && Math.abs((p.y - 10) - ham.y) <= 14) {
+                    ham.collected = true;
+                    p.hammerTimer = 9.0;
+                    p.hammerSwingPhase = 0;
+                    audio.startHammerLoop();
+                    spawnPopup(ham.x, ham.y - 12, 'HAMMER!', '#38bdf8');
+                }
+            }
+
+            // --- Check Pauline Bonus Items Pickup ---
+            for (let b = 0; b < state.bonusItems.length; b++) {
+                const it = state.bonusItems[b];
+                if (!it.collected && Math.abs(p.x - it.x) <= 14 && Math.abs((p.y - 8) - it.y) <= 14) {
+                    it.collected = true;
+                    const pts = state.loop === 1 ? 300 : (state.loop === 2 ? 500 : 800);
+                    audio.playItemPickup();
+                    addScore(pts, it.x, it.y - 14, `${pts}`);
+                }
+            }
+
+            // --- Check Reaching Pauline to Clear Stages 1, 2, 3 ---
+            if (state.stageIdx < 3) {
+                if (Math.abs(p.x - state.pauline.x) <= 34 && Math.abs(p.y - (state.pauline.y + 20)) <= 14) {
+                    completeCurrentStage();
+                    return;
+                }
+            }
+        }
+
+        function updateKongAndHazards(dt) {
+            const p = state.player;
+            const speedScale = 1 + (state.loop - 1) * 0.16;
+
+            // Active Hammer Hitbox in front of or above Jumpman
+            let hammerHitX = null;
+            let hammerHitY = null;
+            if (p.hammerTimer > 0) {
+                const downSwing = Math.sin(p.hammerSwingPhase) > 0;
+                hammerHitX = downSwing ? p.x + p.facing * 16 : p.x;
+                hammerHitY = downSwing ? p.y - 8 : p.y - 24;
+            }
+
+            // Stage 1 (25m): Donkey Kong Throws Rolling & Wild Blue Barrels
+            if (state.stageIdx === 0) {
+                state.kong.timer -= dt;
+                if (state.kong.timer <= 0) {
+                    state.kong.anim = 'throw';
+                    const isBlue = Math.random() < 0.24;
+                    // Wild blue barrels occasionally drop straight down toward the oil drum
+                    const wildDrop = isBlue && Math.random() < 0.45;
+                    state.barrels.push({
+                        x: wildDrop ? 62 : 84,
+                        y: 112,
+                        vx: wildDrop ? 0 : 78 * speedScale,
+                        vy: 0,
+                        onGround: false,
+                        onLadder: false,
+                        isBlue,
+                        rot: 0,
+                        scoredJump: false
+                    });
+                    state.kong.timer = Math.max(1.35, (2.65 - state.loop * 0.18) + Math.random() * 0.7);
+                } else if (state.kong.timer < 1.8) {
+                    state.kong.anim = 'idle';
+                }
+            }
+
+            // Stage 2 (50m): Conveyor Belt Cement Tub Spawner
+            if (state.stageIdx === 1) {
+                state.kong.timer -= dt;
+                if (state.kong.timer <= 0) {
+                    state.kong.anim = 'chest';
+                    state.cementTubs.push({ x: 36, y: 158, vx: 42 * speedScale, row: 5 });
+                    if (Math.random() < 0.5) {
+                        state.cementTubs.push({ x: 412, y: 318, vx: -46 * speedScale, row: 3 });
+                    }
+                    state.kong.timer = Math.max(2.4, 4.2 - state.loop * 0.25);
+                }
+            }
+
+            // Stage 3 (75m): Kong Throws Bouncing Springs Across Top Girder
+            if (state.stageIdx === 2) {
+                state.kong.timer -= dt;
+                if (state.kong.timer <= 0) {
+                    state.kong.anim = 'throw';
+                    state.springs.push({
+                        x: 72,
+                        y: 110,
+                        vx: 84 * speedScale,
+                        vy: -40
+                    });
+                    state.kong.timer = Math.max(1.4, 2.35 - state.loop * 0.16);
+                }
+            }
+
+            // --- Update Rolling Barrels (25m) ---
+            for (let i = state.barrels.length - 1; i >= 0; i--) {
+                const b = state.barrels[i];
+                b.rot += (b.vx >= 0 ? 1 : -1) * 9 * dt;
+
+                // Hammer Smash Check
+                if (hammerHitX !== null && Math.hypot(b.x - hammerHitX, (b.y - 6) - hammerHitY) <= 16) {
+                    audio.playSmash();
+                    const pts = b.isBlue ? 500 : 300;
+                    addScore(pts, b.x, b.y - 12, `${pts}`);
+                    state.barrels.splice(i, 1);
+                    continue;
+                }
+
+                // Check if barrel drops down a ladder aligned beneath it
+                if (!b.onLadder && b.onGround && Math.random() < dt * 2.4) {
+                    for (let l = 0; l < state.ladders.length; l++) {
+                        const lad = state.ladders[l];
+                        if (Math.abs(b.x - lad.x) <= 5 && Math.abs(b.y - lad.topY) <= 8) {
+                            b.onLadder = true;
+                            b.x = lad.x;
+                            b.vx = 0;
+                            b.vy = 96 * speedScale;
+                            b.targetLadderBottom = lad.bottomY;
+                            break;
+                        }
+                    }
+                }
+
+                if (b.onLadder) {
+                    b.y += b.vy * dt;
+                    if (b.y >= b.targetLadderBottom) {
+                        b.y = b.targetLadderBottom;
+                        b.onLadder = false;
+                        // Reverse horizontal roll direction on lower girder
+                        b.vx = (b.y > 440 || (b.y > 290 && b.y < 380)) ? 78 * speedScale : -78 * speedScale;
+                    }
+                } else {
+                    const prevY = b.y;
+                    b.vy += 460 * dt;
+                    b.x += b.vx * dt;
+                    b.y += b.vy * dt;
+
+                    const sup = findSupportBelow(b.x, b.y, prevY);
+                    if (sup && b.vy >= 0) {
+                        b.y = sup.y;
+                        b.vy = 0;
+                        b.onGround = true;
+                        // Follow girder slope direction
+                        if (sup.girder && sup.girder.y2 !== undefined) {
+                            const slope = sup.girder.y2 - sup.girder.y1;
+                            if (Math.abs(slope) > 2) {
+                                b.vx = (slope > 0 ? 1 : -1) * 80 * speedScale;
+                            }
+                        }
+                    } else {
+                        b.onGround = false;
+                    }
+                }
+
+                // Jump Over Barrel Bonus (+100 pts)
+                if (!b.scoredJump && !p.onGround && Math.abs(p.x - b.x) <= 10 && p.y < b.y - 8 && p.y > b.y - 42) {
+                    b.scoredJump = true;
+                    audio.playBarrelJumpScore();
+                    addScore(100, b.x, b.y - 16, '100');
+                }
+
+                // Collision with Jumpman
+                if (Math.abs(p.x - b.x) <= 11 && Math.abs((p.y - 8) - (b.y - 6)) <= 11) {
+                    triggerPlayerDeath();
+                    return;
+                }
+
+                // Remove barrel when reaching bottom oil drum (blue barrels spawn extra fireball!)
+                if (b.y >= 484 && b.x <= 44) {
+                    if (b.isBlue && state.fireballs.length < 4) {
+                        spawnFireball(44, 474);
+                    }
+                    state.barrels.splice(i, 1);
+                } else if (b.y > H + 20) {
+                    state.barrels.splice(i, 1);
+                }
+            }
+
+            // --- Update Cement Tubs (50m Conveyor Factory) ---
+            for (let i = state.cementTubs.length - 1; i >= 0; i--) {
+                const tub = state.cementTubs[i];
+                tub.x += tub.vx * dt;
+
+                if (hammerHitX !== null && Math.hypot(tub.x - hammerHitX, tub.y - hammerHitY) <= 16) {
+                    audio.playSmash();
+                    addScore(300, tub.x, tub.y - 10, '300');
+                    state.cementTubs.splice(i, 1);
+                    continue;
+                }
+
+                if (Math.abs(p.x - tub.x) <= 12 && Math.abs((p.y - 8) - tub.y) <= 10) {
+                    triggerPlayerDeath();
+                    return;
+                }
+
+                // Disappear into center oil drum or off screen edges
+                if ((tub.row === 3 && Math.abs(tub.x - 224) < 10) || tub.x < -10 || tub.x > W + 10) {
+                    state.cementTubs.splice(i, 1);
+                }
+            }
+
+            // --- Update Bouncing Springs (75m Elevators) ---
+            for (let i = state.springs.length - 1; i >= 0; i--) {
+                const sp = state.springs[i];
+                const prevY = sp.y;
+                sp.vy += 420 * dt;
+                sp.x += sp.vx * dt;
+                sp.y += sp.vy * dt;
+
+                const sup = findSupportBelow(sp.x, sp.y, prevY);
+                if (sup && sp.vy >= 0 && sp.x < 332) {
+                    sp.y = sup.y;
+                    sp.vy = -172;
+                }
+
+                if (Math.abs(p.x - sp.x) <= 11 && Math.abs((p.y - 8) - (sp.y - 6)) <= 12) {
+                    triggerPlayerDeath();
+                    return;
+                }
+
+                if (sp.y > H + 20) {
+                    state.springs.splice(i, 1);
+                }
+            }
+
+            // --- Update Fireballs / Firefoxes (All Stages) ---
+            for (let i = state.fireballs.length - 1; i >= 0; i--) {
+                const fb = state.fireballs[i];
+
+                // Hammer Smash Check
+                if (hammerHitX !== null && Math.hypot(fb.x - hammerHitX, (fb.y - 6) - hammerHitY) <= 16) {
+                    audio.playSmash();
+                    addScore(500, fb.x, fb.y - 12, '500');
+                    state.fireballs.splice(i, 1);
+                    continue;
+                }
+
+                fb.decisionTimer -= dt;
+                if (fb.decisionTimer <= 0) {
+                    fb.decisionTimer = 0.9 + Math.random() * 1.1;
+                    // Smarter tracking toward Jumpman's horizontal position
+                    const chaseDir = p.x >= fb.x ? 1 : -1;
+                    fb.vx = (Math.random() < 0.65 ? chaseDir : -chaseDir) * (38 + state.loop * 6);
+
+                    // Occasionally climb ladders up or down
+                    if (!fb.climbing && Math.random() < 0.42) {
+                        for (let l = 0; l < state.ladders.length; l++) {
+                            const lad = state.ladders[l];
+                            if (!lad.broken && !lad.retracting && Math.abs(fb.x - lad.x) <= 12) {
+                                if (Math.abs(fb.y - lad.bottomY) <= 12) {
+                                    fb.climbing = true;
+                                    fb.climbDir = -1;
+                                    fb.targetY = lad.topY;
+                                    fb.x = lad.x;
+                                    break;
+                                } else if (Math.abs(fb.y - lad.topY) <= 12) {
+                                    fb.climbing = true;
+                                    fb.climbDir = 1;
+                                    fb.targetY = lad.bottomY;
+                                    fb.x = lad.x;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (fb.climbing) {
+                    fb.y += fb.climbDir * 44 * dt;
+                    if ((fb.climbDir < 0 && fb.y <= fb.targetY) || (fb.climbDir > 0 && fb.y >= fb.targetY)) {
+                        fb.y = fb.targetY;
+                        fb.climbing = false;
+                    }
+                } else {
+                    const prevY = fb.y;
+                    fb.vy += 420 * dt;
+                    fb.x += fb.vx * dt;
+                    fb.y += fb.vy * dt;
+
+                    // Keep fireballs on valid girders and away from removed rivet gaps
+                    if (fb.x < 24) { fb.x = 24; fb.vx = Math.abs(fb.vx); }
+                    if (fb.x > W - 24) { fb.x = W - 24; fb.vx = -Math.abs(fb.vx); }
+
+                    const sup = findSupportBelow(fb.x, fb.y, prevY);
+                    if (sup && fb.vy >= 0) {
+                        fb.y = sup.y;
+                        fb.vy = 0;
+                    } else if (!sup && prevY <= 490) {
+                        // Turn around at platform edges or removed rivet holes!
+                        fb.x -= fb.vx * dt * 2;
+                        fb.vx = -fb.vx;
+                        fb.y = prevY;
+                        fb.vy = 0;
+                    }
+                }
+
+                if (Math.abs(p.x - fb.x) <= 11 && Math.abs((p.y - 8) - (fb.y - 6)) <= 11) {
+                    triggerPlayerDeath();
+                    return;
+                }
+            }
+        }
+
+        // =====================================================================
+        // 7. RETRO 1981 ARCADE CANVAS RENDERER
+        // =====================================================================
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            const headerH = document.querySelector('header').offsetHeight || 36;
+            const footerH = document.querySelector('footer').offsetHeight || 86;
+            const availW = window.innerWidth - 16;
+            const availH = window.innerHeight - headerH - footerH - 20;
+
+            const aspect = W / H; // 7 : 8
+            let drawH = Math.max(260, availH);
+            let drawW = drawH * aspect;
+
+            if (drawW > availW) {
+                drawW = availW;
+                drawH = drawW / aspect;
+            }
+
+            canvas.style.width = `${Math.floor(drawW)}px`;
+            canvas.style.height = `${Math.floor(drawH)}px`;
+            canvas.width = W;
+            canvas.height = H;
+            ctx.imageSmoothingEnabled = false;
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+
+        function drawGirder(g, timeSec) {
+            const colorMap = {
+                red: { rail: '#ef4444', truss: '#991b1b' },
+                pink: { rail: '#ec4899', truss: '#9d174d' },
+                blue: { rail: '#38bdf8', truss: '#0369a1' }
+            };
+            const pal = colorMap[g.type] || colorMap.red;
+            const thickness = 10;
+
+            // Top & Bottom Steel Flanges
+            ctx.strokeStyle = pal.rail;
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.moveTo(g.x1, g.y1);
+            ctx.lineTo(g.x2, g.y2);
+            ctx.moveTo(g.x1, g.y1 + thickness);
+            ctx.lineTo(g.x2, g.y2 + thickness);
+            ctx.stroke();
+
+            // Diagonal Zig-Zag Steel Lattice Truss
+            ctx.strokeStyle = pal.truss;
+            ctx.lineWidth = 1.6;
+            const span = g.x2 - g.x1;
+            const step = 12;
+            ctx.beginPath();
+            for (let sx = 0; sx < span; sx += step) {
+                const xA = g.x1 + sx;
+                const xB = Math.min(g.x2, xA + step);
+                const yA = getGirderYAtX(g, xA);
+                const yB = getGirderYAtX(g, xB);
+                ctx.moveTo(xA, yA + 1);
+                ctx.lineTo(xB, yB + thickness - 1);
+                ctx.moveTo(xB, yB + 1);
+                ctx.lineTo(xA, yA + thickness - 1);
+            }
+            ctx.stroke();
+
+            // Conveyor Belt Pulley Wheels & Moving Treads (50m Stage)
+            if (g.conveyorDir) {
+                const wheelShift = (timeSec * 28 * g.conveyorDir) % 16;
+                ctx.fillStyle = '#facc15';
+                for (let wx = g.x1 + 8 + ((wheelShift + 16) % 16); wx < g.x2 - 8; wx += 16) {
+                    const wy = getGirderYAtX(g, wx) + 5;
+                    ctx.fillRect(wx - 2, wy - 2, 4, 4);
+                }
+            }
+        }
+
+        function drawLadder(lad) {
+            const effTop = lad.currentTopY !== undefined ? lad.currentTopY : lad.topY;
+            const halfW = 6;
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 2;
+
+            if (lad.broken) {
+                const mid = effTop + (lad.bottomY - effTop) * 0.45;
+                const gapEnd = effTop + (lad.bottomY - effTop) * 0.65;
+                // Upper stub
+                ctx.beginPath();
+                ctx.moveTo(lad.x - halfW, effTop);
+                ctx.lineTo(lad.x - halfW, mid);
+                ctx.moveTo(lad.x + halfW, effTop);
+                ctx.lineTo(lad.x + halfW, mid);
+                ctx.stroke();
+                for (let y = effTop + 4; y <= mid; y += 7) {
+                    ctx.fillStyle = '#38bdf8';
+                    ctx.fillRect(lad.x - halfW, y, halfW * 2, 2);
+                }
+                // Lower stub
+                ctx.beginPath();
+                ctx.moveTo(lad.x - halfW, gapEnd);
+                ctx.lineTo(lad.x - halfW, lad.bottomY);
+                ctx.moveTo(lad.x + halfW, gapEnd);
+                ctx.lineTo(lad.x + halfW, lad.bottomY);
+                ctx.stroke();
+                for (let y = gapEnd + 4; y <= lad.bottomY; y += 7) {
+                    ctx.fillStyle = '#38bdf8';
+                    ctx.fillRect(lad.x - halfW, y, halfW * 2, 2);
+                }
+            } else {
+                ctx.beginPath();
+                ctx.moveTo(lad.x - halfW, effTop);
+                ctx.lineTo(lad.x - halfW, lad.bottomY);
+                ctx.moveTo(lad.x + halfW, effTop);
+                ctx.lineTo(lad.x + halfW, lad.bottomY);
+                ctx.stroke();
+
+                ctx.fillStyle = '#38bdf8';
+                for (let y = effTop + 4; y <= lad.bottomY - 2; y += 7) {
+                    ctx.fillRect(lad.x - halfW, y, halfW * 2, 2);
+                }
+            }
+        }
+
+        function drawArcadeHUD() {
+            // Top Score Header
+            ctx.font = '11px "Press Start 2P", monospace';
+            ctx.textAlign = 'left';
+            ctx.fillStyle = '#ef4444';
+            ctx.fillText('1UP', 24, 15);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(String(state.score).padStart(6, '0'), 14, 29);
+
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#ef4444';
+            ctx.fillText('HIGH SCORE', W * 0.5, 15);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(String(state.highScore).padStart(6, '0'), W * 0.5, 29);
+
+            // Stage & Loop Indicator (Top Right)
+            ctx.textAlign = 'right';
+            ctx.fillStyle = '#38bdf8';
+            ctx.fillText(`L=${String(state.loop).padStart(2, '0')}`, W - 16, 15);
+            ctx.fillStyle = '#f472b6';
+            ctx.fillText(STAGE_NAMES[state.stageIdx], W - 16, 29);
+
+            // Mini Jumpman Life Icons (Top Left below 1UP)
+            const extraLives = Math.max(0, state.lives - 1);
+            for (let i = 0; i < extraLives; i++) {
+                ctx.drawImage(SPRITES.jm_idle_r, 14 + i * 16, 36, 14, 14);
+            }
+
+            // Classic Arcade BONUS Countdown Box (Top Right below L=01)
+            const boxX = W - 86;
+            const boxY = 38;
+            ctx.strokeStyle = '#f472b6';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(boxX, boxY, 72, 28);
+            ctx.fillStyle = '#1e1b4b';
+            ctx.fillRect(boxX + 2, boxY + 2, 68, 10);
+
+            ctx.font = '7px "Press Start 2P", monospace';
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#38bdf8';
+            ctx.fillText('BONUS', boxX + 36, boxY + 10);
+
+            ctx.font = '10px "Press Start 2P", monospace';
+            ctx.fillStyle = state.bonusTimer <= 1000 ? '#ef4444' : '#fde047';
+            ctx.fillText(String(state.bonusTimer).padStart(4, '0'), boxX + 36, boxY + 24);
+        }
+
+        function drawTitleScreen(timeSec) {
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, W, H);
+            drawArcadeHUD();
+
+            ctx.textAlign = 'center';
+            ctx.font = '28px "Press Start 2P", monospace';
+            ctx.fillStyle = '#38bdf8';
+            ctx.fillText('DONKEY', W * 0.5, 118);
+            ctx.fillStyle = '#ef4444';
+            ctx.fillText('KONG', W * 0.5, 154);
+
+            ctx.font = '9px "Press Start 2P", monospace';
+            ctx.fillStyle = '#facc15';
+            ctx.fillText('1981 ARCADE EDITION', W * 0.5, 178);
+
+            // Donkey Kong & Pauline Cast Display
+            const dkFrame = Math.floor(timeSec * 3) % 2 === 0 ? SPRITES.dk_idle : SPRITES.dk_chest;
+            ctx.drawImage(dkFrame, W * 0.5 - 36, 198, 72, 48);
+
+            ctx.font = '9px "Press Start 2P", monospace';
+            ctx.fillStyle = '#e2e8f0';
+            ctx.fillText('4 CLASSIC STAGES:', W * 0.5, 276);
+            ctx.fillStyle = '#f472b6';
+            ctx.fillText('25m • 50m • 75m • 100m', W * 0.5, 294);
+
+            ctx.fillStyle = '#38bdf8';
+            ctx.fillText('JUMP BARREL ..... 100 PTS', W * 0.5, 326);
+            ctx.fillText('SMASH HAZARD .... 300-500', W * 0.5, 344);
+            ctx.fillText('PAULINE ITEMS ... 300-800', W * 0.5, 362);
+            ctx.fillStyle = '#4ade80';
+            ctx.fillText('1UP AT 7,000 POINTS', W * 0.5, 386);
+
+            if (Math.floor(timeSec * 2.5) % 2 === 0) {
+                ctx.font = '11px "Press Start 2P", monospace';
+                ctx.fillStyle = '#facc15';
+                ctx.fillText('PRESS START OR SPACE', W * 0.5, 434);
+            }
+
+            ctx.font = '8px "Press Start 2P", monospace';
+            ctx.fillStyle = '#94a3b8';
+            ctx.fillText('ARROWS/WASD + SPACE TO JUMP', W * 0.5, 468);
+        }
+
+        function drawStageIntroScreen() {
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, W, H);
+            drawArcadeHUD();
+
+            ctx.textAlign = 'center';
+            ctx.font = '13px "Press Start 2P", monospace';
+            ctx.fillStyle = '#38bdf8';
+            ctx.fillText('HOW HIGH CAN YOU GET ?', W * 0.5, 110);
+
+            // Height Milestone Ladder Graphic (25m -> 50m -> 75m -> 100m)
+            const heights = ['100m', '75m', '50m', '25m'];
+            heights.forEach((label, idx) => {
+                const actualStage = 3 - idx;
+                const y = 168 + idx * 62;
+                const active = actualStage === state.stageIdx;
+
+                ctx.drawImage(SPRITES.dk_idle, W * 0.5 - 30, y - 22, 48, 32);
+                ctx.font = '12px "Press Start 2P", monospace';
+                ctx.fillStyle = active ? '#facc15' : '#64748b';
+                ctx.fillText(label, W * 0.5 + 56, y);
+
+                if (active) {
+                    ctx.fillStyle = '#ef4444';
+                    ctx.fillText('▶', W * 0.5 - 52, y);
+                }
+            });
+        }
+
+        function render(timeSec) {
+            if (state.phase === 'title') {
+                drawTitleScreen(timeSec);
+                return;
+            }
+            if (state.phase === 'stage_intro') {
+                drawStageIntroScreen();
+                return;
+            }
+
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, W, H);
+
+            // 1. Draw Ladders & Girders
+            state.ladders.forEach(drawLadder);
+            state.girders.forEach(g => drawGirder(g, timeSec));
+
+            // 2. Draw Moving Elevators & Shaft Cables (75m)
+            state.elevators.forEach(el => {
+                ctx.strokeStyle = '#334155';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(el.x, 150);
+                ctx.lineTo(el.x, 490);
+                ctx.stroke();
+
+                ctx.fillStyle = '#ef4444';
+                ctx.fillRect(el.x - el.w * 0.5, el.y, el.w, 8);
+                ctx.fillStyle = '#fde047';
+                ctx.fillRect(el.x - el.w * 0.5 + 2, el.y + 2, el.w - 4, 3);
+            });
+
+            // 3. Draw Yellow Rivets (100m)
+            state.rivets.forEach(rv => {
+                if (!rv.removed) {
+                    ctx.fillStyle = '#facc15';
+                    ctx.fillRect(rv.x - 8, rv.y, 16, 10);
+                    ctx.fillStyle = '#ca8a04';
+                    ctx.fillRect(rv.x - 6, rv.y + 3, 12, 4);
+                }
+            });
+
+            // 4. Draw Oil Drum & Flickering Flame
+            if (state.oilDrum) {
+                const od = state.oilDrum;
+                ctx.drawImage(SPRITES.oil_drum, od.x, od.y, 16, 22);
+                if (od.lit) {
+                    const flameSpr = Math.floor(timeSec * 10) % 2 === 0 ? SPRITES.fireball_0 : SPRITES.fireball_1;
+                    ctx.drawImage(flameSpr, od.x + 2, od.y - 11, 12, 12);
+                }
+            }
+
+            // 5. Draw Hammers & Pauline Bonus Items
+            state.hammers.forEach(ham => {
+                if (!ham.collected) {
+                    ctx.drawImage(SPRITES.hammer, ham.x - 7, ham.y - 7, 14, 14);
+                }
+            });
+
+            state.bonusItems.forEach(it => {
+                if (!it.collected) {
+                    const spr = SPRITES[`item_${it.kind}`];
+                    ctx.drawImage(spr, it.x - 7, it.y - 7, 14, 14);
+                }
+            });
+
+            // 6. Draw Pauline & Animated "HELP!" Callout
+            const pl = state.pauline;
+            const pSpr = Math.floor(timeSec * 5) % 2 === 0 ? SPRITES.pauline_0 : SPRITES.pauline_1;
+            ctx.drawImage(pSpr, pl.x - 8, pl.y, 16, 20);
+            if (Math.floor(timeSec * 2) % 2 === 0) {
+                ctx.font = '8px "Press Start 2P", monospace';
+                ctx.textAlign = 'left';
+                ctx.fillStyle = '#38bdf8';
+                ctx.fillText('HELP!', pl.x + 12, pl.y + 8);
+            }
+
+            // 7. Draw Donkey Kong
+            const dk = state.kong;
+            const dkY = (state.phase === 'stage_clear' && state.stageIdx === 3) ? dk.fallingY : dk.y;
+            let dkSpr = SPRITES.dk_idle;
+            if (dk.anim === 'throw') dkSpr = SPRITES.dk_throw;
+            else if (Math.floor(timeSec * 3) % 2 === 1) dkSpr = SPRITES.dk_chest;
+
+            ctx.save();
+            if (state.phase === 'stage_clear' && state.stageIdx === 3) {
+                // Upside-down tumbling Kong after 100m rivet collapse!
+                ctx.translate(dk.x + 18, dkY + 12);
+                ctx.scale(1, -1);
+                ctx.drawImage(dkSpr, -18, -12, 36, 24);
+            } else {
+                ctx.drawImage(dkSpr, dk.x, dkY, 36, 24);
+            }
+            ctx.restore();
+
+            // 8. Draw Rolling Barrels, Cement Tubs, Springs & Fireballs
+            state.barrels.forEach(b => {
+                const spr = b.isBlue ? SPRITES.barrel_blue : SPRITES.barrel_brown;
+                ctx.save();
+                ctx.translate(b.x, b.y - 6);
+                ctx.rotate(b.rot);
+                ctx.drawImage(spr, -6, -6, 12, 12);
+                ctx.restore();
+            });
+
+            state.cementTubs.forEach(tub => {
+                ctx.drawImage(SPRITES.cement_tub, tub.x - 8, tub.y, 16, 10);
+            });
+
+            state.springs.forEach(sp => {
+                const spr = sp.vy < 0 ? SPRITES.spring_open : SPRITES.spring_closed;
+                ctx.drawImage(spr, sp.x - 6, sp.y - 12, 12, 14);
+            });
+
+            const fbSpr = Math.floor(timeSec * 12) % 2 === 0 ? SPRITES.fireball_0 : SPRITES.fireball_1;
+            state.fireballs.forEach(fb => {
+                ctx.drawImage(fbSpr, fb.x - 6, fb.y - 12, 12, 12);
+            });
+
+            // 9. Draw Jumpman & Swinging Hammer
+            const p = state.player;
+            if (state.phase === 'dying') {
+                ctx.drawImage(SPRITES.jm_dead, p.x - 8, p.y - 16, 16, 16);
+            } else {
+                let jmSpr = p.facing >= 0 ? SPRITES.jm_idle_r : SPRITES.jm_idle_l;
+                if (p.onLadder) {
+                    jmSpr = Math.floor(p.walkAnimTimer) % 2 === 0 ? SPRITES.jm_climb_0 : SPRITES.jm_climb_1;
+                } else if (!p.onGround) {
+                    jmSpr = p.facing >= 0 ? SPRITES.jm_jump_r : SPRITES.jm_jump_l;
+                } else if (Math.floor(p.walkAnimTimer) % 2 === 1) {
+                    jmSpr = p.facing >= 0 ? SPRITES.jm_run_r : SPRITES.jm_run_l;
+                }
+                ctx.drawImage(jmSpr, p.x - 8, p.y - 16, 16, 16);
+
+                // Draw Hammer Power-Up Swing
+                if (p.hammerTimer > 0) {
+                    const downSwing = Math.sin(p.hammerSwingPhase) > 0;
+                    ctx.save();
+                    if (downSwing) {
+                        ctx.translate(p.x + p.facing * 15, p.y - 8);
+                        ctx.rotate(p.facing * Math.PI * 0.5);
+                    } else {
+                        ctx.translate(p.x, p.y - 23);
+                    }
+                    ctx.drawImage(SPRITES.hammer, -7, -7, 14, 14);
+                    ctx.restore();
+                }
+            }
+
+            // 10. Draw Floating Score Popups & Top Arcade HUD
+            state.popups.forEach(pop => {
+                ctx.font = '8px "Press Start 2P", monospace';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = pop.color;
+                ctx.fillText(pop.text, pop.x, pop.y);
+            });
+
+            drawArcadeHUD();
+
+            // 11. Stage Clear Heart Icon & Game Over / Pause Banners
+            if (state.phase === 'stage_clear') {
+                ctx.textAlign = 'center';
+                ctx.font = '12px "Press Start 2P", monospace';
+                ctx.fillStyle = '#f472b6';
+                ctx.fillText(state.stageIdx === 3 ? 'VICTORY! NEW LOOP!' : 'STAGE CLEAR!', W * 0.5, 220);
+            } else if (state.phase === 'gameover') {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.82)';
+                ctx.fillRect(54, 210, W - 108, 86);
+                ctx.strokeStyle = '#ef4444';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(54, 210, W - 108, 86);
+
+                ctx.textAlign = 'center';
+                ctx.font = '16px "Press Start 2P", monospace';
+                ctx.fillStyle = '#ef4444';
+                ctx.fillText('GAME OVER', W * 0.5, 245);
+
+                if (Math.floor(timeSec * 2.5) % 2 === 0) {
+                    ctx.font = '9px "Press Start 2P", monospace';
+                    ctx.fillStyle = '#facc15';
+                    ctx.fillText('PRESS START TO RETRY', W * 0.5, 276);
+                }
+            } else if (state.paused) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.78)';
+                ctx.fillRect(92, 224, W - 184, 52);
+                ctx.strokeStyle = '#38bdf8';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(92, 224, W - 184, 52);
+
+                ctx.textAlign = 'center';
+                ctx.font = '14px "Press Start 2P", monospace';
+                ctx.fillStyle = '#38bdf8';
+                ctx.fillText('PAUSED', W * 0.5, 256);
+            }
+        }
+
+        // =====================================================================
+        // 8. KEYBOARD & TOUCH D-PAD CONTROLS
+        // =====================================================================
+        window.addEventListener('keydown', (e) => {
+            audio.init();
+            state.keys[e.code] = true;
+            if (e.repeat) return;
+
+            if (e.code === 'KeyM') {
+                const muted = audio.toggleMute();
+                document.getElementById('btn-audio').textContent = muted ? 'SOUND: OFF [M]' : 'SOUND: ON [M]';
+                return;
+            }
+            if (e.code === 'KeyV') {
+                state.crtEnabled = !state.crtEnabled;
+                document.getElementById('crt-overlay').classList.toggle('hidden', !state.crtEnabled);
+                document.getElementById('btn-crt').textContent = state.crtEnabled ? 'CRT: ON [V]' : 'CRT: OFF [V]';
+                return;
+            }
+            if (e.code === 'KeyP') {
+                if (state.phase === 'playing') state.paused = !state.paused;
+                return;
+            }
+            if ((e.code === 'Enter' || e.code === 'Space') && (state.phase === 'title' || state.phase === 'gameover')) {
+                startNewGame();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            state.keys[e.code] = false;
+        });
+
+        document.getElementById('btn-audio').addEventListener('click', () => {
+            audio.init();
+            const muted = audio.toggleMute();
+            document.getElementById('btn-audio').textContent = muted ? 'SOUND: OFF [M]' : 'SOUND: ON [M]';
+        });
+
+        document.getElementById('btn-crt').addEventListener('click', () => {
+            state.crtEnabled = !state.crtEnabled;
+            document.getElementById('crt-overlay').classList.toggle('hidden', !state.crtEnabled);
+            document.getElementById('btn-crt').textContent = state.crtEnabled ? 'CRT: ON [V]' : 'CRT: OFF [V]';
+        });
+
+        document.getElementById('btn-pause').addEventListener('click', () => {
+            if (state.phase === 'playing') state.paused = !state.paused;
+        });
+
+        document.getElementById('btn-start-mobile').addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            audio.init();
+            if (state.phase === 'title' || state.phase === 'gameover') {
+                startNewGame();
+            } else if (state.paused) {
+                state.paused = false;
+            }
+        });
+
+        function bindTouchHold(btnId, touchKey) {
+            const el = document.getElementById(btnId);
+            el.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                audio.init();
+                if (state.phase === 'title' || state.phase === 'gameover') {
+                    startNewGame();
+                    return;
+                }
+                state.touch[touchKey] = true;
+                el.classList.add('active');
+            });
+            const release = () => {
+                state.touch[touchKey] = false;
+                el.classList.remove('active');
+            };
+            el.addEventListener('pointerup', release);
+            el.addEventListener('pointerleave', release);
+            el.addEventListener('pointercancel', release);
+        }
+
+        bindTouchHold('pad-up', 'up');
+        bindTouchHold('pad-down', 'down');
+        bindTouchHold('pad-left', 'left');
+        bindTouchHold('pad-right', 'right');
+        bindTouchHold('pad-jump', 'jump');
+
+        canvas.addEventListener('pointerdown', () => {
+            audio.init();
+            if (state.phase === 'title' || state.phase === 'gameover') {
+                startNewGame();
+            }
+        });
+
+        // =====================================================================
+        // 9. WINDOW ONLOAD & MAIN ANIMATION LOOP
+        // =====================================================================
+        let lastTime = performance.now();
+
+        function mainLoop(now) {
+            requestAnimationFrame(mainLoop);
+            const dt = Math.min((now - lastTime) / 1000, 0.05);
+            lastTime = now;
+            const timeSec = now / 1000;
+
+            audio.update(dt);
+            updateGameplay(dt);
+            render(timeSec);
+        }
+
+        window.onload = function () {
+            resizeCanvas();
+            requestAnimationFrame(mainLoop);
+        };
+    </script>
+</body>
+</html>

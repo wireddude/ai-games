@@ -1,5 +1,11 @@
 [
   {
+    "name": "apollo_horizon_lunar_lander_3d.html",
+    "title": "Apollo Horizon \u2014 Lunar Lander 3D",
+    "size": 76154,
+    "modified": 1795712451
+  },
+  {
     "name": "breakout.html",
     "title": "Breakout",
     "size": 13004,
@@ -24,6 +30,12 @@
     "modified": 1795060756
   },
   {
+    "name": "cosmic_cataclysms_3d_binary_black_hole_merger_supernova.html",
+    "title": "COSMIC CATACLYSMS 3D \u2014 Binary Black Hole Merger &amp; Supernova",
+    "size": 55271,
+    "modified": 1795712276
+  },
+  {
     "name": "cow.html",
     "title": "Cow Abduction",
     "size": 77232,
@@ -40,6 +52,12 @@
     "title": "Deep Space \u2014 a tiny universe simulator",
     "size": 22792,
     "modified": 1791297275
+  },
+  {
+    "name": "donkey_kong_1981_arcade_edition.html",
+    "title": "DONKEY KONG 1981 \u2014 Arcade Edition",
+    "size": 104926,
+    "modified": 1795712393
   },
   {
     "name": "drawing-platformer.html",
@@ -72,6 +90,18 @@
     "modified": 1795220754
   },
   {
+    "name": "fort_apocalypse_1982_cavern_gunship.html",
+    "title": "FORT APOCALYPSE 1982 \u2014 Cavern Gunship",
+    "size": 66327,
+    "modified": 1795712364
+  },
+  {
+    "name": "frogger_1981_arcade_edition.html",
+    "title": "FROGGER 1981 \u2014 Arcade Edition",
+    "size": 80630,
+    "modified": 1795712406
+  },
+  {
     "name": "galaga.html",
     "title": "GALAGA",
     "size": 47942,
@@ -96,10 +126,22 @@
     "modified": 1795137929
   },
   {
+    "name": "missile_command_1980.html",
+    "title": "MISSILE COMMAND 1980 \u2014 Arcade Clone",
+    "size": 58819,
+    "modified": 1795712419
+  },
+  {
     "name": "pac-man.html",
     "title": "Neon Maze",
     "size": 26446,
     "modified": 1793842035
+  },
+  {
+    "name": "pac_man_1980_arcade_edition.html",
+    "title": "PAC-MAN 1980 \u2014 Arcade Edition",
+    "size": 60144,
+    "modified": 1795712379
   },
   {
     "name": "pixel_blackjack.html",
@@ -108,10 +150,22 @@
     "modified": 1774831576
   },
   {
+    "name": "prime_time_spy_sitcom_pinball_1986.html",
+    "title": "PRIME TIME SPY &amp; SITCOM PINBALL: 1986",
+    "size": 81615,
+    "modified": 1795712431
+  },
+  {
     "name": "road-rage.html",
     "title": "Road Rage",
     "size": 129707,
     "modified": 1795062335
+  },
+  {
+    "name": "san_diego_air_superiority_3d.html",
+    "title": "San Diego Air Superiority 3D",
+    "size": 77691,
+    "modified": 1795712459
   },
   {
     "name": "sd-flight-sim.html",
@@ -122,8 +176,8 @@
   {
     "name": "skyfusion-v2.html",
     "title": "SkyFusion",
-    "size": 93378,
-    "modified": 1795650994
+    "size": 115082,
+    "modified": 1795671728
   },
   {
     "name": "skyfusion.html",
@@ -156,10 +210,22 @@
     "modified": 1791297350
   },
   {
+    "name": "solar_odyssey_3d_orbital_moon_tour.html",
+    "title": "SOLAR ODYSSEY 3D \u2014 Orbital &amp; Moon Tour",
+    "size": 75213,
+    "modified": 1795712216
+  },
+  {
     "name": "space-invaders.html",
     "title": "Nova Invaders",
     "size": 26948,
     "modified": 1793840037
+  },
+  {
+    "name": "super_mario_bros_1985_arcade_edition.html",
+    "title": "SUPER MARIO BROS. 1985 \u2014 Arcade Edition",
+    "size": 97914,
+    "modified": 1795712387
   },
   {
     "name": "tetris.html",
@@ -168,10 +234,22 @@
     "modified": 1795118830
   },
   {
+    "name": "tetromino_matrix.html",
+    "title": "TETROMINO MATRIX",
+    "size": 64156,
+    "modified": 1795712324
+  },
+  {
     "name": "treble-clef-trainer.html",
     "title": "Treble Clef Trainer",
     "size": 20890,
     "modified": 1793931920
+  },
+  {
+    "name": "trench_run_orbital_assault_3d.html",
+    "title": "Trench Run \u2014 Orbital Assault 3D",
+    "size": 89385,
+    "modified": 1795712443
   },
   {
     "name": "zaxxon.html",

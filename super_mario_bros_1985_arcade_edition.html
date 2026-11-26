@@ -1,0 +1,2403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SUPER MARIO BROS. 1985 — Arcade Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #090c16;
+            font-family: 'Press Start 2P', monospace;
+            color: #ffffff;
+        }
+        canvas {
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+        .nes-frame {
+            background: #5c94fc;
+            border: 3px solid #f8fafc;
+            box-shadow: 0 0 28px rgba(92, 148, 252, 0.35), inset 0 0 12px rgba(0, 0, 0, 0.35);
+        }
+        .touch-pad {
+            background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+            border: 2px solid #60a5fa;
+            box-shadow: 0 4px 0 #1d4ed8;
+            transition: transform 0.05s ease, background-color 0.08s ease;
+        }
+        .touch-pad:active, .touch-pad.active {
+            transform: translateY(3px);
+            box-shadow: 0 1px 0 #1d4ed8;
+            background: #2563eb;
+        }
+        .btn-jump {
+            background: linear-gradient(180deg, #ef4444 0%, #b91c1c 100%);
+            border: 2px solid #fecaca;
+            box-shadow: 0 4px 0 #7f1d1d;
+            transition: transform 0.05s ease, background-color 0.08s ease;
+        }
+        .btn-jump:active, .btn-jump.active {
+            transform: translateY(3px);
+            box-shadow: 0 1px 0 #7f1d1d;
+            background: #f87171;
+        }
+        .btn-run {
+            background: linear-gradient(180deg, #f59e0b 0%, #b45309 100%);
+            border: 2px solid #fef08a;
+            box-shadow: 0 4px 0 #78350f;
+            transition: transform 0.05s ease, background-color 0.08s ease;
+        }
+        .btn-run:active, .btn-run.active {
+            transform: translateY(3px);
+            box-shadow: 0 1px 0 #78350f;
+            background: #fbbf24;
+        }
+        .top-pill {
+            background: #0f172a;
+            border: 1.5px solid #334155;
+            transition: border-color 0.12s, color 0.12s;
+        }
+        .top-pill:hover {
+            border-color: #facc15;
+            color: #fde047;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-between p-1.5 sm:p-2.5">
+
+    <!-- Top Utility Bar -->
+    <header class="w-full max-w-4xl flex items-center justify-between gap-2 px-1 py-0.5 z-20">
+        <div class="flex items-center gap-2">
+            <span class="inline-block w-2.5 h-2.5 rounded-full bg-red-500"></span>
+            <span class="text-[9px] sm:text-xs text-amber-300 tracking-wider">WORLD 1-1 • 1985</span>
+        </div>
+        <div class="flex items-center gap-1.5 sm:gap-2">
+            <button id="btn-mute" class="top-pill px-2.5 py-1.5 rounded-lg text-[8px] sm:text-[10px] text-amber-300 cursor-pointer">
+                SOUND: ON [M]
+            </button>
+            <button id="btn-pause" class="top-pill px-2.5 py-1.5 rounded-lg text-[8px] sm:text-[10px] text-sky-300 cursor-pointer">
+                PAUSE [P]
+            </button>
+            <button id="btn-restart-top" class="top-pill px-2.5 py-1.5 rounded-lg text-[8px] sm:text-[10px] text-rose-300 cursor-pointer">
+                RESET
+            </button>
+        </div>
+    </header>
+
+    <!-- Center Playfield Canvas -->
+    <main class="relative flex-1 w-full flex items-center justify-center min-h-0 my-1">
+        <div class="relative nes-frame rounded-xl overflow-hidden flex items-center justify-center">
+            <canvas id="mario-canvas"></canvas>
+        </div>
+    </main>
+
+    <!-- Touch Controls Bar (Automatically shown on touch devices or toggled via layout) -->
+    <footer id="touch-footer" class="w-full max-w-2xl flex items-center justify-between gap-2 px-2 pb-1 z-20">
+        <!-- Left / Right / Crouch D-Pad -->
+        <div class="flex items-center gap-2">
+            <button id="t-left" aria-label="Move Left" class="touch-pad w-13 h-12 sm:w-14 sm:h-13 px-3.5 rounded-xl flex items-center justify-center text-sm text-white cursor-pointer">◀</button>
+            <button id="t-down" aria-label="Crouch" class="touch-pad w-13 h-12 sm:w-14 sm:h-13 px-3.5 rounded-xl flex items-center justify-center text-sm text-amber-300 cursor-pointer">▼</button>
+            <button id="t-right" aria-label="Move Right" class="touch-pad w-13 h-12 sm:w-14 sm:h-13 px-3.5 rounded-xl flex items-center justify-center text-sm text-white cursor-pointer">▶</button>
+        </div>
+
+        <!-- Run / Fireball & Jump Buttons -->
+        <div class="flex items-center gap-2.5">
+            <button id="t-run" aria-label="Run or Fireball" class="btn-run px-3.5 h-12 sm:h-13 rounded-xl flex items-center justify-center text-[9px] sm:text-[10px] text-slate-950 font-bold cursor-pointer">
+                RUN / B
+            </button>
+            <button id="t-jump" aria-label="Jump" class="btn-jump px-4 h-12 sm:h-13 rounded-xl flex items-center justify-center text-[10px] sm:text-xs text-white font-bold cursor-pointer">
+                JUMP
+            </button>
+        </div>
+    </footer>
+
+    <script>
+        /**
+         * SUPER MARIO BROS. 1985 — ARCADE EDITION
+         * Complete Single-File HTML5 Canvas + Procedural Pixel Art + Web Audio Chiptune Synthesizer
+         */
+
+        // =====================================================================
+        // 1. MULTI-VOICE WEB AUDIO CHIPTUNE SYNTHESIZER & SFX ENGINE
+        // =====================================================================
+        class MarioChiptuneAudio {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+                this.musicEnabled = true;
+                this.mode = 'none'; // 'none', 'overworld', 'star', 'jingle'
+                this.stepIdx = 0;
+                this.stepTimer = 0;
+                this.hurryUp = false;
+                this.jingleQueue = [];
+                this.jingleTimer = 0;
+                this.jingleDone = null;
+
+                // Frequency map (Hz)
+                this.F = {
+                    R: 0,
+                    C3: 130.81, D3: 146.83, Eb3: 155.56, E3: 164.81, F3: 174.61, Fs3: 185.00, G3: 196.00, Ab3: 207.65, A3: 220.00, Bb3: 233.08, B3: 246.94,
+                    C4: 261.63, D4: 293.66, Eb4: 311.13, E4: 329.63, F4: 349.23, Fs4: 369.99, G4: 392.00, Ab4: 415.30, A4: 440.00, Bb4: 466.16, B4: 493.88,
+                    C5: 523.25, D5: 587.33, Eb5: 622.25, E5: 659.25, F5: 698.46, Fs5: 739.99, G5: 783.99, Ab5: 830.61, A5: 880.00, Bb5: 932.33, B5: 987.77,
+                    C6: 1046.50, D6: 1174.66, E6: 1318.51, F6: 1396.91, G6: 1567.98
+                };
+
+                // Iconic Overworld Theme pattern: [leadNote, bassNote, steps]
+                this.overworldPattern = [
+                    ['E5', 'C4', 1], ['E5', 'R', 1], ['R', 'C4', 1], ['E5', 'R', 1],
+                    ['R', 'G3', 1], ['C5', 'R', 1], ['E5', 'G3', 2],
+                    ['G5', 'G3', 2], ['R', 'G2', 2], ['G4', 'G3', 2], ['R', 'G2', 2],
+
+                    ['C5', 'C4', 1.5], ['R', 'R', 0.5], ['G4', 'G3', 1.5], ['R', 'R', 0.5],
+                    ['E4', 'E3', 1.5], ['R', 'R', 0.5], ['A4', 'A3', 1], ['B4', 'B3', 1],
+                    ['Bb4', 'Bb3', 1], ['A4', 'A3', 1], ['G4', 'G3', 1.3], ['E5', 'C4', 1.3],
+                    ['G5', 'G3', 1.3], ['A5', 'A3', 1], ['F5', 'F3', 1], ['G5', 'G3', 1],
+                    ['R', 'R', 1], ['E5', 'E3', 1], ['C5', 'C3', 1], ['D5', 'D3', 1],
+                    ['B4', 'B2', 1.5], ['R', 'C3', 1.5]
+                ];
+
+                // Invincible Starman Theme Loop
+                this.starPattern = [
+                    ['C5', 'C3', 0.6], ['C5', 'C3', 0.6], ['C5', 'G3', 0.6], ['R', 'C3', 0.6],
+                    ['C5', 'C3', 0.6], ['D5', 'G3', 0.6], ['E5', 'C3', 0.6], ['R', 'G3', 0.6],
+                    ['A4', 'F3', 0.6], ['B4', 'F3', 0.6], ['C5', 'C4', 0.6], ['B4', 'G3', 0.6],
+                    ['A4', 'F3', 0.6], ['G4', 'C3', 1.2]
+                ];
+
+                // Power-Up / Mushroom / Starman Fanfare
+                this.powerupJingle = [
+                    ['G4', 'C3', 0.45], ['B4', 'D3', 0.45], ['D5', 'G3', 0.45], ['G5', 'B3', 0.45],
+                    ['B5', 'D4', 0.45], ['G5', 'G3', 0.45], ['Ab5', 'Ab3', 0.45], ['C6', 'C4', 0.45],
+                    ['Eb6', 'Eb4', 0.45], ['Ab5', 'Ab3', 0.45], ['Bb5', 'Bb3', 0.45], ['D6', 'D4', 0.45],
+                    ['F6', 'F4', 0.45], ['D6', 'D4', 0.45], ['B5', 'G3', 0.9]
+                ];
+
+                // Flagpole Slide & Victory Fanfare
+                this.flagpoleJingle = [
+                    ['G4', 'C3', 0.7], ['C5', 'E3', 0.7], ['E5', 'G3', 0.7], ['G5', 'C4', 0.7],
+                    ['C6', 'E4', 0.7], ['G5', 'G3', 0.7], ['Ab5', 'Ab3', 0.8], ['C6', 'C4', 0.8],
+                    ['Eb6', 'Eb4', 0.8], ['C6', 'C4', 1.6], ['G5', 'G3', 0.7], ['C6', 'C4', 2.4]
+                ];
+
+                // Player Death Jingle
+                this.deathJingle = [
+                    ['B4', 'B2', 0.6], ['F5', 'F3', 0.6], ['R', 'R', 0.5], ['F5', 'F3', 0.6],
+                    ['F5', 'F3', 0.6], ['E5', 'E3', 0.6], ['D5', 'D3', 0.6], ['C5', 'C3', 1.6]
+                ];
+
+                // Game Over Jingle
+                this.gameOverJingle = [
+                    ['C5', 'C3', 0.9], ['G4', 'G2', 0.9], ['E4', 'E2', 0.9],
+                    ['A4', 'F2', 0.8], ['B4', 'G2', 0.8], ['A4', 'F2', 0.8], ['Ab4', 'E2', 0.8],
+                    ['Bb4', 'G2', 0.8], ['Ab4', 'E2', 0.8], ['G4', 'C2', 2.2]
+                ];
+            }
+
+            init() {
+                if (this.ctx) {
+                    if (this.ctx.state === 'suspended') {
+                        this.ctx.resume().catch(() => {});
+                    }
+                    return;
+                }
+                try {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                } catch (e) {
+                    console.warn("Web Audio unavailable:", e);
+                }
+            }
+
+            toggleMute() {
+                this.muted = !this.muted;
+                return this.muted;
+            }
+
+            tone(freq, type, startTime, duration, volume = 0.1, slideTo = null) {
+                if (this.muted || !this.ctx || !freq || freq <= 0) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, startTime);
+                if (slideTo) {
+                    osc.frequency.exponentialRampToValueAtTime(slideTo, startTime + duration);
+                }
+                gain.gain.setValueAtTime(0.001, startTime);
+                gain.gain.linearRampToValueAtTime(volume, startTime + 0.01);
+                gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(startTime);
+                osc.stop(startTime + duration + 0.015);
+            }
+
+            noise(startTime, duration, freq = 600, volume = 0.14) {
+                if (this.muted || !this.ctx) return;
+                const len = Math.max(1, Math.floor(this.ctx.sampleRate * duration));
+                const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+                const data = buf.getChannelData(0);
+                for (let i = 0; i < len; i++) {
+                    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * duration * 0.45));
+                }
+                const src = this.ctx.createBufferSource();
+                src.buffer = buf;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(freq, startTime);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(volume, startTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+                src.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                src.start(startTime);
+            }
+
+            // Arcade Sound Effects
+            playJump(isSuper = false) {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.tone(isSuper ? 165 : 210, 'square', now, 0.15, 0.1, isSuper ? 460 : 620);
+            }
+
+            playCoin() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.tone(987.77, 'square', now, 0.065, 0.095);       // B5
+                this.tone(1318.51, 'square', now + 0.065, 0.24, 0.095); // E6
+            }
+
+            playStomp() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.tone(480, 'square', now, 0.08, 0.11, 140);
+            }
+
+            playKick() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.tone(260, 'square', now, 0.07, 0.11, 620);
+                this.noise(now, 0.06, 900, 0.1);
+            }
+
+            playBump() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.tone(150, 'triangle', now, 0.1, 0.13, 68);
+            }
+
+            playBreakBlock() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.noise(now, 0.18, 650, 0.18);
+                this.tone(180, 'sawtooth', now, 0.14, 0.1, 65);
+            }
+
+            playFireball() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.tone(720, 'square', now, 0.07, 0.09, 240);
+            }
+
+            playPowerDown() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.tone(440, 'sawtooth', now, 0.1, 0.12, 330);
+                this.tone(330, 'sawtooth', now + 0.1, 0.1, 0.12, 220);
+                this.tone(220, 'sawtooth', now + 0.2, 0.15, 0.12, 110);
+            }
+
+            startOverworld() {
+                this.mode = 'overworld';
+                this.stepIdx = 0;
+                this.stepTimer = 0;
+            }
+
+            startStarTheme() {
+                this.mode = 'star';
+                this.stepIdx = 0;
+                this.stepTimer = 0;
+            }
+
+            stopMusic() {
+                this.mode = 'none';
+            }
+
+            playJingle(notes, stepSec = 0.11, onDone = null) {
+                this.mode = 'jingle';
+                this.jingleQueue = notes.map(n => ({
+                    lead: this.F[n[0]] || 0,
+                    bass: this.F[n[1]] || 0,
+                    dur: n[2] * stepSec
+                }));
+                this.jingleTimer = 0;
+                this.jingleDone = onDone;
+            }
+
+            update(dt) {
+                if (!this.ctx || this.muted || !this.musicEnabled || this.mode === 'none') return;
+
+                if (this.mode === 'jingle') {
+                    this.jingleTimer -= dt;
+                    if (this.jingleTimer <= 0) {
+                        if (this.jingleQueue.length === 0) {
+                            this.mode = 'none';
+                            if (this.jingleDone) {
+                                const cb = this.jingleDone;
+                                this.jingleDone = null;
+                                cb();
+                            }
+                            return;
+                        }
+                        const item = this.jingleQueue.shift();
+                        const now = this.ctx.currentTime;
+                        if (item.lead > 0) this.tone(item.lead, 'square', now, item.dur * 0.86, 0.08);
+                        if (item.bass > 0) this.tone(item.bass, 'triangle', now, item.dur * 0.88, 0.085);
+                        this.jingleTimer = item.dur;
+                    }
+                    return;
+                }
+
+                if (this.mode === 'star') {
+                    this.stepTimer -= dt;
+                    if (this.stepTimer <= 0) {
+                        const item = this.starPattern[this.stepIdx % this.starPattern.length];
+                        this.stepIdx++;
+                        const dur = item[2] * 0.14;
+                        const now = this.ctx.currentTime;
+                        if (this.F[item[0]]) this.tone(this.F[item[0]], 'square', now, dur * 0.82, 0.075);
+                        if (this.F[item[1]]) this.tone(this.F[item[1]], 'triangle', now, dur * 0.85, 0.08);
+                        this.stepTimer = dur;
+                    }
+                    return;
+                }
+
+                if (this.mode === 'overworld') {
+                    this.stepTimer -= dt;
+                    if (this.stepTimer <= 0) {
+                        const item = this.overworldPattern[this.stepIdx % this.overworldPattern.length];
+                        this.stepIdx++;
+                        const unitSec = this.hurryUp ? 0.095 : 0.13;
+                        const dur = item[2] * unitSec;
+                        const now = this.ctx.currentTime;
+                        if (this.F[item[0]]) this.tone(this.F[item[0]], 'square', now, dur * 0.82, 0.068);
+                        if (this.F[item[1]]) this.tone(this.F[item[1]], 'triangle', now, dur * 0.86, 0.078);
+                        this.stepTimer = dur;
+                    }
+                }
+            }
+        }
+
+        const audio = new MarioChiptuneAudio();
+
+        // =====================================================================
+        // 2. PROCEDURAL PIXEL-ART SPRITE ATLAS (MARIO, ENEMIES, ITEMS, TILES)
+        // =====================================================================
+        const SPRITES = {};
+
+        function makeSprite(w, h, fn) {
+            const c = document.createElement('canvas');
+            c.width = w;
+            c.height = h;
+            const ctx = c.getContext('2d');
+            ctx.imageSmoothingEnabled = false;
+            fn(ctx, w, h);
+            return c;
+        }
+
+        function drawGrid(ctx, rows, pal) {
+            for (let y = 0; y < rows.length; y++) {
+                const row = rows[y];
+                for (let x = 0; x < row.length; x++) {
+                    const ch = row[x];
+                    if (ch !== '.' && pal[ch]) {
+                        ctx.fillStyle = pal[ch];
+                        ctx.fillRect(x, y, 1, 1);
+                    }
+                }
+            }
+        }
+
+        function flipX(src) {
+            return makeSprite(src.width, src.height, ctx => {
+                ctx.translate(src.width, 0);
+                ctx.scale(-1, 1);
+                ctx.drawImage(src, 0, 0);
+            });
+        }
+
+        function recolorMario(rows, hatShirtCol, overallsCol, skinCol, hairCol, goldCol) {
+            return {
+                R: hatShirtCol,
+                B: overallsCol,
+                S: skinCol,
+                H: hairCol,
+                Y: goldCol
+            };
+        }
+
+        function buildMarioVariants(tag, pal) {
+            // Small Mario (16x16)
+            const smIdle = [
+                '.....RRRRR......',
+                '....RRRRRRRRR...',
+                '....HHHSSHS.....',
+                '...HSHSSSHSSS...',
+                '...HSHHSSSHHHH..',
+                '...HHSSSSHHHH...',
+                '.....SSSSSSS....',
+                '....RRBBBRRR....',
+                '...RRRBBBRRRR...',
+                '..RRRRBBBBRRRR..',
+                '..SS.RBYBYR.SS..',
+                '..SS.BBBBBB.SS..',
+                '.....BBBBBB.....',
+                '....BBB..BBB....',
+                '...HHH....HHH...',
+                '..HHHH....HHHH..'
+            ];
+            const smWalk = [
+                '................',
+                '.....RRRRR......',
+                '....RRRRRRRRR...',
+                '....HHHSSHS.....',
+                '...HSHSSSHSSS...',
+                '...HSHHSSSHHHH..',
+                '.....SSSSSSS....',
+                '...RRRBBBRR.....',
+                '..RRRRBBBRRR....',
+                '..SS.BBBBBB.....',
+                '....BBBBBB.SS...',
+                '....BBBBBBB.....',
+                '.....BB..BBB....',
+                '....HHH...HHH...',
+                '...HHHH....HHHH.',
+                '................'
+            ];
+            const smJump = [
+                '.....RRRRR..SS..',
+                '....RRRRRRRRR.SS',
+                '....HHHSSHS...SS',
+                '...HSHSSSHSSS...',
+                '...HSHHSSSHHHH..',
+                '.....SSSSSSS.BBB',
+                '...RRRBBBRRRBBB.',
+                '..RRRRBBBBBBBB..',
+                '..SS.RBYBYR.....',
+                '.....BBBBBB.....',
+                '....BBB..BBB....',
+                '...HHH....HHH...',
+                '................',
+                '................',
+                '................',
+                '................'
+            ];
+            const smCrouch = [
+                '................',
+                '................',
+                '................',
+                '................',
+                '................',
+                '.....RRRRR......',
+                '....RRRRRRRRR...',
+                '....HHHSSHS.....',
+                '...HSHSSSHSSS...',
+                '...HSHHSSSHHHH..',
+                '...RRRRBBBBBRR..',
+                '..SS.RBYBYR.SS..',
+                '..SS.BBBBBB.SS..',
+                '....BBBBBBBB....',
+                '...HHH....HHH...',
+                '................'
+            ];
+
+            SPRITES[`${tag}_sm_idle_r`] = makeSprite(16, 16, ctx => drawGrid(ctx, smIdle, pal));
+            SPRITES[`${tag}_sm_idle_l`] = flipX(SPRITES[`${tag}_sm_idle_r`]);
+            SPRITES[`${tag}_sm_walk_r`] = makeSprite(16, 16, ctx => drawGrid(ctx, smWalk, pal));
+            SPRITES[`${tag}_sm_walk_l`] = flipX(SPRITES[`${tag}_sm_walk_r`]);
+            SPRITES[`${tag}_sm_jump_r`] = makeSprite(16, 16, ctx => drawGrid(ctx, smJump, pal));
+            SPRITES[`${tag}_sm_jump_l`] = flipX(SPRITES[`${tag}_sm_jump_r`]);
+            SPRITES[`${tag}_sm_crouch_r`] = makeSprite(16, 16, ctx => drawGrid(ctx, smCrouch, pal));
+            SPRITES[`${tag}_sm_crouch_l`] = flipX(SPRITES[`${tag}_sm_crouch_r`]);
+
+            // Super Mario (16x24)
+            const bigIdle = [
+                '.....RRRRR......',
+                '....RRRRRRRRR...',
+                '....HHHSSHS.....',
+                '...HSHSSSHSSS...',
+                '...HSHHSSSHHHH..',
+                '...HHSSSSHHHH...',
+                '.....SSSSSSS....',
+                '....RRRRRRRR....',
+                '...RRRBRRBRRR...',
+                '..RRRRBRRBRRRR..',
+                '..SSRRBBBBBRRSS.',
+                '..SSSRBYBYRSSSS.',
+                '..SS.BBBBBB.SS..',
+                '.....BBBBBB.....',
+                '....BBBBBBBB....',
+                '...BBBB..BBBB...',
+                '...BBB....BBB...',
+                '...SSS....SSS...',
+                '..HHHH....HHHH..',
+                '..HHHH....HHHH..',
+                '................',
+                '................',
+                '................',
+                '................'
+            ];
+            const bigWalk = [
+                '................',
+                '.....RRRRR......',
+                '....RRRRRRRRR...',
+                '....HHHSSHS.....',
+                '...HSHSSSHSSS...',
+                '...HSHHSSSHHHH..',
+                '.....SSSSSSS....',
+                '...RRRBRRBRR....',
+                '..RRRRBRRBRRR...',
+                '..SS.BBBBBB.....',
+                '....BBBBBBBB.SS.',
+                '....BBBBBBBB.SS.',
+                '.....BBBBBBB....',
+                '....BBB..BBBB...',
+                '...BBB....BBB...',
+                '...HHH.....HHH..',
+                '..HHHH......HHHH',
+                '................',
+                '................',
+                '................',
+                '................',
+                '................',
+                '................',
+                '................'
+            ];
+            const bigJump = [
+                '.....RRRRR..SS..',
+                '....RRRRRRRRR.SS',
+                '....HHHSSHS...SS',
+                '...HSHSSSHSSS...',
+                '...HSHHSSSHHHH..',
+                '.....SSSSSSS.BBB',
+                '...RRRBRRBRRRBBB',
+                '..RRRRBBBBBBBBB.',
+                '..SS.RBYBYR.....',
+                '.....BBBBBB.....',
+                '....BBBBBBBB....',
+                '...BBBB..BBBB...',
+                '..HHHH....HHHH..',
+                '................',
+                '................',
+                '................',
+                '................',
+                '................',
+                '................',
+                '................',
+                '................',
+                '................',
+                '................',
+                '................'
+            ];
+            const bigCrouch = [
+                '................',
+                '................',
+                '................',
+                '................',
+                '................',
+                '................',
+                '................',
+                '................',
+                '.....RRRRR......',
+                '....RRRRRRRRR...',
+                '....HHHSSHS.....',
+                '...HSHSSSHSSS...',
+                '...HSHHSSSHHHH..',
+                '...RRRRBBBBBRR..',
+                '..SS.RBYBYR.SS..',
+                '..SS.BBBBBB.SS..',
+                '....BBBBBBBB....',
+                '...HHH....HHH...',
+                '................',
+                '................',
+                '................',
+                '................',
+                '................',
+                '................'
+            ];
+
+            SPRITES[`${tag}_big_idle_r`] = makeSprite(16, 24, ctx => drawGrid(ctx, bigIdle, pal));
+            SPRITES[`${tag}_big_idle_l`] = flipX(SPRITES[`${tag}_big_idle_r`]);
+            SPRITES[`${tag}_big_walk_r`] = makeSprite(16, 24, ctx => drawGrid(ctx, bigWalk, pal));
+            SPRITES[`${tag}_big_walk_l`] = flipX(SPRITES[`${tag}_big_walk_r`]);
+            SPRITES[`${tag}_big_jump_r`] = makeSprite(16, 24, ctx => drawGrid(ctx, bigJump, pal));
+            SPRITES[`${tag}_big_jump_l`] = flipX(SPRITES[`${tag}_big_jump_r`]);
+            SPRITES[`${tag}_big_crouch_r`] = makeSprite(16, 24, ctx => drawGrid(ctx, bigCrouch, pal));
+            SPRITES[`${tag}_big_crouch_l`] = flipX(SPRITES[`${tag}_big_crouch_r`]);
+        }
+
+        function buildSprites() {
+            // Normal Mario
+            buildMarioVariants('m', recolorMario([], '#e52521', '#2563eb', '#fca574', '#78350f', '#facc15'));
+            // Fire Mario (White overalls & cap/shirt accent)
+            buildMarioVariants('f', recolorMario([], '#f8fafc', '#e52521', '#fca574', '#78350f', '#facc15'));
+            // Starman Sparkle Frames
+            buildMarioVariants('s0', recolorMario([], '#facc15', '#ef4444', '#fef08a', '#f97316', '#ffffff'));
+            buildMarioVariants('s1', recolorMario([], '#22c55e', '#38bdf8', '#bbf7d0', '#facc15', '#ffffff'));
+
+            // Goomba (16x16: waddle A, waddle B, squished)
+            const gPal = { B: '#a0522d', D: '#5c2c16', W: '#ffffff', K: '#0f172a', S: '#fca574' };
+            const goombaA = [
+                '......BBBB......',
+                '.....BBBBBB.....',
+                '....BBBBBBBB....',
+                '...BBBBBBBBBB...',
+                '..BBBBBBBBBBBB..',
+                '..BBKWBBBBWKBB..',
+                '..BBKKBBBBKKBB..',
+                '..BBBBBBBBBBBB..',
+                '...BBBBBBBBBB...',
+                '....BBSSSSBB....',
+                '.....SSSSSS.....',
+                '....KK....KK....',
+                '...KKK....KKK...',
+                '................',
+                '................',
+                '................'
+            ];
+            const goombaB = [
+                '................',
+                '......BBBB......',
+                '.....BBBBBB.....',
+                '....BBBBBBBB....',
+                '...BBBBBBBBBB...',
+                '..BBBBBBBBBBBB..',
+                '..BBKWBBBBWKBB..',
+                '..BBKKBBBBKKBB..',
+                '..BBBBBBBBBBBB..',
+                '...BBBBBBBBBB...',
+                '....BBSSSSBB....',
+                '.....SSSSSS.....',
+                '...KKK....KKK...',
+                '....KK....KK....',
+                '................',
+                '................'
+            ];
+            const goombaFlat = [
+                '................',
+                '................',
+                '................',
+                '................',
+                '................',
+                '................',
+                '................',
+                '................',
+                '................',
+                '................',
+                '................',
+                '..BBBBBBBBBBBB..',
+                '.BBBBKWBBWKBBBB.',
+                '.BBBBBBBBBBBBBB.',
+                '................',
+                '................'
+            ];
+            SPRITES.goomba_0 = makeSprite(16, 16, ctx => drawGrid(ctx, goombaA, gPal));
+            SPRITES.goomba_1 = makeSprite(16, 16, ctx => drawGrid(ctx, goombaB, gPal));
+            SPRITES.goomba_flat = makeSprite(16, 16, ctx => drawGrid(ctx, goombaFlat, gPal));
+
+            // Koopa Troopa (16x24 walking left/right + 16x16 shell)
+            function buildKoopa(shellMain, shellRim, name) {
+                const kPal = { G: shellMain, L: shellRim, Y: '#facc15', S: '#fed7aa', W: '#ffffff', K: '#0f172a' };
+                const walkRows = [
+                    '........SSSS....',
+                    '.......SSSWSS...',
+                    '.......SSSKSS...',
+                    '.......SSSSSS...',
+                    '......YYSSSS....',
+                    '.....YYGGGGYY...',
+                    '....YYGGGGGGYY..',
+                    '...YYGGLLLLGGYY.',
+                    '...YYGGLLLLGGYY.',
+                    '...YYGGGGGGGGYY.',
+                    '...YYGGGGGGGGYY.',
+                    '....YYYYYYYYYY..',
+                    '.....YYYYYYYY...',
+                    '......YY..YY....',
+                    '.....YY....YY...',
+                    '....SS......SS..',
+                    '................',
+                    '................',
+                    '................',
+                    '................',
+                    '................',
+                    '................',
+                    '................',
+                    '................'
+                ];
+                const shellRows = [
+                    '................',
+                    '................',
+                    '......GGGGGG....',
+                    '....GGGGGGGGGG..',
+                    '...GGLLLLLLLLGG.',
+                    '..GGLLLLLLLLLLGG',
+                    '..GGGGGGGGGGGGGG',
+                    '..GGLLLLLLLLLLGG',
+                    '..GGLLLLLLLLLLGG',
+                    '..GGGGGGGGGGGGGG',
+                    '...GGLLLLLLLLGG.',
+                    '....GGGGGGGGGG..',
+                    '......GGGGGG....',
+                    '................',
+                    '................',
+                    '................'
+                ];
+                SPRITES[`${name}_walk_l`] = makeSprite(16, 24, ctx => drawGrid(ctx, walkRows, kPal));
+                SPRITES[`${name}_walk_r`] = flipX(SPRITES[`${name}_walk_l`]);
+                SPRITES[`${name}_shell`] = makeSprite(16, 16, ctx => drawGrid(ctx, shellRows, kPal));
+            }
+            buildKoopa('#22c55e', '#bbf7d0', 'koopa_green');
+            buildKoopa('#ef4444', '#fecaca', 'koopa_red');
+
+            // Piranha Plant (16x24: open & closed mouth)
+            const pPal = { G: '#16a34a', L: '#4ade80', R: '#ef4444', W: '#ffffff' };
+            const piranhaOpen = [
+                '....RRRRRRRR....',
+                '...RRRRRRRRRR...',
+                '..RRWWWWWWWWWRR.',
+                '..RRWWRRRRWWWRR.',
+                '...RRRRRRRRRRR..',
+                '....RRRRRRRRR...',
+                '.....RRRRRRR....',
+                '......GGGGGG....',
+                '....LLGGGGLL....',
+                '...LLLGGGGLLL...',
+                '....LLGGGGLL....',
+                '......GGGGGG....',
+                '......GGGGGG....',
+                '.....LLGGGGLL...',
+                '......GGGGGG....',
+                '......GGGGGG....',
+                '......GGGGGG....',
+                '......GGGGGG....',
+                '......GGGGGG....',
+                '......GGGGGG....',
+                '......GGGGGG....',
+                '......GGGGGG....',
+                '......GGGGGG....',
+                '......GGGGGG....'
+            ];
+            const piranhaClosed = [
+                '................',
+                '................',
+                '................',
+                '................',
+                '................',
+                '................',
+                '................',
+                '....RRRRRRRR....',
+                '...RRRRRRRRRR...',
+                '...RRWWWWWWWRR..',
+                '....RRRRRRRRR...',
+                '.....GGGGGGG....',
+                '....LLGGGGLL....',
+                '...LLLGGGGLLL...',
+                '......GGGGGG....',
+                '......GGGGGG....',
+                '......GGGGGG....',
+                '......GGGGGG....',
+                '......GGGGGG....',
+                '......GGGGGG....',
+                '......GGGGGG....',
+                '......GGGGGG....',
+                '......GGGGGG....',
+                '......GGGGGG....'
+            ];
+            SPRITES.piranha_0 = makeSprite(16, 24, ctx => drawGrid(ctx, piranhaOpen, pPal));
+            SPRITES.piranha_1 = makeSprite(16, 24, ctx => drawGrid(ctx, piranhaClosed, pPal));
+
+            // Super Mushroom (16x16)
+            SPRITES.mushroom = makeSprite(16, 16, ctx => {
+                const pal = { R: '#ef4444', W: '#ffffff', S: '#fed7aa' };
+                const rows = [
+                    '.....RRRRRR.....',
+                    '...RRRRRRRRRR...',
+                    '..RRWWWRRRRWRR..',
+                    '.RRWWWWWRRRWWRR.',
+                    '.RRWWWWWRRRWWRR.',
+                    'RRRRRRRRRRRRRRRR',
+                    'RRRRWRRRRRRWWRRR',
+                    'RRRRWWRRRRWWWRRR',
+                    '.RRRRRRRRRRRRRR.',
+                    '....SSSSSSSS....',
+                    '....SSSSSSSS....',
+                    '....SSSSSSSS....',
+                    '....SSSSSSSS....',
+                    '.....SSSSSS.....',
+                    '................',
+                    '................'
+                ];
+                drawGrid(ctx, rows, pal);
+            });
+
+            // Starman (16x16)
+            SPRITES.star = makeSprite(16, 16, ctx => {
+                const pal = { Y: '#facc15', W: '#fef08a', K: '#0f172a' };
+                const rows = [
+                    '.......YY.......',
+                    '.......YY.......',
+                    '......YYYY......',
+                    '......YYYY......',
+                    '.YYYYYYYYYYYYYY.',
+                    '..YYYYYYYYYYYY..',
+                    '...YYKYWYWYKYY..',
+                    '....YYYYYYYYY...',
+                    '.....YYYYYYY....',
+                    '....YYYYYYYYY...',
+                    '...YYYY...YYYY..',
+                    '..YYY.......YYY.',
+                    '................',
+                    '................',
+                    '................',
+                    '................'
+                ];
+                drawGrid(ctx, rows, pal);
+            });
+
+            // Spinning Coin (10x14)
+            SPRITES.coin_0 = makeSprite(10, 14, ctx => {
+                const pal = { Y: '#facc15', W: '#fef9c3', O: '#ca8a04' };
+                const rows = [
+                    '...YYYY...',
+                    '..YYWWYY..',
+                    '.YYWOOYY..',
+                    '.YYWOOYY..',
+                    '.YYWOOYY..',
+                    '.YYWOOYY..',
+                    '.YYWOOYY..',
+                    '.YYWOOYY..',
+                    '.YYWOOYY..',
+                    '.YYWOOYY..',
+                    '..YYYYYY..',
+                    '...YYYY...',
+                    '..........',
+                    '..........'
+                ];
+                drawGrid(ctx, rows, pal);
+            });
+            SPRITES.coin_1 = makeSprite(10, 14, ctx => {
+                const pal = { Y: '#facc15', O: '#ca8a04' };
+                const rows = [
+                    '....YY....',
+                    '...YYYY...',
+                    '...YYOY...',
+                    '...YYOY...',
+                    '...YYOY...',
+                    '...YYOY...',
+                    '...YYOY...',
+                    '...YYOY...',
+                    '...YYOY...',
+                    '...YYYY...',
+                    '....YY....',
+                    '..........',
+                    '..........',
+                    '..........'
+                ];
+                drawGrid(ctx, rows, pal);
+            });
+            SPRITES.coin_2 = makeSprite(10, 14, ctx => {
+                ctx.fillStyle = '#facc15';
+                ctx.fillRect(4, 1, 2, 11);
+            });
+
+            // Brick Block (16x16)
+            SPRITES.brick = makeSprite(16, 16, ctx => {
+                ctx.fillStyle = '#c84c0c';
+                ctx.fillRect(0, 0, 16, 16);
+                ctx.fillStyle = '#fca044';
+                ctx.fillRect(0, 0, 15, 1);
+                ctx.fillRect(0, 8, 15, 1);
+                ctx.fillRect(7, 1, 1, 7);
+                ctx.fillRect(3, 9, 1, 7);
+                ctx.fillRect(11, 9, 1, 7);
+                ctx.fillStyle = '#5c1e04';
+                ctx.fillRect(0, 7, 16, 1);
+                ctx.fillRect(0, 15, 16, 1);
+            });
+
+            // Question '?' Block (16x16: active & empty used)
+            SPRITES.qblock = makeSprite(16, 16, ctx => {
+                const pal = { Y: '#facc15', O: '#d97706', B: '#5c1e04', W: '#ffffff' };
+                const rows = [
+                    'BBBBBBBBBBBBBBBB',
+                    'BYYYYYYYYYYYYYYO',
+                    'BYWWWWWWWWWWWWYO',
+                    'BYWBBBBBBBBBBWYO',
+                    'BYWB.YYYYYY.BWYO',
+                    'BYWB.YYYYYY.BWYO',
+                    'BYWB....YYY.BWYO',
+                    'BYWB...YYY..BWYO',
+                    'BYWB...YYY..BWYO',
+                    'BYWB........BWYO',
+                    'BYWB...YYY..BWYO',
+                    'BYWB...YYY..BWYO',
+                    'BYWBBBBBBBBBBWYO',
+                    'BYWWWWWWWWWWWWYO',
+                    'BOOOOOOOOOOOOOOO',
+                    'BBBBBBBBBBBBBBBB'
+                ];
+                drawGrid(ctx, rows, pal);
+            });
+
+            SPRITES.qblock_used = makeSprite(16, 16, ctx => {
+                ctx.fillStyle = '#78350f';
+                ctx.fillRect(0, 0, 16, 16);
+                ctx.fillStyle = '#a16207';
+                ctx.fillRect(1, 1, 14, 14);
+                ctx.fillStyle = '#451a03';
+                ctx.fillRect(2, 2, 2, 2);
+                ctx.fillRect(12, 2, 2, 2);
+                ctx.fillRect(2, 12, 2, 2);
+                ctx.fillRect(12, 12, 2, 2);
+            });
+
+            // Hard Stone Block (16x16)
+            SPRITES.hard = makeSprite(16, 16, ctx => {
+                ctx.fillStyle = '#b45309';
+                ctx.fillRect(0, 0, 16, 16);
+                ctx.fillStyle = '#f59e0b';
+                ctx.fillRect(1, 1, 13, 2);
+                ctx.fillRect(1, 1, 2, 13);
+                ctx.fillStyle = '#451a03';
+                ctx.fillRect(0, 14, 16, 2);
+                ctx.fillRect(14, 0, 2, 16);
+            });
+        }
+
+        buildSprites();
+
+        // =====================================================================
+        // 3. WORLD 1-1 LEVEL DESIGN, TILE SYSTEM & GAME STATE
+        // =====================================================================
+        // Logical NES Viewport: 256 x 240 (16x15 tiles at 16px per tile)
+        // Level Length: 212 tiles (3392 px) inspired by World 1-1
+        const TILE = 16;
+        const VIEW_W = 256;
+        const VIEW_H = 240;
+        const LEVEL_COLS = 212;
+        const GROUND_ROW = 13; // Rows 13 & 14 are ground
+
+        // Tile Types:
+        // '.' empty, 'G' ground, 'B' brick, '?' coin q-block, 'M' mushroom q-block,
+        // 'S' star q-block, 'H' hard block, 'P' pipe top-left, 'Q' pipe top-right,
+        // 'p' pipe body-left, 'q' pipe body-right
+        const state = {
+            phase: 'title', // 'title', 'playing', 'paused', 'flagpole', 'stage_clear', 'dead', 'gameover'
+            score: 0,
+            highScore: parseInt(localStorage.getItem('smb_1985_hi') || '0', 10),
+            coins: 0,
+            lives: 3,
+            timer: 400,
+            timerAccum: 0,
+            cameraX: 0,
+            worldTime: 0,
+
+            grid: [],         // 2D array [row][col]
+            blockBumps: [],   // { col, row, offsetY, vy }
+            coinsEntity: [],  // { x, y, animPhase, collected }
+            popCoins: [],     // { x, y, vy, life }
+            items: [],        // { x, y, vx, vy, type: 'mushroom'|'star', emerging: bool, emergeY }
+            enemies: [],      // { x, y, vx, vy, type: 'goomba'|'koopa_green'|'koopa_red', state: 'walk'|'shell'|'slide'|'squished'|'flipped', animTimer, timer }
+            piranhas: [],     // { x, baseY, y, offsetY, dir, waitTimer, mouthOpen }
+            fireballs: [],    // { x, y, vx, vy, life }
+            particles: [],    // { x, y, vx, vy, color, life }
+            scorePopups: [],  // { x, y, text, life }
+
+            flagpole: {
+                x: 196 * TILE,
+                topY: 3 * TILE,
+                bottomY: GROUND_ROW * TILE,
+                flagY: 3.5 * TILE,
+                sliding: false,
+                slideDone: false,
+                walkToCastle: false
+            },
+            castleCol: 201,
+
+            player: {
+                x: 3 * TILE,
+                y: GROUND_ROW * TILE - 16,
+                vx: 0,
+                vy: 0,
+                w: 12,
+                h: 16,
+                facing: 1,
+                onGround: false,
+                crouching: false,
+                power: 'small', // 'small', 'super', 'fire'
+                starTimer: 0,
+                invulnTimer: 0,
+                walkTimer: 0,
+                fireCooldown: 0,
+                deadTimer: 0
+            },
+
+            keys: {},
+            touch: { left: false, right: false, down: false, jump: false, run: false }
+        };
+
+        function createWorld1_1() {
+            state.grid = Array.from({ length: 15 }, () => Array(LEVEL_COLS).fill('.'));
+            state.blockBumps = [];
+            state.coinsEntity = [];
+            state.popCoins = [];
+            state.items = [];
+            state.enemies = [];
+            state.piranhas = [];
+            state.fireballs = [];
+            state.particles = [];
+            state.scorePopups = [];
+
+            // Bottom Ground (Rows 13..14) with 3 World 1-1 pits
+            const pits = [
+                [69, 70],
+                [86, 87, 88],
+                [153, 154]
+            ];
+            const pitSet = new Set(pits.flat());
+
+            for (let c = 0; c < LEVEL_COLS; c++) {
+                if (!pitSet.has(c)) {
+                    state.grid[13][c] = 'G';
+                    state.grid[14][c] = 'G';
+                }
+            }
+
+            // Starting '?' block & bricks around col 16..24
+            state.grid[9][16] = '?';
+            state.grid[9][20] = 'B';
+            state.grid[9][21] = 'M'; // Super Mushroom '?' block
+            state.grid[9][22] = 'B';
+            state.grid[9][23] = '?';
+            state.grid[9][24] = 'B';
+            state.grid[5][22] = '?';
+
+            // Helper to place a warp pipe of given height (in tiles)
+            function placePipe(col, heightTiles, hasPiranha = false) {
+                const topRow = GROUND_ROW - heightTiles;
+                state.grid[topRow][col] = 'P';
+                state.grid[topRow][col + 1] = 'Q';
+                for (let r = topRow + 1; r < GROUND_ROW; r++) {
+                    state.grid[r][col] = 'p';
+                    state.grid[r][col + 1] = 'q';
+                }
+                if (hasPiranha) {
+                    state.piranhas.push({
+                        x: col * TILE + 8,
+                        baseY: topRow * TILE,
+                        offsetY: 22,
+                        dir: -1,
+                        waitTimer: 1.2,
+                        mouthOpen: true
+                    });
+                }
+            }
+
+            // Classic World 1-1 Warp Pipes (with Piranha Plants on later pipes!)
+            placePipe(28, 2, false);
+            placePipe(38, 3, true);
+            placePipe(46, 4, true);
+            placePipe(57, 4, true);
+            placePipe(163, 2, false);
+            placePipe(179, 2, true);
+
+            // Elevated Brick & '?' Platforms
+            for (let c = 77; c <= 79; c++) state.grid[9][c] = 'B';
+            state.grid[9][78] = 'M';
+            for (let c = 80; c <= 84; c++) state.grid[5][c] = 'B';
+            state.grid[5][82] = 'S'; // Starman block
+
+            for (let c = 91; c <= 93; c++) state.grid[5][c] = 'B';
+            state.grid[5][94] = '?';
+
+            state.grid[9][100] = 'B';
+            state.grid[9][101] = '?';
+            for (let c = 106; c <= 108; c++) state.grid[9][c] = '?';
+            state.grid[5][109] = 'B';
+
+            for (let c = 118; c <= 120; c++) state.grid[9][c] = 'B';
+            for (let c = 128; c <= 131; c++) state.grid[9][c] = 'B';
+            state.grid[9][129] = '?';
+            state.grid[9][130] = '?';
+            for (let c = 129; c <= 130; c++) state.grid[5][c] = 'B';
+
+            state.grid[9][168] = 'B';
+            state.grid[9][169] = 'B';
+            state.grid[9][170] = '?';
+            state.grid[9][171] = 'B';
+
+            // Staircase Pyramids (Hard Blocks) before 2nd pit and before Flagpole
+            function buildStair(startCol, steps, dir) {
+                for (let s = 0; s < steps; s++) {
+                    const col = dir > 0 ? startCol + s : startCol + (steps - 1 - s);
+                    const h = dir > 0 ? s + 1 : steps - s;
+                    for (let r = GROUND_ROW - h; r < GROUND_ROW; r++) {
+                        state.grid[r][col] = 'H';
+                    }
+                }
+            }
+            buildStair(134, 4, 1);
+            buildStair(140, 4, -1);
+            buildStair(148, 4, 1);
+            buildStair(155, 4, -1);
+            buildStair(181, 8, 1);
+
+            // Floating Coin Arcs
+            const coinSpots = [
+                [18, 7], [19, 6], [20, 6], [21, 7],
+                [51, 9], [52, 8], [53, 8], [54, 9],
+                [81, 3], [82, 3], [83, 3],
+                [129, 3], [130, 3],
+                [169, 7], [170, 7]
+            ];
+            coinSpots.forEach(([cc, rr], idx) => {
+                state.coinsEntity.push({
+                    x: cc * TILE + 3,
+                    y: rr * TILE + 1,
+                    animPhase: idx * 0.4,
+                    collected: false
+                });
+            });
+
+            // Enemies (Goombas + Green & Red Koopas)
+            function addEnemy(col, row, type, vx) {
+                state.enemies.push({
+                    x: col * TILE + 2,
+                    y: row * TILE - 16,
+                    vx,
+                    vy: 0,
+                    w: 14,
+                    h: type === 'goomba' ? 16 : 22,
+                    type,
+                    state: 'walk',
+                    animTimer: 0,
+                    timer: 0
+                });
+            }
+
+            addEnemy(22, GROUND_ROW, 'goomba', -28);
+            addEnemy(40, GROUND_ROW, 'goomba', -30);
+            addEnemy(51, GROUND_ROW, 'goomba', -32);
+            addEnemy(53, GROUND_ROW, 'goomba', -32);
+            addEnemy(82, 5, 'goomba', -24);
+            addEnemy(97, GROUND_ROW, 'koopa_green', -30);
+            addEnemy(114, GROUND_ROW, 'goomba', -34);
+            addEnemy(116, GROUND_ROW, 'goomba', -34);
+            addEnemy(124, GROUND_ROW, 'koopa_red', -32);
+            addEnemy(174, GROUND_ROW, 'goomba', -34);
+            addEnemy(176, GROUND_ROW, 'goomba', -34);
+
+            // Flagpole & Castle Reset
+            state.flagpole.flagY = state.flagpole.topY + 6;
+            state.flagpole.sliding = false;
+            state.flagpole.slideDone = false;
+            state.flagpole.walkToCastle = false;
+
+            // Player Spawn
+            const p = state.player;
+            p.x = 3 * TILE;
+            p.y = GROUND_ROW * TILE - p.h;
+            p.vx = 0;
+            p.vy = 0;
+            p.facing = 1;
+            p.onGround = false;
+            p.crouching = false;
+            p.starTimer = 0;
+            p.invulnTimer = 0;
+            p.fireCooldown = 0;
+            state.cameraX = 0;
+            state.timer = 400;
+            state.timerAccum = 0;
+            audio.hurryUp = false;
+        }
+
+        function setPlayerPower(newPower) {
+            const p = state.player;
+            const oldH = p.h;
+            p.power = newPower;
+            p.h = newPower === 'small' ? 16 : 24;
+            p.y = p.y + (oldH - p.h);
+        }
+
+        // =====================================================================
+        // 4. TILE COLLISION, BLOCK HITS, ITEMS & ENEMY COMBAT
+        // =====================================================================
+        function isSolidTile(col, row) {
+            if (row < 0) return false;
+            if (row >= 15) return false;
+            if (col < 0 || col >= LEVEL_COLS) return true;
+            const ch = state.grid[row][col];
+            return ch === 'G' || ch === 'B' || ch === '?' || ch === 'M' || ch === 'S' ||
+                   ch === 'H' || ch === 'P' || ch === 'Q' || ch === 'p' || ch === 'q';
+        }
+
+        function addScore(pts, x = null, y = null, label = null) {
+            state.score += pts;
+            if (state.score > state.highScore) {
+                state.highScore = state.score;
+                localStorage.setItem('smb_1985_hi', String(state.highScore));
+            }
+            if (x !== null && y !== null) {
+                state.scorePopups.push({
+                    x,
+                    y,
+                    text: label || `${pts}`,
+                    life: 0.75
+                });
+            }
+        }
+
+        function collectCoin(x, y) {
+            state.coins++;
+            addScore(200, x, y - 10, '200');
+            if (state.coins >= 100) {
+                state.coins -= 100;
+                state.lives = Math.min(9, state.lives + 1);
+                audio.playJingle(audio.powerupJingle, 0.065, () => {
+                    if (state.phase === 'playing') audio.startOverworld();
+                });
+            } else {
+                audio.playCoin();
+            }
+        }
+
+        function hitBlockFromBelow(col, row) {
+            if (row < 0 || row >= 15 || col < 0 || col >= LEVEL_COLS) return;
+            const ch = state.grid[row][col];
+            if (ch !== 'B' && ch !== '?' && ch !== 'M' && ch !== 'S') return;
+
+            state.blockBumps.push({ col, row, offsetY: -4, vy: 28 });
+
+            // Check if any enemy is standing directly on top of this bumped block!
+            const bx = col * TILE + 8;
+            const by = row * TILE;
+            state.enemies.forEach(en => {
+                if (en.state !== 'squished' && en.state !== 'flipped') {
+                    if (Math.abs((en.x + en.w * 0.5) - bx) < 14 && Math.abs((en.y + en.h) - by) < 8) {
+                        en.state = 'flipped';
+                        en.vy = -150;
+                        en.vx = 35;
+                        audio.playKick();
+                        addScore(100, en.x, en.y - 8, '100');
+                    }
+                }
+            });
+
+            if (ch === '?') {
+                state.grid[row][col] = 'q_used';
+                state.popCoins.push({ x: col * TILE + 3, y: row * TILE - 14, vy: -195, life: 0.55 });
+                collectCoin(col * TILE + 8, row * TILE - 16);
+            } else if (ch === 'M') {
+                state.grid[row][col] = 'q_used';
+                const nextType = state.player.power === 'small' ? 'mushroom' : 'star';
+                state.items.push({
+                    x: col * TILE,
+                    y: row * TILE,
+                    vx: 46,
+                    vy: 0,
+                    type: nextType,
+                    emerging: true,
+                    targetY: (row - 1) * TILE
+                });
+                audio.playJingle(audio.powerupJingle, 0.065, () => {
+                    if (state.phase === 'playing') {
+                        if (state.player.starTimer > 0) audio.startStarTheme();
+                        else audio.startOverworld();
+                    }
+                });
+            } else if (ch === 'S') {
+                state.grid[row][col] = 'q_used';
+                state.items.push({
+                    x: col * TILE,
+                    y: row * TILE,
+                    vx: 52,
+                    vy: -90,
+                    type: 'star',
+                    emerging: true,
+                    targetY: (row - 1) * TILE
+                });
+                audio.playJingle(audio.powerupJingle, 0.065, () => {
+                    if (state.phase === 'playing') {
+                        if (state.player.starTimer > 0) audio.startStarTheme();
+                        else audio.startOverworld();
+                    }
+                });
+            } else if (ch === 'B') {
+                if (state.player.power !== 'small') {
+                    // Super / Fire Mario shatters Brick Blocks!
+                    state.grid[row][col] = '.';
+                    audio.playBreakBlock();
+                    addScore(50);
+                    const cols = ['#c84c0c', '#fca044'];
+                    for (let k = 0; k < 6; k++) {
+                        state.particles.push({
+                            x: col * TILE + 8,
+                            y: row * TILE + 8,
+                            vx: (Math.random() - 0.5) * 140,
+                            vy: -130 - Math.random() * 90,
+                            color: cols[k % 2],
+                            life: 0.65
+                        });
+                    }
+                } else {
+                    audio.playBump();
+                }
+            }
+        }
+
+        function hurtOrKillPlayer() {
+            const p = state.player;
+            if (p.invulnTimer > 0 || p.starTimer > 0 || state.phase !== 'playing') return;
+
+            if (p.power !== 'small') {
+                setPlayerPower('small');
+                p.invulnTimer = 1.6;
+                audio.playPowerDown();
+                return;
+            }
+
+            state.phase = 'dying';
+            p.vy = -230;
+            p.vx = 0;
+            p.deadTimer = 2.1;
+            audio.stopMusic();
+            audio.playJingle(audio.deathJingle, 0.12);
+        }
+
+        function spawnFireball() {
+            const p = state.player;
+            if (p.power !== 'fire' || p.fireCooldown > 0) return;
+            if (state.fireballs.length >= 2) return;
+
+            p.fireCooldown = 0.25;
+            audio.playFireball();
+            state.fireballs.push({
+                x: p.x + (p.facing > 0 ? 12 : -4),
+                y: p.y + 8,
+                vx: p.facing * 210,
+                vy: 45,
+                life: 1.8
+            });
+        }
+
+        function startNewGame() {
+            audio.init();
+            state.score = 0;
+            state.coins = 0;
+            state.lives = 3;
+            setPlayerPower('small');
+            createWorld1_1();
+            state.phase = 'playing';
+            audio.startOverworld();
+        }
+
+        // =====================================================================
+        // 5. MAIN SIMULATION STEP
+        // =====================================================================
+        function updateSimulation(dt) {
+            state.worldTime += dt;
+            audio.update(dt);
+
+            if (state.phase === 'paused' || state.phase === 'title' || state.phase === 'gameover') return;
+
+            // Update Popups, Pop Coins & Particles
+            for (let i = state.popCoins.length - 1; i >= 0; i--) {
+                const pc = state.popCoins[i];
+                pc.life -= dt;
+                pc.vy += 680 * dt;
+                pc.y += pc.vy * dt;
+                if (pc.life <= 0) state.popCoins.splice(i, 1);
+            }
+            for (let i = state.scorePopups.length - 1; i >= 0; i--) {
+                const sp = state.scorePopups[i];
+                sp.life -= dt;
+                sp.y -= 28 * dt;
+                if (sp.life <= 0) state.scorePopups.splice(i, 1);
+            }
+            for (let i = state.particles.length - 1; i >= 0; i--) {
+                const pt = state.particles[i];
+                pt.life -= dt;
+                pt.vy += 520 * dt;
+                pt.x += pt.vx * dt;
+                pt.y += pt.vy * dt;
+                if (pt.life <= 0) state.particles.splice(i, 1);
+            }
+            for (let i = state.blockBumps.length - 1; i >= 0; i--) {
+                const bb = state.blockBumps[i];
+                bb.vy += 220 * dt;
+                bb.offsetY += bb.vy * dt;
+                if (bb.offsetY >= 0) {
+                    bb.offsetY = 0;
+                    state.blockBumps.splice(i, 1);
+                }
+            }
+
+            // Dying sequence (Mario arcs up and drops off screen)
+            if (state.phase === 'dying') {
+                const p = state.player;
+                p.vy += 560 * dt;
+                p.y += p.vy * dt;
+                p.deadTimer -= dt;
+                if (p.deadTimer <= 0) {
+                    state.lives--;
+                    if (state.lives <= 0) {
+                        state.phase = 'gameover';
+                        audio.playJingle(audio.gameOverJingle, 0.14);
+                    } else {
+                        setPlayerPower('small');
+                        createWorld1_1();
+                        state.phase = 'playing';
+                        audio.startOverworld();
+                    }
+                }
+                return;
+            }
+
+            // Flagpole slide & walk to castle sequence
+            if (state.phase === 'flagpole') {
+                const p = state.player;
+                const fp = state.flagpole;
+
+                if (!fp.slideDone) {
+                    fp.flagY = Math.min(fp.bottomY - 12, fp.flagY + 95 * dt);
+                    p.y = Math.min(fp.bottomY - p.h, p.y + 95 * dt);
+                    if (p.y >= fp.bottomY - p.h && fp.flagY >= fp.bottomY - 12) {
+                        fp.slideDone = true;
+                        fp.walkToCastle = true;
+                        p.facing = 1;
+                    }
+                } else if (fp.walkToCastle) {
+                    p.x += 78 * dt;
+                    p.walkTimer += dt * 10;
+                    const castleDoorX = state.castleCol * TILE + 20;
+                    if (p.x >= castleDoorX) {
+                        p.x = castleDoorX;
+                        fp.walkToCastle = false;
+                        state.phase = 'stage_clear';
+                        const timeBonus = state.timer * 50;
+                        addScore(timeBonus);
+                        state.timer = 0;
+                    }
+                }
+                return;
+            }
+
+            if (state.phase === 'stage_clear') return;
+
+            // --- Countdown Clock ---
+            state.timerAccum += dt;
+            if (state.timerAccum >= 0.4) {
+                state.timerAccum -= 0.4;
+                state.timer = Math.max(0, state.timer - 1);
+                if (state.timer <= 100 && !audio.hurryUp) {
+                    audio.hurryUp = true;
+                }
+                if (state.timer === 0) {
+                    hurtOrKillPlayer();
+                    return;
+                }
+            }
+
+            // --- Player Controls & Physics ---
+            const p = state.player;
+            if (p.invulnTimer > 0) p.invulnTimer = Math.max(0, p.invulnTimer - dt);
+            if (p.fireCooldown > 0) p.fireCooldown = Math.max(0, p.fireCooldown - dt);
+            if (p.starTimer > 0) {
+                p.starTimer = Math.max(0, p.starTimer - dt);
+                if (p.starTimer === 0 && audio.mode === 'star') {
+                    audio.startOverworld();
+                }
+            }
+
+            const left = state.keys['ArrowLeft'] || state.keys['KeyA'] || state.touch.left;
+            const right = state.keys['ArrowRight'] || state.keys['KeyD'] || state.touch.right;
+            const down = state.keys['ArrowDown'] || state.keys['KeyS'] || state.touch.down;
+            const jump = state.keys['Space'] || state.keys['KeyZ'] || state.keys['ArrowUp'] || state.keys['KeyW'] || state.touch.jump;
+            const run = state.keys['ShiftLeft'] || state.keys['ShiftRight'] || state.keys['KeyX'] || state.touch.run;
+
+            if (run && p.power === 'fire') {
+                spawnFireball();
+            }
+
+            p.crouching = p.onGround && down && !left && !right;
+
+            const maxRunSpeed = run ? 158 : 104;
+            const accel = p.onGround ? 420 : 280;
+            const decel = p.onGround ? 460 : 140;
+
+            if (!p.crouching) {
+                if (right && !left) {
+                    p.facing = 1;
+                    p.vx = Math.min(maxRunSpeed, p.vx + accel * dt);
+                } else if (left && !right) {
+                    p.facing = -1;
+                    p.vx = Math.max(-maxRunSpeed, p.vx - accel * dt);
+                } else {
+                    if (Math.abs(p.vx) <= decel * dt) p.vx = 0;
+                    else p.vx -= Math.sign(p.vx) * decel * dt;
+                }
+            } else {
+                if (Math.abs(p.vx) <= decel * dt) p.vx = 0;
+                else p.vx -= Math.sign(p.vx) * decel * dt;
+            }
+
+            if (jump && p.onGround) {
+                p.vy = -295;
+                p.onGround = false;
+                audio.playJump(p.power !== 'small');
+            }
+
+            // Gravity (slightly lighter while holding jump button near apex)
+            const grav = (p.vy < 0 && jump) ? 560 : 780;
+            p.vy = Math.min(340, p.vy + grav * dt);
+
+            // Horizontal Move & Tile Collision
+            p.x += p.vx * dt;
+            if (p.x < state.cameraX) p.x = state.cameraX;
+            if (p.x > LEVEL_COLS * TILE - p.w) p.x = LEVEL_COLS * TILE - p.w;
+
+            const leftCol = Math.floor(p.x / TILE);
+            const rightCol = Math.floor((p.x + p.w - 1) / TILE);
+            const topRow = Math.floor(p.y / TILE);
+            const botRow = Math.floor((p.y + p.h - 1) / TILE);
+
+            if (p.vx > 0) {
+                for (let r = topRow; r <= botRow; r++) {
+                    if (isSolidTile(rightCol, r)) {
+                        p.x = rightCol * TILE - p.w;
+                        p.vx = 0;
+                        break;
+                    }
+                }
+            } else if (p.vx < 0) {
+                for (let r = topRow; r <= botRow; r++) {
+                    if (isSolidTile(leftCol, r)) {
+                        p.x = (leftCol + 1) * TILE;
+                        p.vx = 0;
+                        break;
+                    }
+                }
+            }
+
+            // Vertical Move & Tile Collision
+            p.y += p.vy * dt;
+            p.onGround = false;
+
+            const nLeftCol = Math.floor((p.x + 1) / TILE);
+            const nRightCol = Math.floor((p.x + p.w - 2) / TILE);
+            const nTopRow = Math.floor(p.y / TILE);
+            const nBotRow = Math.floor((p.y + p.h) / TILE);
+
+            if (p.vy >= 0) {
+                for (let c = nLeftCol; c <= nRightCol; c++) {
+                    if (isSolidTile(c, nBotRow)) {
+                        p.y = nBotRow * TILE - p.h;
+                        p.vy = 0;
+                        p.onGround = true;
+                        break;
+                    }
+                }
+            } else if (p.vy < 0) {
+                for (let c = nLeftCol; c <= nRightCol; c++) {
+                    if (isSolidTile(c, nTopRow)) {
+                        p.y = (nTopRow + 1) * TILE;
+                        p.vy = 0;
+                        hitBlockFromBelow(c, nTopRow);
+                        break;
+                    }
+                }
+            }
+
+            if (p.onGround && Math.abs(p.vx) > 8) {
+                p.walkTimer += dt * (Math.abs(p.vx) * 0.14);
+            } else {
+                p.walkTimer = 0;
+            }
+
+            // Pit fall death
+            if (p.y > VIEW_H + 10) {
+                hurtOrKillPlayer();
+                return;
+            }
+
+            // Camera scrolls forward with Mario
+            const targetCamX = Math.max(state.cameraX, Math.min(LEVEL_COLS * TILE - VIEW_W, p.x - VIEW_W * 0.36));
+            state.cameraX = targetCamX;
+
+            // --- Collect World Coins ---
+            for (let i = state.coinsEntity.length - 1; i >= 0; i--) {
+                const ce = state.coinsEntity[i];
+                ce.animPhase += dt * 7;
+                if (!ce.collected && p.x + p.w > ce.x && p.x < ce.x + 10 && p.y + p.h > ce.y && p.y < ce.y + 14) {
+                    ce.collected = true;
+                    collectCoin(ce.x + 5, ce.y);
+                }
+            }
+
+            // --- Update Power-Up Items (Mushroom & Starman) ---
+            for (let i = state.items.length - 1; i >= 0; i--) {
+                const it = state.items[i];
+                if (it.emerging) {
+                    it.y -= 26 * dt;
+                    if (it.y <= it.targetY) {
+                        it.y = it.targetY;
+                        it.emerging = false;
+                        it.vy = it.type === 'star' ? -150 : 0;
+                    }
+                } else {
+                    it.vy = Math.min(280, it.vy + 620 * dt);
+                    it.x += it.vx * dt;
+                    it.y += it.vy * dt;
+
+                    const ic = Math.floor((it.x + 8) / TILE);
+                    const irBot = Math.floor((it.y + 16) / TILE);
+                    if (it.vy >= 0 && isSolidTile(ic, irBot)) {
+                        it.y = irBot * TILE - 16;
+                        it.vy = it.type === 'star' ? -185 : 0;
+                    }
+                    const wallC = it.vx > 0 ? Math.floor((it.x + 15) / TILE) : Math.floor(it.x / TILE);
+                    const midR = Math.floor((it.y + 8) / TILE);
+                    if (isSolidTile(wallC, midR)) {
+                        it.vx = -it.vx;
+                    }
+                }
+
+                // Pickup by Mario
+                if (!it.emerging && p.x + p.w > it.x + 1 && p.x < it.x + 15 && p.y + p.h > it.y + 1 && p.y < it.y + 15) {
+                    if (it.type === 'mushroom') {
+                        if (p.power === 'small') setPlayerPower('super');
+                        addScore(1000, it.x, it.y - 8, '1000');
+                    } else if (it.type === 'star') {
+                        p.starTimer = 10.0;
+                        addScore(1000, it.x, it.y - 8, '1000');
+                        audio.startStarTheme();
+                    }
+                    state.items.splice(i, 1);
+                    continue;
+                }
+
+                if (it.y > VIEW_H + 20) state.items.splice(i, 1);
+            }
+
+            // --- Update Fireballs ---
+            for (let i = state.fireballs.length - 1; i >= 0; i--) {
+                const fb = state.fireballs[i];
+                fb.life -= dt;
+                fb.vy += 640 * dt;
+                fb.x += fb.vx * dt;
+                fb.y += fb.vy * dt;
+
+                const fc = Math.floor((fb.x + 4) / TILE);
+                const frBot = Math.floor((fb.y + 8) / TILE);
+                if (fb.vy > 0 && isSolidTile(fc, frBot)) {
+                    fb.y = frBot * TILE - 8;
+                    fb.vy = -165;
+                }
+
+                let hitWall = isSolidTile(fc, Math.floor((fb.y + 4) / TILE));
+                if (!hitWall) {
+                    for (let e = 0; e < state.enemies.length; e++) {
+                        const en = state.enemies[e];
+                        if (en.state !== 'squished' && en.state !== 'flipped') {
+                            if (fb.x + 8 > en.x && fb.x < en.x + en.w && fb.y + 8 > en.y && fb.y < en.y + en.h) {
+                                en.state = 'flipped';
+                                en.vy = -140;
+                                en.vx = fb.vx > 0 ? 45 : -45;
+                                hitWall = true;
+                                audio.playKick();
+                                addScore(200, en.x, en.y - 8, '200');
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (hitWall || fb.life <= 0 || fb.y > VIEW_H + 10) {
+                    state.particles.push({
+                        x: fb.x + 4,
+                        y: fb.y + 4,
+                        vx: 0,
+                        vy: -20,
+                        color: '#f97316',
+                        life: 0.25
+                    });
+                    state.fireballs.splice(i, 1);
+                }
+            }
+
+            // --- Update Piranha Plants ---
+            state.piranhas.forEach(pl => {
+                // Keep hidden while Mario is standing directly on top of the pipe
+                const marioOverPipe = Math.abs((p.x + p.w * 0.5) - pl.x) < 22 && p.y + p.h <= pl.baseY + 4;
+                if (pl.waitTimer > 0) {
+                    pl.waitTimer -= dt;
+                    return;
+                }
+                if (pl.dir < 0 && marioOverPipe && pl.offsetY > 18) {
+                    return;
+                }
+                pl.offsetY += pl.dir * 22 * dt;
+                if (pl.dir < 0 && pl.offsetY <= 0) {
+                    pl.offsetY = 0;
+                    pl.dir = 1;
+                    pl.waitTimer = 1.4;
+                } else if (pl.dir > 0 && pl.offsetY >= 22) {
+                    pl.offsetY = 22;
+                    pl.dir = -1;
+                    pl.waitTimer = 1.5;
+                }
+                pl.y = pl.baseY + pl.offsetY;
+
+                // Collision with Mario (unless Mario has Starman)
+                if (pl.offsetY < 18) {
+                    if (p.x + p.w > pl.x - 5 && p.x < pl.x + 5 && p.y + p.h > pl.y + 2 && p.y < pl.baseY + 2) {
+                        if (p.starTimer > 0) {
+                            pl.offsetY = 24;
+                            pl.waitTimer = 4.0;
+                            audio.playKick();
+                            addScore(200, pl.x, pl.y - 8, '200');
+                        } else {
+                            hurtOrKillPlayer();
+                            return;
+                        }
+                    }
+                }
+            });
+
+            // --- Update Goombas & Koopas ---
+            for (let i = state.enemies.length - 1; i >= 0; i--) {
+                const en = state.enemies[i];
+                if (en.x < state.cameraX - 80 || en.x > state.cameraX + VIEW_W + 120) continue;
+
+                en.animTimer += dt * 8;
+
+                if (en.state === 'squished') {
+                    en.timer -= dt;
+                    if (en.timer <= 0) state.enemies.splice(i, 1);
+                    continue;
+                }
+
+                if (en.state === 'flipped') {
+                    en.vy += 600 * dt;
+                    en.x += en.vx * dt;
+                    en.y += en.vy * dt;
+                    if (en.y > VIEW_H + 20) state.enemies.splice(i, 1);
+                    continue;
+                }
+
+                const spd = en.state === 'slide' ? 195 : Math.abs(en.vx);
+                const dir = en.vx >= 0 ? 1 : -1;
+                en.vx = dir * spd;
+
+                en.vy = Math.min(320, en.vy + 680 * dt);
+                en.x += en.vx * dt;
+                en.y += en.vy * dt;
+
+                const ecFront = en.vx > 0 ? Math.floor((en.x + en.w) / TILE) : Math.floor(en.x / TILE);
+                const ecMid = Math.floor((en.x + en.w * 0.5) / TILE);
+                const erBot = Math.floor((en.y + en.h) / TILE);
+                const erMid = Math.floor((en.y + en.h * 0.5) / TILE);
+
+                if (isSolidTile(ecFront, erMid)) {
+                    en.vx = -en.vx;
+                }
+                if (en.vy >= 0 && isSolidTile(ecMid, erBot)) {
+                    en.y = erBot * TILE - en.h;
+                    en.vy = 0;
+                    // Red Koopas turn around at platform ledges
+                    if (en.type === 'koopa_red' && en.state === 'walk') {
+                        const aheadCol = en.vx > 0 ? Math.floor((en.x + en.w + 1) / TILE) : Math.floor((en.x - 1) / TILE);
+                        if (!isSolidTile(aheadCol, erBot)) {
+                            en.vx = -en.vx;
+                        }
+                    }
+                }
+
+                // Sliding shell knocks out other enemies
+                if (en.state === 'slide') {
+                    for (let j = 0; j < state.enemies.length; j++) {
+                        if (i === j) continue;
+                        const other = state.enemies[j];
+                        if (other.state === 'walk' || other.state === 'shell') {
+                            if (en.x + en.w > other.x && en.x < other.x + other.w && en.y + en.h > other.y && en.y < other.y + other.h) {
+                                other.state = 'flipped';
+                                other.vy = -140;
+                                other.vx = dir * 50;
+                                audio.playKick();
+                                addScore(200, other.x, other.y - 8, '200');
+                            }
+                        }
+                    }
+                }
+
+                // Collision with Mario
+                if (p.x + p.w > en.x + 1 && p.x < en.x + en.w - 1 && p.y + p.h > en.y + 1 && p.y < en.y + en.h - 1) {
+                    if (p.starTimer > 0) {
+                        en.state = 'flipped';
+                        en.vy = -145;
+                        en.vx = p.facing * 55;
+                        audio.playKick();
+                        addScore(200, en.x, en.y - 8, '200');
+                        continue;
+                    }
+
+                    const stomping = p.vy > 0 && (p.y + p.h) - en.y <= 11;
+                    if (stomping) {
+                        p.vy = -225;
+                        p.onGround = false;
+                        if (en.type === 'goomba') {
+                            en.state = 'squished';
+                            en.timer = 0.45;
+                            en.h = 16;
+                            audio.playStomp();
+                            addScore(100, en.x, en.y - 8, '100');
+                        } else {
+                            // Koopa turns into shell (or sliding shell if already in shell)
+                            if (en.state === 'walk') {
+                                en.state = 'shell';
+                                en.h = 16;
+                                en.y += 6;
+                                en.vx = 0;
+                                audio.playStomp();
+                                addScore(100, en.x, en.y - 8, '100');
+                            } else {
+                                en.state = 'slide';
+                                en.vx = (p.x + p.w * 0.5 < en.x + en.w * 0.5 ? 1 : -1) * 195;
+                                audio.playKick();
+                                addScore(400, en.x, en.y - 8, '400');
+                            }
+                        }
+                    } else if (en.state === 'shell') {
+                        en.state = 'slide';
+                        en.vx = (p.x + p.w * 0.5 < en.x + en.w * 0.5 ? 1 : -1) * 195;
+                        audio.playKick();
+                        addScore(400, en.x, en.y - 8, '400');
+                    } else {
+                        hurtOrKillPlayer();
+                        return;
+                    }
+                }
+
+                if (en.y > VIEW_H + 20) state.enemies.splice(i, 1);
+            }
+
+            // --- Check Flagpole Capture at End of World 1-1 ---
+            const fp = state.flagpole;
+            if (p.x + p.w >= fp.x && p.x <= fp.x + 12) {
+                state.phase = 'flagpole';
+                p.x = fp.x - 4;
+                p.vx = 0;
+                p.vy = 0;
+                const heightRatio = Math.max(0, Math.min(1, (fp.bottomY - p.y) / (fp.bottomY - fp.topY)));
+                const flagPts = Math.max(100, Math.round(heightRatio * 20) * 100);
+                addScore(flagPts, fp.x, p.y - 10, `${flagPts}`);
+                audio.stopMusic();
+                audio.playJingle(audio.flagpoleJingle, 0.115);
+            }
+        }
+
+        // =====================================================================
+        // 6. CLASSIC WORLD 1-1 CANVAS RENDERER (HILLS, BUSHES, CLOUDS, CASTLE)
+        // =====================================================================
+        const canvas = document.getElementById('mario-canvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            const hdrH = document.querySelector('header').offsetHeight || 34;
+            const ftrH = document.querySelector('footer').offsetHeight || 62;
+            const availW = window.innerWidth - 14;
+            const availH = window.innerHeight - hdrH - ftrH - 18;
+
+            const ratio = VIEW_W / VIEW_H; // 16 : 15
+            let h = Math.max(220, availH);
+            let w = h * ratio;
+            if (w > availW) {
+                w = availW;
+                h = w / ratio;
+            }
+            canvas.style.width = `${Math.floor(w)}px`;
+            canvas.style.height = `${Math.floor(h)}px`;
+            canvas.width = VIEW_W;
+            canvas.height = VIEW_H;
+            ctx.imageSmoothingEnabled = false;
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+
+        function drawHill(x, baseY, w, h) {
+            ctx.fillStyle = '#00a800';
+            ctx.beginPath();
+            ctx.moveTo(x, baseY);
+            ctx.quadraticCurveTo(x + w * 0.5, baseY - h * 2, x + w, baseY);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.strokeStyle = '#005800';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+
+        function drawBush(x, baseY, puffs = 3) {
+            ctx.fillStyle = '#80d010';
+            for (let i = 0; i < puffs; i++) {
+                ctx.beginPath();
+                ctx.arc(x + 8 + i * 11, baseY - 6, 8, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.fillRect(x + 6, baseY - 7, puffs * 11 - 4, 7);
+        }
+
+        function drawCloud(x, y, puffs = 3) {
+            ctx.fillStyle = '#ffffff';
+            for (let i = 0; i < puffs; i++) {
+                ctx.beginPath();
+                ctx.arc(x + 8 + i * 11, y, 8, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.fillRect(x + 6, y, puffs * 11 - 4, 8);
+        }
+
+        function drawCastle(col) {
+            const x = col * TILE;
+            const baseY = GROUND_ROW * TILE;
+
+            // Main Castle Body
+            ctx.fillStyle = '#bcbcbc';
+            ctx.fillRect(x, baseY - 64, 80, 64);
+
+            // Crenellations / Battlements
+            ctx.fillStyle = '#bcbcbc';
+            for (let i = 0; i < 5; i++) {
+                ctx.fillRect(x + i * 16, baseY - 74, 10, 10);
+            }
+
+            // Castle Windows
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(x + 14, baseY - 48, 8, 12);
+            ctx.fillRect(x + 58, baseY - 48, 8, 12);
+
+            // Arched Castle Door
+            ctx.fillRect(x + 32, baseY - 26, 16, 26);
+            ctx.beginPath();
+            ctx.arc(x + 40, baseY - 26, 8, Math.PI, 0);
+            ctx.fill();
+        }
+
+        function drawHUD() {
+            ctx.font = '8px "Press Start 2P", monospace';
+            ctx.textAlign = 'left';
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText('MARIO', 18, 16);
+            ctx.fillText(String(state.score).padStart(6, '0'), 18, 26);
+
+            // Coin counter icon & count
+            const cSpr = SPRITES.coin_0;
+            ctx.drawImage(cSpr, 88, 17, 7, 10);
+            ctx.fillText(`x${String(state.coins).padStart(2, '0')}`, 98, 26);
+
+            ctx.textAlign = 'center';
+            ctx.fillText('WORLD', 152, 16);
+            ctx.fillText('1-1', 152, 26);
+
+            ctx.textAlign = 'right';
+            ctx.fillText('TIME', 238, 16);
+            ctx.fillText(String(state.timer).padStart(3, '0'), 238, 26);
+
+            // Lives badge in corner
+            ctx.textAlign = 'left';
+            ctx.fillStyle = '#fde047';
+            ctx.fillText(`♥x${state.lives}`, 18, 38);
+        }
+
+        function render() {
+            // Sky Backdrop
+            ctx.fillStyle = '#5c94fc';
+            ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+
+            ctx.save();
+            ctx.translate(-Math.floor(state.cameraX), 0);
+
+            const groundY = GROUND_ROW * TILE;
+
+            // Parallax / World Scenery (Hills, Bushes, Clouds)
+            for (let c = 0; c < LEVEL_COLS; c += 24) {
+                drawHill(c * TILE + 12, groundY, 76, 22);
+                drawHill(c * TILE + 64, groundY, 48, 14);
+                drawBush(c * TILE + 180, groundY, 3);
+                drawBush(c * TILE + 110, groundY, 2);
+                drawCloud(c * TILE + 40, 36, 3);
+                drawCloud(c * TILE + 145, 52, 2);
+            }
+
+            // Draw Castle at end of level
+            drawCastle(state.castleCol);
+
+            // Draw Flagpole
+            const fp = state.flagpole;
+            ctx.fillStyle = '#22c55e';
+            ctx.fillRect(fp.x + 5, fp.topY, 3, fp.bottomY - fp.topY);
+            ctx.fillStyle = '#facc15';
+            ctx.beginPath();
+            ctx.arc(fp.x + 6.5, fp.topY - 2, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Sliding Flag pennant
+            ctx.fillStyle = '#22c55e';
+            ctx.beginPath();
+            ctx.moveTo(fp.x + 5, fp.flagY);
+            ctx.lineTo(fp.x - 11, fp.flagY + 6);
+            ctx.lineTo(fp.x + 5, fp.flagY + 12);
+            ctx.closePath();
+            ctx.fill();
+
+            // Draw Level Grid Tiles (Ground, Bricks, '?' Blocks, Pipes, Hard Blocks)
+            const startCol = Math.max(0, Math.floor(state.cameraX / TILE) - 1);
+            const endCol = Math.min(LEVEL_COLS - 1, Math.ceil((state.cameraX + VIEW_W) / TILE) + 1);
+
+            for (let r = 0; r < 15; r++) {
+                for (let c = startCol; c <= endCol; c++) {
+                    const ch = state.grid[r][c];
+                    if (ch === '.') continue;
+
+                    const bump = state.blockBumps.find(b => b.col === c && b.row === r);
+                    const byOff = bump ? bump.offsetY : 0;
+                    const tx = c * TILE;
+                    const ty = r * TILE + byOff;
+
+                    if (ch === 'G') {
+                        ctx.drawImage(SPRITES.hard, tx, ty, TILE, TILE);
+                    } else if (ch === 'B') {
+                        ctx.drawImage(SPRITES.brick, tx, ty, TILE, TILE);
+                    } else if (ch === '?' || ch === 'M' || ch === 'S') {
+                        const pulse = Math.floor(state.worldTime * 4) % 2 === 0;
+                        ctx.drawImage(pulse ? SPRITES.qblock : SPRITES.brick, tx, ty, TILE, TILE);
+                    } else if (ch === 'q_used') {
+                        ctx.drawImage(SPRITES.qblock_used, tx, ty, TILE, TILE);
+                    } else if (ch === 'H') {
+                        ctx.drawImage(SPRITES.hard, tx, ty, TILE, TILE);
+                    } else if (ch === 'P' || ch === 'Q') {
+                        // Pipe Lip Cap
+                        ctx.fillStyle = '#16a34a';
+                        ctx.fillRect(tx, ty, TILE, TILE);
+                        ctx.fillStyle = '#4ade80';
+                        ctx.fillRect(tx + (ch === 'P' ? 2 : 0), ty + 1, ch === 'P' ? 4 : 2, TILE - 2);
+                        ctx.fillStyle = '#14532d';
+                        ctx.fillRect(tx + (ch === 'Q' ? TILE - 3 : TILE - 1), ty, ch === 'Q' ? 3 : 1, TILE);
+                    } else if (ch === 'p' || ch === 'q') {
+                        // Pipe Body
+                        ctx.fillStyle = '#15803d';
+                        ctx.fillRect(tx + (ch === 'p' ? 2 : 0), ty, TILE - 2, TILE);
+                        ctx.fillStyle = '#22c55e';
+                        ctx.fillRect(tx + (ch === 'p' ? 4 : 0), ty, 3, TILE);
+                    }
+                }
+            }
+
+            // Draw Piranha Plants (behind pipe lip)
+            state.piranhas.forEach(pl => {
+                if (pl.offsetY < 21) {
+                    const spr = Math.floor(state.worldTime * 7) % 2 === 0 ? SPRITES.piranha_0 : SPRITES.piranha_1;
+                    ctx.drawImage(spr, pl.x - 8, pl.y, 16, 24);
+                }
+            });
+
+            // Draw Floating World Coins
+            state.coinsEntity.forEach(ce => {
+                if (!ce.collected) {
+                    const frame = Math.floor(ce.animPhase) % 3;
+                    const spr = frame === 0 ? SPRITES.coin_0 : (frame === 1 ? SPRITES.coin_1 : SPRITES.coin_2);
+                    ctx.drawImage(spr, ce.x, ce.y, 10, 14);
+                }
+            });
+
+            // Draw Pop Coins from '?' Blocks
+            state.popCoins.forEach(pc => {
+                const frame = Math.floor(state.worldTime * 18) % 3;
+                const spr = frame === 0 ? SPRITES.coin_0 : (frame === 1 ? SPRITES.coin_1 : SPRITES.coin_2);
+                ctx.drawImage(spr, pc.x, pc.y, 10, 14);
+            });
+
+            // Draw Mushrooms & Starman Items
+            state.items.forEach(it => {
+                const spr = it.type === 'mushroom' ? SPRITES.mushroom : SPRITES.star;
+                ctx.drawImage(spr, Math.round(it.x), Math.round(it.y), 16, 16);
+            });
+
+            // Draw Enemies (Goombas & Green/Red Koopas)
+            state.enemies.forEach(en => {
+                let spr = SPRITES.goomba_0;
+                if (en.type === 'goomba') {
+                    if (en.state === 'squished') spr = SPRITES.goomba_flat;
+                    else spr = Math.floor(en.animTimer) % 2 === 0 ? SPRITES.goomba_0 : SPRITES.goomba_1;
+                } else {
+                    const prefix = en.type === 'koopa_green' ? 'koopa_green' : 'koopa_red';
+                    if (en.state === 'shell' || en.state === 'slide' || en.state === 'flipped') {
+                        spr = SPRITES[`${prefix}_shell`];
+                    } else {
+                        const dirKey = en.vx >= 0 ? 'r' : 'l';
+                        spr = SPRITES[`${prefix}_walk_${dirKey}`];
+                    }
+                }
+
+                ctx.save();
+                if (en.state === 'flipped') {
+                    ctx.translate(en.x + en.w * 0.5, en.y + en.h * 0.5);
+                    ctx.scale(1, -1);
+                    ctx.drawImage(spr, -8, -8, 16, en.h);
+                } else {
+                    ctx.drawImage(spr, Math.round(en.x - 1), Math.round(en.y), 16, en.h);
+                }
+                ctx.restore();
+            });
+
+            // Draw Fireballs
+            state.fireballs.forEach(fb => {
+                ctx.fillStyle = '#f97316';
+                ctx.beginPath();
+                ctx.arc(fb.x + 4, fb.y + 4, 4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#fef08a';
+                ctx.beginPath();
+                ctx.arc(fb.x + 4, fb.y + 4, 2, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Draw Mario (Small, Super, Fire, or Starman Sparkle)
+            const p = state.player;
+            const blinkSkip = p.invulnTimer > 0 && Math.floor(state.worldTime * 24) % 2 === 0;
+            if (!blinkSkip) {
+                let tag = 'm';
+                if (p.starTimer > 0) {
+                    tag = Math.floor(state.worldTime * 16) % 2 === 0 ? 's0' : 's1';
+                } else if (p.power === 'fire') {
+                    tag = 'f';
+                }
+
+                const sizeKey = p.power === 'small' ? 'sm' : 'big';
+                const dirKey = p.facing >= 0 ? 'r' : 'l';
+                let poseKey = 'idle';
+                if (p.crouching) poseKey = 'crouch';
+                else if (!p.onGround) poseKey = 'jump';
+                else if (Math.abs(p.vx) > 10 && Math.floor(p.walkTimer) % 2 === 1) poseKey = 'walk';
+
+                const spr = SPRITES[`${tag}_${sizeKey}_${poseKey}_${dirKey}`];
+                ctx.drawImage(spr, Math.round(p.x - 2), Math.round(p.y), 16, p.h);
+            }
+
+            // Draw Brick Debris & Spark Particles
+            state.particles.forEach(pt => {
+                ctx.fillStyle = pt.color;
+                ctx.fillRect(Math.round(pt.x), Math.round(pt.y), 5, 5);
+            });
+
+            // Draw Score Popups
+            state.scorePopups.forEach(sp => {
+                ctx.font = '7px "Press Start 2P", monospace';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#ffffff';
+                ctx.fillText(sp.text, Math.round(sp.x), Math.round(sp.y));
+            });
+
+            ctx.restore();
+
+            // Fixed Screen HUD
+            drawHUD();
+
+            // Overlays for Title, Pause, Stage Clear & Game Over
+            if (state.phase === 'title') {
+                ctx.fillStyle = 'rgba(10, 15, 32, 0.78)';
+                ctx.fillRect(24, 52, VIEW_W - 48, 156);
+                ctx.strokeStyle = '#facc15';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(24, 52, VIEW_W - 48, 156);
+
+                ctx.textAlign = 'center';
+                ctx.font = '14px "Press Start 2P", monospace';
+                ctx.fillStyle = '#ef4444';
+                ctx.fillText('SUPER MARIO', VIEW_W * 0.5, 82);
+                ctx.fillStyle = '#facc15';
+                ctx.fillText('BROS. 1985', VIEW_W * 0.5, 102);
+
+                ctx.font = '7px "Press Start 2P", monospace';
+                ctx.fillStyle = '#e2e8f0';
+                ctx.fillText('ARROWS/WASD MOVE • SPACE JUMP', VIEW_W * 0.5, 132);
+                ctx.fillText('SHIFT/X RUN & FIREBALL', VIEW_W * 0.5, 148);
+                ctx.fillStyle = '#4ade80';
+                ctx.fillText('STOMP ENEMIES • HIT ? BLOCKS', VIEW_W * 0.5, 166);
+
+                if (Math.floor(state.worldTime * 3) % 2 === 0) {
+                    ctx.font = '9px "Press Start 2P", monospace';
+                    ctx.fillStyle = '#38bdf8';
+                    ctx.fillText('PRESS ENTER OR TAP TO START', VIEW_W * 0.5, 192);
+                }
+            } else if (state.phase === 'paused') {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
+                ctx.fillRect(58, 100, VIEW_W - 116, 40);
+                ctx.textAlign = 'center';
+                ctx.font = '12px "Press Start 2P", monospace';
+                ctx.fillStyle = '#facc15';
+                ctx.fillText('PAUSED', VIEW_W * 0.5, 125);
+            } else if (state.phase === 'stage_clear') {
+                ctx.fillStyle = 'rgba(10, 15, 32, 0.8)';
+                ctx.fillRect(28, 86, VIEW_W - 56, 68);
+                ctx.strokeStyle = '#4ade80';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(28, 86, VIEW_W - 56, 68);
+
+                ctx.textAlign = 'center';
+                ctx.font = '11px "Press Start 2P", monospace';
+                ctx.fillStyle = '#4ade80';
+                ctx.fillText('COURSE CLEAR!', VIEW_W * 0.5, 112);
+                ctx.font = '8px "Press Start 2P", monospace';
+                ctx.fillStyle = '#fde047';
+                ctx.fillText(`SCORE: ${state.score}`, VIEW_W * 0.5, 134);
+            } else if (state.phase === 'gameover') {
+                ctx.fillStyle = 'rgba(10, 15, 32, 0.85)';
+                ctx.fillRect(32, 82, VIEW_W - 64, 78);
+                ctx.strokeStyle = '#ef4444';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(32, 82, VIEW_W - 64, 78);
+
+                ctx.textAlign = 'center';
+                ctx.font = '13px "Press Start 2P", monospace';
+                ctx.fillStyle = '#ef4444';
+                ctx.fillText('GAME OVER', VIEW_W * 0.5, 108);
+                ctx.font = '8px "Press Start 2P", monospace';
+                ctx.fillStyle = '#ffffff';
+                ctx.fillText(`FINAL SCORE: ${state.score}`, VIEW_W * 0.5, 128);
+                if (Math.floor(state.worldTime * 3) % 2 === 0) {
+                    ctx.fillStyle = '#facc15';
+                    ctx.fillText('PRESS ENTER OR TAP TO RETRY', VIEW_W * 0.5, 148);
+                }
+            }
+        }
+
+        // =====================================================================
+        // 7. KEYBOARD, TOUCH & TOP BAR CONTROLS
+        // =====================================================================
+        window.addEventListener('keydown', (e) => {
+            audio.init();
+            state.keys[e.code] = true;
+            if (e.repeat) return;
+
+            if (e.code === 'KeyM') {
+                const m = audio.toggleMute();
+                document.getElementById('btn-mute').textContent = m ? 'SOUND: OFF [M]' : 'SOUND: ON [M]';
+                return;
+            }
+            if (e.code === 'KeyP') {
+                if (state.phase === 'playing') {
+                    state.phase = 'paused';
+                } else if (state.phase === 'paused') {
+                    state.phase = 'playing';
+                }
+                return;
+            }
+            if ((e.code === 'Enter') && (state.phase === 'title' || state.phase === 'gameover' || state.phase === 'stage_clear')) {
+                startNewGame();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            state.keys[e.code] = false;
+        });
+
+        document.getElementById('btn-mute').addEventListener('click', () => {
+            audio.init();
+            const m = audio.toggleMute();
+            document.getElementById('btn-mute').textContent = m ? 'SOUND: OFF [M]' : 'SOUND: ON [M]';
+        });
+
+        document.getElementById('btn-pause').addEventListener('click', () => {
+            audio.init();
+            if (state.phase === 'playing') state.phase = 'paused';
+            else if (state.phase === 'paused') state.phase = 'playing';
+        });
+
+        document.getElementById('btn-restart-top').addEventListener('click', () => {
+            startNewGame();
+        });
+
+        function bindTouchButton(id, key) {
+            const el = document.getElementById(id);
+            el.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                audio.init();
+                if (state.phase === 'title' || state.phase === 'gameover' || state.phase === 'stage_clear') {
+                    startNewGame();
+                    return;
+                }
+                state.touch[key] = true;
+                el.classList.add('active');
+            });
+            const end = () => {
+                state.touch[key] = false;
+                el.classList.remove('active');
+            };
+            el.addEventListener('pointerup', end);
+            el.addEventListener('pointerleave', end);
+            el.addEventListener('pointercancel', end);
+        }
+
+        bindTouchButton('t-left', 'left');
+        bindTouchButton('t-right', 'right');
+        bindTouchButton('t-down', 'down');
+        bindTouchButton('t-jump', 'jump');
+        bindTouchButton('t-run', 'run');
+
+        canvas.addEventListener('pointerdown', () => {
+            audio.init();
+            if (state.phase === 'title' || state.phase === 'gameover' || state.phase === 'stage_clear') {
+                startNewGame();
+            }
+        });
+
+        // =====================================================================
+        // 8. WINDOW ONLOAD & MAIN LOOP
+        // =====================================================================
+        let lastTime = performance.now();
+
+        function loop(now) {
+            requestAnimationFrame(loop);
+            const dt = Math.min((now - lastTime) / 1000, 0.05);
+            lastTime = now;
+
+            updateSimulation(dt);
+            render();
+        }
+
+        window.onload = function () {
+            createWorld1_1();
+            resizeCanvas();
+            requestAnimationFrame(loop);
+        };
+    </script>
+</body>
+</html>

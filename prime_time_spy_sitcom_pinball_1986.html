@@ -1,0 +1,1811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>PRIME TIME SPY &amp; SITCOM PINBALL: 1986</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Monoton&family=Orbitron:wght@500;700;900&family=VT323&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background: radial-gradient(circle at 50% 20%, #1b0a33 0%, #090514 65%, #04020a 100%);
+            font-family: 'Orbitron', sans-serif;
+            color: #f8fafc;
+        }
+        #pinball-canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        .font-dmd {
+            font-family: 'VT323', monospace;
+            letter-spacing: 0.06em;
+        }
+        .font-neon {
+            font-family: 'Monoton', cursive;
+        }
+        .neon-box-pink {
+            background: rgba(16, 7, 34, 0.78);
+            border: 1.5px solid rgba(255, 42, 168, 0.65);
+            box-shadow: 0 0 18px rgba(255, 42, 168, 0.25), inset 0 0 12px rgba(255, 42, 168, 0.12);
+            backdrop-filter: blur(8px);
+        }
+        .neon-box-cyan {
+            background: rgba(8, 16, 36, 0.8);
+            border: 1.5px solid rgba(34, 211, 238, 0.65);
+            box-shadow: 0 0 18px rgba(34, 211, 238, 0.22), inset 0 0 12px rgba(34, 211, 238, 0.1);
+            backdrop-filter: blur(8px);
+        }
+        .text-glow-pink {
+            text-shadow: 0 0 10px rgba(255, 42, 168, 0.9), 0 0 22px rgba(255, 42, 168, 0.45);
+        }
+        .text-glow-cyan {
+            text-shadow: 0 0 10px rgba(34, 211, 238, 0.9), 0 0 22px rgba(34, 211, 238, 0.45);
+        }
+        .text-glow-gold {
+            text-shadow: 0 0 10px rgba(250, 204, 21, 0.9), 0 0 20px rgba(250, 204, 21, 0.45);
+        }
+        .arcade-btn {
+            transition: transform 0.07s ease, background-color 0.1s ease, box-shadow 0.1s ease;
+        }
+        .arcade-btn:active, .arcade-btn.active {
+            transform: scale(0.93);
+        }
+        .touch-paddle {
+            background: linear-gradient(180deg, rgba(30, 14, 62, 0.85) 0%, rgba(12, 6, 28, 0.92) 100%);
+            border: 2px solid rgba(255, 42, 168, 0.75);
+            box-shadow: 0 0 20px rgba(255, 42, 168, 0.35);
+        }
+        .touch-paddle.active, .touch-paddle:active {
+            background: linear-gradient(180deg, rgba(255, 42, 168, 0.55) 0%, rgba(168, 85, 247, 0.45) 100%);
+            border-color: #f472b6;
+            box-shadow: 0 0 28px rgba(255, 42, 168, 0.75);
+        }
+        .touch-action {
+            background: linear-gradient(180deg, rgba(10, 32, 58, 0.85) 0%, rgba(5, 16, 32, 0.92) 100%);
+            border: 2px solid rgba(34, 211, 238, 0.75);
+            box-shadow: 0 0 18px rgba(34, 211, 238, 0.3);
+        }
+        .touch-action.active, .touch-action:active {
+            background: linear-gradient(180deg, rgba(34, 211, 238, 0.5) 0%, rgba(59, 130, 246, 0.4) 100%);
+            border-color: #67e8f9;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Full-Viewport 3D Pinball Canvas -->
+    <canvas id="pinball-canvas"></canvas>
+
+    <!-- Fallback Notice if WebGL / Three.js Fails -->
+    <div id="webgl-fallback" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950 p-6 text-center">
+        <div class="max-w-md neon-box-pink rounded-2xl p-6">
+            <h2 class="text-xl font-black text-pink-400 mb-2">3D PLAYFIELD UNAVAILABLE</h2>
+            <p class="text-sm text-slate-300">WebGL could not be initialized in this browser environment. Please try refreshing or enabling hardware acceleration.</p>
+        </div>
+    </div>
+
+    <!-- Active Arcade HUD Overlay -->
+    <div id="hud-overlay" class="fixed inset-0 pointer-events-none z-20 hidden">
+
+        <!-- Top Bar: Left Score & Ball/Multiplier, Center DMD Readout, Right Controls -->
+        <div class="flex justify-between items-start gap-2 p-2.5 sm:p-4">
+
+            <!-- Left Telemetry Card -->
+            <div class="neon-box-pink rounded-xl px-3 py-2 sm:px-4 sm:py-2.5 min-w-[140px] sm:min-w-[190px]">
+                <div class="flex items-center justify-between text-[10px] sm:text-xs text-pink-300 font-bold tracking-wider mb-0.5">
+                    <span id="hud-ball">BALL 1/3</span>
+                    <span id="hud-mult" class="px-1.5 py-0.5 rounded bg-amber-400/20 border border-amber-400/60 text-amber-300 font-black">1X</span>
+                </div>
+                <div id="hud-score" class="text-lg sm:text-2xl font-black text-white text-glow-pink leading-tight">000,000</div>
+                <div class="text-[10px] text-cyan-300/90 mt-0.5">
+                    HI: <span id="hud-hi" class="font-bold text-cyan-200">000,000</span>
+                </div>
+            </div>
+
+            <!-- Center Dot-Matrix / Mini-Backglass Status Readout -->
+            <div class="neon-box-cyan rounded-xl px-3 py-1.5 sm:px-5 sm:py-2 flex-1 max-w-md text-center">
+                <div id="dmd-top" class="font-dmd text-base sm:text-xl text-amber-300 text-glow-gold leading-none truncate">
+                    CHANNEL 86 • PRIME TIME LIVE
+                </div>
+                <div id="dmd-sub" class="font-dmd text-sm sm:text-lg text-cyan-200 text-glow-cyan leading-tight truncate mt-0.5">
+                    PULL PLUNGER [SPACE] TO LAUNCH BALL
+                </div>
+                <div class="flex items-center justify-center gap-3 mt-1 text-[10px] sm:text-[11px] font-bold">
+                    <span id="hud-laugh-label" class="text-amber-300">LAUGH: CHORTLE</span>
+                    <span class="text-slate-600">|</span>
+                    <span id="hud-spy-label" class="text-pink-400">VAULT: 0/3</span>
+                    <span id="hud-save-badge" class="hidden px-1.5 py-0.2 rounded bg-emerald-500/25 border border-emerald-400 text-emerald-300 animate-pulse">BALL SAVE</span>
+                </div>
+            </div>
+
+            <!-- Right System Toggles -->
+            <div class="flex flex-col items-end gap-1.5 pointer-events-auto">
+                <div class="flex gap-1.5">
+                    <button id="btn-music" class="arcade-btn neon-box-cyan hover:bg-cyan-950/70 px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-bold text-cyan-300 cursor-pointer">
+                        GROOVE: ON
+                    </button>
+                    <button id="btn-sfx" class="arcade-btn neon-box-cyan hover:bg-cyan-950/70 px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-bold text-emerald-300 cursor-pointer">
+                        SFX: ON
+                    </button>
+                </div>
+                <div class="flex gap-1.5">
+                    <button id="btn-cam" class="arcade-btn neon-box-pink hover:bg-pink-950/70 px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-bold text-pink-200 cursor-pointer">
+                        CAM [C]
+                    </button>
+                    <button id="btn-touch-toggle" class="arcade-btn neon-box-pink hover:bg-pink-950/70 px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-bold text-amber-200 cursor-pointer">
+                        TOUCH PAD
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Plunger Charge Gauge (Visible when holding Plunger / Space / Down) -->
+        <div id="plunger-gauge-wrap" class="fixed right-3 sm:right-6 top-1/2 -translate-y-1/2 hidden flex-col items-center gap-1.5 neon-box-cyan rounded-xl p-2">
+            <span class="text-[9px] font-bold text-cyan-300 tracking-wider">LAUNCH</span>
+            <div class="w-3 h-28 bg-slate-950 rounded-full overflow-hidden border border-cyan-400/50 flex flex-col justify-end">
+                <div id="plunger-gauge-fill" class="w-full bg-gradient-to-t from-pink-500 via-amber-400 to-cyan-300 transition-all duration-75" style="height: 15%"></div>
+            </div>
+            <span id="plunger-pct" class="text-[10px] font-bold text-amber-300">15%</span>
+        </div>
+
+        <!-- Nudge / Tilt Meter (Bottom Center Above Touch Controls) -->
+        <div class="fixed bottom-24 sm:bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 neon-box-pink rounded-full px-3.5 py-1 text-[10px] sm:text-xs">
+            <span class="text-pink-300 font-bold">NUDGE [W/↑]</span>
+            <div class="flex gap-1" id="tilt-pips">
+                <span class="w-2.5 h-2.5 rounded-full bg-slate-700 border border-slate-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-slate-700 border border-slate-500"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-slate-700 border border-slate-500"></span>
+            </div>
+            <span id="tilt-status" class="text-emerald-300 font-bold">STEADY</span>
+        </div>
+    </div>
+
+    <!-- On-Screen Touch / Tablet Arcade Controls -->
+    <div id="touch-controls" class="fixed inset-0 pointer-events-none z-30 hidden">
+        <!-- Bottom Left: Left Flipper -->
+        <button id="touch-left-flipper" class="touch-paddle arcade-btn pointer-events-auto fixed bottom-4 left-4 w-24 h-20 sm:w-28 sm:h-22 rounded-2xl flex flex-col items-center justify-center">
+            <span class="text-xl font-black text-pink-300">◀</span>
+            <span class="text-[10px] font-bold tracking-wider text-pink-100 mt-0.5">L FLIPPER</span>
+        </button>
+
+        <!-- Bottom Center-Right: Nudge & Launch -->
+        <div class="fixed bottom-4 right-32 sm:right-36 flex flex-col gap-2 pointer-events-auto">
+            <button id="touch-nudge" class="touch-action arcade-btn px-3.5 py-2 rounded-xl text-[10px] font-bold text-cyan-200 tracking-wider">
+                NUDGE ▲
+            </button>
+            <button id="touch-plunger" class="touch-action arcade-btn px-3.5 py-2.5 rounded-xl text-[10px] font-extrabold text-amber-300 tracking-wider">
+                PLUNGER
+            </button>
+        </div>
+
+        <!-- Bottom Right: Right Flipper -->
+        <button id="touch-right-flipper" class="touch-paddle arcade-btn pointer-events-auto fixed bottom-4 right-4 w-24 h-20 sm:w-28 sm:h-22 rounded-2xl flex flex-col items-center justify-center">
+            <span class="text-xl font-black text-pink-300">▶</span>
+            <span class="text-[10px] font-bold tracking-wider text-pink-100 mt-0.5">R FLIPPER</span>
+        </button>
+    </div>
+
+    <!-- Title / Attract Mode Overlay -->
+    <div id="start-screen" class="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/75 backdrop-blur-md p-3 sm:p-5 overflow-y-auto">
+        <div class="max-w-2xl w-full neon-box-pink rounded-2xl p-5 sm:p-7 text-center my-auto">
+            <div class="inline-block px-3 py-1 rounded-full bg-pink-500/20 border border-pink-400/50 text-pink-200 text-[10px] sm:text-xs font-bold tracking-widest mb-2">
+                LIVE TAPING • SATURDAY NIGHT • 1986
+            </div>
+            <h1 class="font-neon text-2xl sm:text-4xl text-amber-300 text-glow-gold leading-tight mb-1">
+                PRIME TIME SPY &amp; SITCOM
+            </h1>
+            <div class="font-black text-base sm:text-xl tracking-widest text-cyan-300 text-glow-cyan mb-3">
+                PINBALL: 1986
+            </div>
+            <p class="text-xs sm:text-sm text-slate-200/90 max-w-lg mx-auto mb-4 leading-relaxed">
+                Crack the <span class="text-pink-400 font-bold">Safecracker Vault</span>, hit <span class="text-cyan-300 font-bold">Dead Drop</span> &amp; <span class="text-cyan-300 font-bold">Microfilm Orbit</span> targets, and build the <span class="text-amber-300 font-bold">Laugh Track Meter</span> from Chortle to Studio Applause Jackpot to trigger <span class="text-pink-300 font-bold">Prime Time Multiball</span>!
+            </p>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left bg-slate-950/75 rounded-xl p-3.5 sm:p-4 border border-pink-500/25 mb-5 text-[11px] sm:text-xs">
+                <div>
+                    <div class="text-pink-400 font-bold tracking-wider mb-1.5">CONTROLS</div>
+                    <ul class="space-y-1 text-slate-200">
+                        <li><span class="text-amber-300 font-bold">← / A</span> &amp; <span class="text-amber-300 font-bold">→ / D</span> : Left &amp; Right Flippers</li>
+                        <li><span class="text-amber-300 font-bold">Hold &amp; Release SPACE / ↓</span> : Plunger Launch</li>
+                        <li><span class="text-amber-300 font-bold">W / ↑ / X</span> : Table Nudge (Watch Tilt!)</li>
+                        <li><span class="text-amber-300 font-bold">C</span> : Cycle 3 Camera Angles</li>
+                    </ul>
+                </div>
+                <div>
+                    <div class="text-cyan-300 font-bold tracking-wider mb-1.5">SPY &amp; SITCOM MODES</div>
+                    <ul class="space-y-1 text-slate-200">
+                        <li>• <span class="text-pink-300 font-bold">Spy Division</span>: Dead Drops, Vault &amp; Microfilm</li>
+                        <li>• <span class="text-amber-300 font-bold">Sitcom Division</span>: Laugh Track &amp; Theme Combos</li>
+                        <li>• <span class="text-emerald-300 font-bold">Hybrid Crossover</span>: Undercover Sitcom &amp; Heist</li>
+                        <li>• Up to <span class="text-pink-400 font-bold">3-Ball Multiball</span> frenzy!</li>
+                    </ul>
+                </div>
+            </div>
+
+            <button id="btn-start" class="arcade-btn px-9 py-3.5 rounded-xl bg-gradient-to-r from-pink-500 via-fuchsia-500 to-amber-400 hover:from-pink-400 hover:to-amber-300 text-slate-950 font-black text-sm sm:text-base tracking-widest shadow-[0_0_25px_rgba(255,42,168,0.65)] cursor-pointer">
+                INSERT COIN &amp; START
+            </button>
+        </div>
+    </div>
+
+    <!-- Game Over / Final Broadcast Overlay -->
+    <div id="gameover-screen" class="fixed inset-0 z-40 hidden items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
+        <div class="max-w-md w-full neon-box-cyan rounded-2xl p-6 sm:p-7 text-center">
+            <div class="text-xs font-bold tracking-widest text-pink-400 mb-1">THAT’S A WRAP! • 1986</div>
+            <h2 class="text-2xl sm:text-3xl font-black text-white text-glow-cyan mb-2">FINAL BROADCAST</h2>
+            <p id="gameover-reason" class="text-xs text-slate-300 mb-4">All 3 balls drained from the studio floor.</p>
+
+            <div class="bg-slate-950/80 rounded-xl p-4 border border-cyan-500/30 mb-5 space-y-2 text-xs">
+                <div class="flex justify-between">
+                    <span class="text-slate-400">FINAL SCORE:</span>
+                    <span id="go-score" class="font-black text-pink-400 text-sm">000,000</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-400">HIGH SCORE:</span>
+                    <span id="go-hi" class="font-black text-amber-300 text-sm">000,000</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-400">PEAK LAUGH METER:</span>
+                    <span id="go-laugh" class="font-bold text-cyan-300">STUDIO APPLAUSE</span>
+                </div>
+            </div>
+
+            <button id="btn-restart" class="arcade-btn w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-400 to-pink-500 hover:from-cyan-300 hover:to-pink-400 text-slate-950 font-black text-sm sm:text-base tracking-widest shadow-[0_0_22px_rgba(34,211,238,0.5)] cursor-pointer">
+                PLAY AGAIN
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * PRIME TIME SPY & SITCOM PINBALL: 1986
+         * Complete Self-Contained 3D Pinball Simulation with Three.js & Web Audio API
+         */
+
+        // ============================================================
+        // 1. PROCEDURAL WEB AUDIO SYNTHESIZER & 1986 GROOVE SEQUENCER
+        // ============================================================
+        class RetroPinballAudio {
+            constructor() {
+                this.ctx = null;
+                this.sfxEnabled = true;
+                this.musicEnabled = true;
+                this.stepIndex = 0;
+                this.stepTimer = 0;
+                this.tempoSec = 0.145; // ~206 eighth-note ticks (~103 BPM bouncy 80s groove)
+            }
+
+            init() {
+                if (this.ctx) {
+                    if (this.ctx.state === 'suspended') {
+                        this.ctx.resume().catch(() => {});
+                    }
+                    return;
+                }
+                try {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                } catch (e) {
+                    console.warn("Web Audio unavailable:", e);
+                }
+            }
+
+            playFlipper(isUp) {
+                if (!this.sfxEnabled || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                // Crisp mechanical solenoid clack
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(isUp ? 220 : 145, now);
+                osc.frequency.exponentialRampToValueAtTime(isUp ? 58 : 42, now + 0.045);
+
+                gain.gain.setValueAtTime(0.24, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.048);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.05);
+            }
+
+            playBumper(pitchBoost = 0) {
+                if (!this.sfxEnabled || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                const baseFreq = 340 + pitchBoost * 45;
+                osc.frequency.setValueAtTime(baseFreq, now);
+                osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.95, now + 0.09);
+
+                gain.gain.setValueAtTime(0.26, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.12);
+            }
+
+            playSlingshot() {
+                if (!this.sfxEnabled || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(175, now);
+                osc.frequency.exponentialRampToValueAtTime(490, now + 0.075);
+
+                gain.gain.setValueAtTime(0.18, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.085);
+            }
+
+            playTargetChime(index = 0) {
+                if (!this.sfxEnabled || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const scale = [523.25, 659.25, 783.99, 987.77, 1046.5]; // C5 E5 G5 B5 C6
+                const freq = scale[index % scale.length];
+
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(freq, now);
+                osc.frequency.exponentialRampToValueAtTime(freq * 1.02, now + 0.18);
+
+                gain.gain.setValueAtTime(0.18, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.19);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.2);
+            }
+
+            playSpySting() {
+                if (!this.sfxEnabled || !this.ctx) return;
+                // Dramatic 80s spy minor-9th synth stab
+                const freqs = [220, 261.63, 329.63, 392.0, 493.88];
+                const now = this.ctx.currentTime;
+                freqs.forEach((f, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = idx % 2 === 0 ? 'sawtooth' : 'square';
+                    osc.frequency.setValueAtTime(f, now + idx * 0.025);
+                    gain.gain.setValueAtTime(0.065, now + idx * 0.025);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.025 + 0.28);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + idx * 0.025);
+                    osc.stop(now + idx * 0.025 + 0.3);
+                });
+            }
+
+            playLaughApplauseSwell() {
+                if (!this.sfxEnabled || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                // Bright sitcom chord + synthesized studio applause burst
+                const chord = [392.0, 493.88, 587.33, 739.99]; // Gmaj7
+                chord.forEach(freq => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now);
+                    gain.gain.setValueAtTime(0.06, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.46);
+                });
+
+                const bufLen = Math.floor(this.ctx.sampleRate * 0.35);
+                const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
+                const data = buf.getChannelData(0);
+                for (let i = 0; i < bufLen; i++) {
+                    data[i] = (Math.random() * 2 - 1) * Math.sin((i / bufLen) * Math.PI);
+                }
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buf;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.value = 1650;
+                filter.Q.value = 0.8;
+
+                const nGain = this.ctx.createGain();
+                nGain.gain.setValueAtTime(0.14, now);
+                nGain.gain.exponentialRampToValueAtTime(0.002, now + 0.35);
+
+                noise.connect(filter);
+                filter.connect(nGain);
+                nGain.connect(this.ctx.destination);
+                noise.start(now);
+            }
+
+            playLaunch(power) {
+                if (!this.sfxEnabled || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(110 + power * 120, now);
+                osc.frequency.exponentialRampToValueAtTime(340 + power * 420, now + 0.16);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.17);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.18);
+            }
+
+            playNudge(isTilt) {
+                if (!this.sfxEnabled || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = isTilt ? 'sawtooth' : 'triangle';
+                osc.frequency.setValueAtTime(isTilt ? 110 : 85, now);
+                osc.frequency.linearRampToValueAtTime(isTilt ? 55 : 40, now + (isTilt ? 0.35 : 0.12));
+                gain.gain.setValueAtTime(isTilt ? 0.25 : 0.18, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + (isTilt ? 0.36 : 0.13));
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + (isTilt ? 0.38 : 0.14));
+            }
+
+            playDrain() {
+                if (!this.sfxEnabled || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(260, now);
+                osc.frequency.exponentialRampToValueAtTime(52, now + 0.45);
+                gain.gain.setValueAtTime(0.18, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.46);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.48);
+            }
+
+            updateGroove(dt, activePlay) {
+                if (!this.musicEnabled || !this.sfxEnabled || !this.ctx || !activePlay) return;
+                this.stepTimer -= dt;
+                if (this.stepTimer > 0) return;
+                this.stepTimer = this.tempoSec;
+
+                const now = this.ctx.currentTime;
+                const step = this.stepIndex % 16;
+                this.stepIndex++;
+
+                // Bouncy 80s Sitcom Bassline + Spy Chromatic Walk
+                const bassNotes = [110, 110, 130.81, 146.83, 164.81, 146.83, 130.81, 98.0,
+                                   110, 110, 164.81, 196.0, 174.61, 164.81, 146.83, 123.47];
+                const bFreq = bassNotes[step];
+
+                const bassOsc = this.ctx.createOscillator();
+                const bassGain = this.ctx.createGain();
+                bassOsc.type = 'triangle';
+                bassOsc.frequency.setValueAtTime(bFreq, now);
+                bassGain.gain.setValueAtTime(0.065, now);
+                bassGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+                bassOsc.connect(bassGain);
+                bassGain.connect(this.ctx.destination);
+                bassOsc.start(now);
+                bassOsc.stop(now + 0.13);
+
+                // Crisp 80s Spy Brass / Rhodes Stab on syncopated steps
+                if (step === 2 || step === 6 || step === 10 || step === 14) {
+                    const stabFreq = step === 10 ? 587.33 : 440.0;
+                    const brassOsc = this.ctx.createOscillator();
+                    const brassGain = this.ctx.createGain();
+                    brassOsc.type = 'sawtooth';
+                    brassOsc.frequency.setValueAtTime(stabFreq, now);
+
+                    const lp = this.ctx.createBiquadFilter();
+                    lp.type = 'lowpass';
+                    lp.frequency.setValueAtTime(1600, now);
+
+                    brassGain.gain.setValueAtTime(0.025, now);
+                    brassGain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+
+                    brassOsc.connect(lp);
+                    lp.connect(brassGain);
+                    brassGain.connect(this.ctx.destination);
+                    brassOsc.start(now);
+                    brassOsc.stop(now + 0.12);
+                }
+            }
+        }
+
+        const audio = new RetroPinballAudio();
+
+        // ============================================================
+        // 2. PLAYFIELD GEOMETRY CONSTANTS & GAME STATE
+        // ============================================================
+        // Playfield coordinate system: X across width [-14.5, +14.5], Z down playfield [-24, +24]
+        const PF = {
+            halfW: 13.5,
+            topZ: -23.0,
+            bottomZ: 23.5,
+            laneX: 11.8,        // Shooter lane center X
+            laneWallX: 10.6,    // Wall separating shooter lane from main playfield
+            tiltSlopeZ: 0.135,  // Gentle downward gravity pull along +Z (toward flippers)
+            gravityY: 24.5,     // Table surface normal pull
+            ballRadius: 0.62,
+            ballY: 0.72,
+            maxBalls: 3
+        };
+
+        const LAUGH_LEVELS = [
+            { name: 'CHORTLE', multBonus: 0, color: '#fde047' },
+            { name: 'CHUCKLE', multBonus: 1, color: '#38bdf8' },
+            { name: 'ROAR', multBonus: 2, color: '#f472b6' },
+            { name: 'STUDIO APPLAUSE', multBonus: 4, color: '#34d399' }
+        ];
+
+        const state = {
+            phase: 'title', // 'title', 'playing', 'gameover'
+            score: 0,
+            highScore: parseInt(localStorage.getItem('prime_time_1986_hi') || '250000', 10),
+            ballNumber: 1,
+            baseMultiplier: 1,
+            laughProgress: 0,   // 0..100
+            laughTier: 0,       // 0..3
+            peakLaughTier: 0,
+            vaultHits: 0,       // 0..3 unlocks Safecracker Vault / Multiball
+            spyCombo: 0,
+            sitcomCombo: 0,
+            activeMode: 'PRIME TIME LIVE',
+            dmdTop: 'CHANNEL 86 • PRIME TIME LIVE',
+            dmdSub: 'PULL PLUNGER [SPACE] TO LAUNCH BALL',
+            dmdTimer: 0,
+            ballSaveTimer: 0,
+            plungerCharging: false,
+            plungerCharge: 0, // 0..1
+            plungerExtension: 0, // visual pull-back amount
+            nudgeWarnings: 0,
+            nudgeDecayTimer: 0,
+            tilted: false,
+            nudgeOffsetX: 0,
+            nudgeOffsetZ: 0,
+            cameraPreset: 0, // 0: Angled Cabinet, 1: Steep Overhead, 2: Close Action
+            touchPadVisible: false,
+            keys: {},
+            touch: {
+                leftFlipper: false,
+                rightFlipper: false,
+                plunger: false
+            },
+            balls: [],
+            bumpers: [],
+            slingshots: [],
+            targets: [],
+            rollovers: [],
+            wallSegments: [],
+            radarDish: null,
+            vaultDoor: null,
+            particles: [],
+            flashes: []
+        };
+
+        // ============================================================
+        // 3. THREE.JS SCENE, LIGHTING & PLAYFIELD BUILDER
+        // ============================================================
+        const canvas = document.getElementById('pinball-canvas');
+        let renderer, scene, camera;
+
+        try {
+            renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.18;
+        } catch (err) {
+            document.getElementById('webgl-fallback').classList.remove('hidden');
+            document.getElementById('webgl-fallback').classList.add('flex');
+            throw err;
+        }
+
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x070312);
+        scene.fog = new THREE.FogExp2(0x090418, 0.0085);
+
+        camera = new THREE.PerspectiveCamera(46, window.innerWidth / window.innerHeight, 0.5, 220);
+
+        // 80s Neon Studio Lighting Rig
+        const ambientLight = new THREE.HemisphereLight(0xf472b6, 0x1e1b4b, 0.85);
+        scene.add(ambientLight);
+
+        const keySpot = new THREE.DirectionalLight(0xfffbeb, 1.55);
+        keySpot.position.set(12, 36, 18);
+        keySpot.castShadow = true;
+        keySpot.shadow.mapSize.width = 2048;
+        keySpot.shadow.mapSize.height = 2048;
+        keySpot.shadow.camera.near = 5;
+        keySpot.shadow.camera.far = 95;
+        const sc = 28;
+        keySpot.shadow.camera.left = -sc;
+        keySpot.shadow.camera.right = sc;
+        keySpot.shadow.camera.top = sc;
+        keySpot.shadow.camera.bottom = -sc;
+        scene.add(keySpot);
+
+        const cyanRimLight = new THREE.PointLight(0x22d3ee, 2.2, 42);
+        cyanRimLight.position.set(-11, 10, -14);
+        scene.add(cyanRimLight);
+
+        const pinkRimLight = new THREE.PointLight(0xff2aa8, 2.4, 42);
+        pinkRimLight.position.set(10, 10, 12);
+        scene.add(pinkRimLight);
+
+        const playfieldGroup = new THREE.Group();
+        scene.add(playfieldGroup);
+
+        // Procedural 80s Retro Playfield Artwork Texture
+        function createPlayfieldTexture() {
+            const c = document.createElement('canvas');
+            c.width = 1024;
+            c.height = 1792;
+            const ctx = c.getContext('2d');
+
+            // Deep midnight studio floor with subtle 80s perspective grid
+            const grad = ctx.createLinearGradient(0, 0, 0, 1792);
+            grad.addColorStop(0, '#120829');
+            grad.addColorStop(0.5, '#190a38');
+            grad.addColorStop(1, '#0d061f');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 1024, 1792);
+
+            // Neon grid lines
+            ctx.strokeStyle = 'rgba(255, 42, 168, 0.14)';
+            ctx.lineWidth = 2;
+            for (let x = 64; x < 960; x += 64) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, 1792);
+                ctx.stroke();
+            }
+            for (let y = 64; y < 1792; y += 64) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(1024, y);
+                ctx.stroke();
+            }
+
+            // Spy Division Circular Radar Ring (Upper Left)
+            ctx.strokeStyle = 'rgba(34, 211, 238, 0.45)';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(285, 520, 145, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.strokeStyle = 'rgba(255, 42, 168, 0.35)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(285, 520, 90, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Sitcom Division Stage Spotlight Arc (Upper Right)
+            ctx.strokeStyle = 'rgba(250, 204, 21, 0.45)';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(640, 520, 150, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Playfield Typography & Division Callouts
+            ctx.save();
+            ctx.textAlign = 'center';
+
+            ctx.fillStyle = '#ff4ec4';
+            ctx.font = '900 44px Orbitron, sans-serif';
+            ctx.fillText('SPY DIVISION', 300, 250);
+
+            ctx.fillStyle = '#facc15';
+            ctx.font = '900 44px Orbitron, sans-serif';
+            ctx.fillText('SITCOM LIVE', 640, 250);
+
+            ctx.fillStyle = '#22d3ee';
+            ctx.font = 'bold 28px Orbitron, sans-serif';
+            ctx.fillText('MICROFILM ORBIT', 475, 130);
+
+            ctx.fillStyle = '#f472b6';
+            ctx.font = 'bold 26px Orbitron, sans-serif';
+            ctx.fillText('DEAD DROP', 155, 920);
+
+            ctx.fillStyle = '#fde047';
+            ctx.font = 'bold 26px Orbitron, sans-serif';
+            ctx.fillText('LAUGH TRACK', 785, 920);
+
+            ctx.fillStyle = '#34d399';
+            ctx.font = 'bold 24px Orbitron, sans-serif';
+            ctx.fillText('PRIME TIME 1986', 475, 1340);
+
+            ctx.restore();
+
+            const tex = new THREE.CanvasTexture(c);
+            tex.anisotropy = 4;
+            return tex;
+        }
+
+        function addWallSegment(x1, z1, x2, z2, height = 2.2, thickness = 0.65, restitution = 0.62, mat = null) {
+            const dx = x2 - x1;
+            const dz = z2 - z1;
+            const len = Math.hypot(dx, dz);
+            if (len < 0.01) return;
+
+            const angle = Math.atan2(dx, dz);
+            const midX = (x1 + x2) * 0.5;
+            const midZ = (z1 + z2) * 0.5;
+
+            const wallMat = mat || new THREE.MeshStandardMaterial({
+                color: 0x38bdf8,
+                emissive: 0x0c4a6e,
+                emissiveIntensity: 0.45,
+                metalness: 0.7,
+                roughness: 0.25
+            });
+
+            const mesh = new THREE.Mesh(new THREE.BoxGeometry(thickness, height, len), wallMat);
+            mesh.position.set(midX, height * 0.5, midZ);
+            mesh.rotation.y = angle;
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            playfieldGroup.add(mesh);
+
+            state.wallSegments.push({ x1, z1, x2, z2, radius: thickness * 0.5, restitution });
+        }
+
+        function buildPinballTable() {
+            const pfTex = createPlayfieldTexture();
+
+            // Main Playfield Deck
+            const deckWidth = PF.halfW * 2 + 2.8;
+            const deckLen = PF.bottomZ - PF.topZ + 3.2;
+            const deckMesh = new THREE.Mesh(
+                new THREE.BoxGeometry(deckWidth, 1.0, deckLen),
+                new THREE.MeshStandardMaterial({
+                    map: pfTex,
+                    roughness: 0.35,
+                    metalness: 0.25
+                })
+            );
+            deckMesh.position.set(0.8, -0.5, (PF.topZ + PF.bottomZ) * 0.5);
+            deckMesh.receiveShadow = true;
+            playfieldGroup.add(deckMesh);
+
+            // Outer Cabinet Rails & Backbox
+            const railMat = new THREE.MeshStandardMaterial({
+                color: 0x1e1b4b,
+                metalness: 0.6,
+                roughness: 0.3
+            });
+            const neonPinkMat = new THREE.MeshStandardMaterial({
+                color: 0xff2aa8,
+                emissive: 0xff2aa8,
+                emissiveIntensity: 0.85,
+                metalness: 0.5,
+                roughness: 0.2
+            });
+            const neonCyanMat = new THREE.MeshStandardMaterial({
+                color: 0x22d3ee,
+                emissive: 0x22d3ee,
+                emissiveIntensity: 0.8,
+                metalness: 0.5,
+                roughness: 0.2
+            });
+
+            // Left outer rail, right outer rail, top rail
+            addWallSegment(-PF.halfW, PF.bottomZ, -PF.halfW, PF.topZ + 4, 2.4, 0.8, 0.55, neonPinkMat);
+            addWallSegment(PF.laneWallX, PF.bottomZ, PF.laneWallX, PF.topZ + 4, 2.4, 0.75, 0.55, neonCyanMat);
+            addWallSegment(PF.halfW + 1.1, PF.bottomZ, PF.halfW + 1.1, PF.topZ + 3, 2.4, 0.8, 0.55, railMat);
+            addWallSegment(-PF.halfW, PF.topZ + 4, 0, PF.topZ, 2.4, 0.8, 0.55, neonPinkMat);
+            addWallSegment(0, PF.topZ, PF.halfW + 1.1, PF.topZ + 3, 2.4, 0.8, 0.55, neonCyanMat);
+
+            // Top-left & Top-right Microfilm Orbit guides
+            addWallSegment(-9.2, -16.5, -6.5, -19.8, 2.0, 0.55, 0.65, neonCyanMat);
+            addWallSegment(6.5, -19.8, 9.2, -16.5, 2.0, 0.55, 0.65, neonPinkMat);
+
+            // Inlane & Outlane Dividers around Left and Right Flippers
+            // Left outlane/inlane guide
+            addWallSegment(-11.2, 11.5, -11.2, 18.2, 2.0, 0.55, 0.55, railMat);
+            addWallSegment(-11.2, 11.5, -6.8, 17.8, 2.0, 0.55, 0.6, neonPinkMat);
+            // Right outlane/inlane guide (before shooter lane wall)
+            addWallSegment(9.6, 11.5, 9.6, 18.2, 2.0, 0.55, 0.55, railMat);
+            addWallSegment(9.6, 11.5, 5.2, 17.8, 2.0, 0.55, 0.6, neonCyanMat);
+
+            // Bottom Drain Guides leading down to Flipper Gap [-5.4, +3.8]
+            addWallSegment(-11.2, 18.2, -5.4, 21.8, 1.8, 0.55, 0.45, railMat);
+            addWallSegment(9.6, 18.2, 3.8, 21.8, 1.8, 0.55, 0.45, railMat);
+
+            // Shooter Lane Top Arch Diverter Gate
+            addWallSegment(PF.laneWallX, PF.topZ + 4, 7.6, PF.topZ + 1.5, 2.0, 0.5, 0.65, neonCyanMat);
+
+            // --- 3 Gadget Pop Bumpers (Briefcase, Decoder, Sunglasses) ---
+            const bumperSpecs = [
+                { x: -3.2, z: -10.5, label: 'BRIEFCASE', color: 0xff2aa8 },
+                { x: 2.8, z: -10.5, label: 'DECODER', color: 0x22d3ee },
+                { x: -0.2, z: -5.8, label: 'SUNGLASSES', color: 0xfacc15 }
+            ];
+
+            bumperSpecs.forEach((b, idx) => {
+                const group = new THREE.Group();
+                group.position.set(b.x, 0, b.z);
+
+                const capMat = new THREE.MeshStandardMaterial({
+                    color: b.color,
+                    emissive: b.color,
+                    emissiveIntensity: 0.65,
+                    metalness: 0.6,
+                    roughness: 0.2
+                });
+                const cap = new THREE.Mesh(new THREE.CylinderGeometry(1.55, 1.85, 1.6, 18), capMat);
+                cap.position.y = 1.0;
+                cap.castShadow = true;
+                group.add(cap);
+
+                const ring = new THREE.Mesh(
+                    new THREE.TorusGeometry(1.75, 0.14, 8, 24),
+                    new THREE.MeshBasicMaterial({ color: 0xffffff })
+                );
+                ring.rotation.x = Math.PI / 2;
+                ring.position.y = 0.55;
+                group.add(ring);
+
+                playfieldGroup.add(group);
+                state.bumpers.push({
+                    x: b.x,
+                    z: b.z,
+                    radius: 1.85,
+                    group,
+                    cap,
+                    color: b.color,
+                    pulse: 0,
+                    index: idx
+                });
+            });
+
+            // --- Left & Right Slingshots (Spy Dead Drop & Sitcom Laugh Track) ---
+            // Left slingshot triangle wall
+            addWallSegment(-8.8, 4.5, -5.8, 11.2, 2.0, 0.55, 1.25, neonPinkMat);
+            addWallSegment(-8.8, 4.5, -8.8, 9.8, 2.0, 0.55, 0.6, railMat);
+            state.slingshots.push({
+                x1: -8.8, z1: 4.5, x2: -5.8, z2: 11.2,
+                nx: 0.91, nz: -0.41, kick: 22, theme: 'SPY DEAD DROP', color: 0xff2aa8, flash: 0
+            });
+
+            // Right slingshot triangle wall
+            addWallSegment(7.2, 4.5, 4.2, 11.2, 2.0, 0.55, 1.25, neonCyanMat);
+            addWallSegment(7.2, 4.5, 7.2, 9.8, 2.0, 0.55, 0.6, railMat);
+            state.slingshots.push({
+                x1: 7.2, z1: 4.5, x2: 4.2, z2: 11.2,
+                nx: -0.91, nz: -0.41, kick: 22, theme: 'LAUGH TRACK', color: 0xfacc15, flash: 0
+            });
+
+            // --- 3 Safecracker Vault Standup Targets (Top Center Bank) ---
+            const vaultCoords = [
+                { x: -3.2, z: -16.8, color: 0xff2aa8 },
+                { x: 0.0, z: -17.6, color: 0xfacc15 },
+                { x: 3.2, z: -16.8, color: 0x22d3ee }
+            ];
+            vaultCoords.forEach((vc, idx) => {
+                const mat = new THREE.MeshStandardMaterial({
+                    color: vc.color,
+                    emissive: vc.color,
+                    emissiveIntensity: 0.85,
+                    metalness: 0.5,
+                    roughness: 0.2
+                });
+                const mesh = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.6, 0.55), mat);
+                mesh.position.set(vc.x, 0.85, vc.z);
+                mesh.castShadow = true;
+                playfieldGroup.add(mesh);
+
+                state.targets.push({
+                    x: vc.x,
+                    z: vc.z,
+                    radius: 1.05,
+                    mesh,
+                    mat,
+                    color: vc.color,
+                    hit: false,
+                    cooldown: 0,
+                    index: idx
+                });
+            });
+
+            // --- 3 Sitcom Rollover Lanes (Laugh Track Meter Builders) ---
+            const laneXs = [-4.2, -0.8, 2.6];
+            laneXs.forEach((lx, idx) => {
+                const lz = 14.5;
+                const mat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+                const pad = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.12, 1.6), mat);
+                pad.position.set(lx, 0.08, lz);
+                playfieldGroup.add(pad);
+
+                state.rollovers.push({
+                    x: lx,
+                    z: lz,
+                    radius: 1.0,
+                    pad,
+                    mat,
+                    cooldown: 0,
+                    index: idx
+                });
+            });
+
+            // --- Rotating Spy Radar Dish & Safecracker Vault Emblem on Playfield ---
+            const radarGroup = new THREE.Group();
+            radarGroup.position.set(-6.8, 1.4, -12.5);
+            const dish = new THREE.Mesh(
+                new THREE.ConeGeometry(1.5, 1.2, 12, 1, true),
+                new THREE.MeshStandardMaterial({
+                    color: 0x22d3ee,
+                    emissive: 0x0891b2,
+                    emissiveIntensity: 0.6,
+                    side: THREE.DoubleSide,
+                    metalness: 0.8,
+                    roughness: 0.2
+                })
+            );
+            dish.rotation.z = Math.PI * 0.35;
+            radarGroup.add(dish);
+            playfieldGroup.add(radarGroup);
+            state.radarDish = radarGroup;
+
+            // --- Tall Backbox Header at Top of Cabinet ---
+            const backbox = new THREE.Mesh(
+                new THREE.BoxGeometry(deckWidth + 0.6, 11, 4.2),
+                new THREE.MeshStandardMaterial({
+                    color: 0x130826,
+                    emissive: 0x3b0764,
+                    emissiveIntensity: 0.35,
+                    metalness: 0.6,
+                    roughness: 0.3
+                })
+            );
+            backbox.position.set(0.8, 5.2, PF.topZ - 2.2);
+            backbox.castShadow = true;
+            playfieldGroup.add(backbox);
+
+            const marqueeSign = new THREE.Mesh(
+                new THREE.BoxGeometry(deckWidth - 1.2, 3.2, 0.35),
+                new THREE.MeshBasicMaterial({ color: 0xff2aa8 })
+            );
+            marqueeSign.position.set(0.8, 7.4, PF.topZ - 0.05);
+            playfieldGroup.add(marqueeSign);
+        }
+
+        // ============================================================
+        // 4. FLIPPERS & PLUNGER 3D MESHES
+        // ============================================================
+        const flipperMat = new THREE.MeshStandardMaterial({
+            color: 0xfacc15,
+            emissive: 0xca8a04,
+            emissiveIntensity: 0.45,
+            metalness: 0.75,
+            roughness: 0.22
+        });
+
+        function createFlipperMesh(length, isLeft) {
+            const group = new THREE.Group();
+            const dir = isLeft ? 1 : -1;
+
+            const pivotHub = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, 1.2, 14), flipperMat);
+            pivotHub.position.y = 0.6;
+            group.add(pivotHub);
+
+            const blade = new THREE.Mesh(new THREE.BoxGeometry(length, 0.95, 0.72), flipperMat);
+            blade.position.set(dir * length * 0.5, 0.55, 0);
+            blade.castShadow = true;
+            group.add(blade);
+
+            playfieldGroup.add(group);
+            return group;
+        }
+
+        const flippers = {
+            left: {
+                pivotX: -5.4,
+                pivotZ: 20.6,
+                length: 4.3,
+                restAngle: 0.42,
+                activeAngle: -0.46,
+                angle: 0.42,
+                prevAngle: 0.42,
+                angVel: 0,
+                isLeft: true,
+                mesh: null
+            },
+            right: {
+                pivotX: 3.8,
+                pivotZ: 20.6,
+                length: 4.3,
+                restAngle: -0.42,
+                activeAngle: 0.46,
+                angle: -0.42,
+                prevAngle: -0.42,
+                angVel: 0,
+                isLeft: false,
+                mesh: null
+            }
+        };
+
+        flippers.left.mesh = createFlipperMesh(flippers.left.length, true);
+        flippers.left.mesh.position.set(flippers.left.pivotX, 0, flippers.left.pivotZ);
+
+        flippers.right.mesh = createFlipperMesh(flippers.right.length, false);
+        flippers.right.mesh.position.set(flippers.right.pivotX, 0, flippers.right.pivotZ);
+
+        // Plunger Mesh inside Shooter Lane
+        const plungerMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(1.1, 1.1, 1.2),
+            new THREE.MeshStandardMaterial({ color: 0x22d3ee, emissive: 0x0284c7, emissiveIntensity: 0.7 })
+        );
+        plungerMesh.position.set(PF.laneX, 0.6, PF.bottomZ - 1.5);
+        playfieldGroup.add(plungerMesh);
+
+        buildPinballTable();
+
+        // ============================================================
+        // 5. BALLS, PARTICLES & SCORE POPUPS
+        // ============================================================
+        const ballGeo = new THREE.SphereGeometry(PF.ballRadius, 24, 24);
+        const ballMat = new THREE.MeshStandardMaterial({
+            color: 0xf1f5f9,
+            metalness: 0.96,
+            roughness: 0.08
+        });
+
+        function spawnBall(x, z, vx = 0, vz = 0) {
+            const mesh = new THREE.Mesh(ballGeo, ballMat);
+            mesh.position.set(x, PF.ballY, z);
+            mesh.castShadow = true;
+            playfieldGroup.add(mesh);
+
+            const ball = {
+                x,
+                z,
+                vx,
+                vz,
+                mesh,
+                trailTimer: 0
+            };
+            state.balls.push(ball);
+            return ball;
+        }
+
+        const sparkGeo = new THREE.SphereGeometry(0.26, 6, 6);
+        function spawnSparks(x, z, color, count = 10, speed = 10) {
+            for (let i = 0; i < count; i++) {
+                const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 });
+                const mesh = new THREE.Mesh(sparkGeo, mat);
+                mesh.position.set(x, PF.ballY + 0.3, z);
+                playfieldGroup.add(mesh);
+
+                const ang = Math.random() * Math.PI * 2;
+                const spd = (0.35 + Math.random() * 0.85) * speed;
+                state.particles.push({
+                    mesh,
+                    vx: Math.cos(ang) * spd,
+                    vz: Math.sin(ang) * spd,
+                    vy: 2 + Math.random() * 5,
+                    life: 0.32 + Math.random() * 0.2,
+                    maxLife: 0.52
+                });
+            }
+        }
+
+        function updateParticles(dt) {
+            for (let i = state.particles.length - 1; i >= 0; i--) {
+                const p = state.particles[i];
+                p.life -= dt;
+                p.mesh.position.x += p.vx * dt;
+                p.mesh.position.z += p.vz * dt;
+                p.mesh.position.y = Math.max(0.2, p.mesh.position.y + p.vy * dt);
+                p.vy -= 14 * dt;
+
+                const t = Math.max(0, p.life / p.maxLife);
+                p.mesh.scale.setScalar(t);
+                p.mesh.material.opacity = t;
+
+                if (p.life <= 0) {
+                    playfieldGroup.remove(p.mesh);
+                    state.particles.splice(i, 1);
+                }
+            }
+        }
+
+        // ============================================================
+        // 6. MODE LOGIC, SCORING & LAUGH / SPY PROGRESSION
+        // ============================================================
+        function setDMD(topText, subText, holdSec = 2.4) {
+            state.dmdTop = topText;
+            state.dmdSub = subText;
+            state.dmdTimer = holdSec;
+        }
+
+        function addScore(pts, reason = '') {
+            if (state.phase !== 'playing') return;
+            const totalMult = state.baseMultiplier + LAUGH_LEVELS[state.laughTier].multBonus;
+            const earned = Math.round(pts * totalMult);
+            state.score += earned;
+            if (state.score > state.highScore) {
+                state.highScore = state.score;
+                localStorage.setItem('prime_time_1986_hi', String(state.highScore));
+            }
+            if (reason) {
+                setDMD(`${reason} +${earned.toLocaleString()}`, `MULTIPLIER ${totalMult}X • LAUGH ${LAUGH_LEVELS[state.laughTier].name}`, 1.7);
+            }
+        }
+
+        function advanceLaughTrack(amount) {
+            state.laughProgress = Math.min(100, state.laughProgress + amount);
+            const newTier = Math.min(3, Math.floor(state.laughProgress / 25));
+            if (newTier > state.laughTier) {
+                state.laughTier = newTier;
+                if (newTier > state.peakLaughTier) state.peakLaughTier = newTier;
+                audio.playLaughApplauseSwell();
+                setDMD(`LAUGH TRACK: ${LAUGH_LEVELS[newTier].name}!`, `BONUS +${LAUGH_LEVELS[newTier].multBonus}X MULTIPLIER ACTIVE`, 2.6);
+                addScore(5000 * (newTier + 1));
+            }
+            if (state.laughProgress >= 100) {
+                state.laughProgress = 25;
+                state.laughTier = 1;
+                triggerMultiball('PRIME TIME MULTIBALL!');
+            }
+        }
+
+        function advanceSpyVault() {
+            state.vaultHits++;
+            state.spyCombo++;
+            audio.playSpySting();
+            addScore(3500 * state.spyCombo, 'DEAD DROP / VAULT HIT');
+
+            if (state.vaultHits >= 3) {
+                state.vaultHits = 0;
+                state.baseMultiplier = Math.min(6, state.baseMultiplier + 1);
+                triggerMultiball('SAFECRACKER MULTIBALL!');
+            }
+        }
+
+        function triggerMultiball(titleText) {
+            setDMD(titleText, '3-BALL STUDIO FRENZY LAUNCHED!', 3.2);
+            audio.playSpySting();
+            audio.playLaughApplauseSwell();
+            state.ballSaveTimer = 14.0;
+
+            while (state.balls.length < 3) {
+                const offset = (state.balls.length - 1) * 2.2;
+                spawnBall(offset, -12.0, (Math.random() - 0.5) * 8, 6 + Math.random() * 5);
+            }
+        }
+
+        // ============================================================
+        // 7. SUBSTEPPED PINBALL COLLISION & FLIPPER PHYSICS
+        // ============================================================
+        function getFlipperTip(flip) {
+            const dir = flip.isLeft ? 1 : -1;
+            const tipX = flip.pivotX + Math.cos(flip.angle) * dir * flip.length;
+            const tipZ = flip.pivotZ + Math.sin(flip.angle) * dir * flip.length;
+            return { x: tipX, z: tipZ };
+        }
+
+        function collideBallWithSegment(ball, x1, z1, x2, z2, radius, restitution, segVx = 0, segVz = 0) {
+            const abx = x2 - x1;
+            const abz = z2 - z1;
+            const abLenSq = abx * abx + abz * abz;
+            if (abLenSq < 1e-6) return false;
+
+            const t = THREE.MathUtils.clamp(((ball.x - x1) * abx + (ball.z - z1) * abz) / abLenSq, 0, 1);
+            const closestX = x1 + t * abx;
+            const closestZ = z1 + t * abz;
+
+            const dx = ball.x - closestX;
+            const dz = ball.z - closestZ;
+            const dist = Math.hypot(dx, dz);
+            const minDist = PF.ballRadius + radius;
+
+            if (dist < minDist && dist > 1e-5) {
+                const nx = dx / dist;
+                const nz = dz / dist;
+                const overlap = minDist - dist;
+
+                ball.x += nx * overlap;
+                ball.z += nz * overlap;
+
+                // Relative velocity at contact point
+                const rvx = ball.vx - segVx;
+                const rvz = ball.vz - segVz;
+                const velAlongNormal = rvx * nx + rvz * nz;
+
+                if (velAlongNormal < 0) {
+                    const impulse = -(1 + restitution) * velAlongNormal;
+                    ball.vx += impulse * nx;
+                    ball.vz += impulse * nz;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function stepPinballPhysics(subDt) {
+            // 1. Update Left & Right Flipper Angular Motion
+            const leftPressed = state.keys['ArrowLeft'] || state.keys['KeyA'] || state.touch.leftFlipper;
+            const rightPressed = state.keys['ArrowRight'] || state.keys['KeyD'] || state.touch.rightFlipper;
+
+            [flippers.left, flippers.right].forEach(flip => {
+                const isPressed = flip.isLeft ? leftPressed : rightPressed;
+                const target = isPressed ? flip.activeAngle : flip.restAngle;
+                flip.prevAngle = flip.angle;
+
+                const speed = isPressed ? 28.0 : 17.5;
+                flip.angle = THREE.MathUtils.lerp(flip.angle, target, 1 - Math.exp(-speed * subDt));
+                flip.angVel = (flip.angle - flip.prevAngle) / Math.max(subDt, 1e-5);
+                flip.mesh.rotation.y = -flip.angle;
+            });
+
+            // 2. Integrate Each Ball
+            for (let i = state.balls.length - 1; i >= 0; i--) {
+                const b = state.balls[i];
+
+                // Apply playfield gravity slope (+Z is down toward flippers)
+                if (!state.tilted) {
+                    b.vz += PF.gravityY * PF.tiltSlopeZ * subDt;
+                }
+
+                // Subtle rolling friction
+                const damping = Math.pow(0.992, subDt * 60);
+                b.vx *= damping;
+                b.vz *= damping;
+
+                // Cap extreme velocity to preserve control
+                const maxSpd = 54;
+                const spd = Math.hypot(b.vx, b.vz);
+                if (spd > maxSpd) {
+                    b.vx = (b.vx / spd) * maxSpd;
+                    b.vz = (b.vz / spd) * maxSpd;
+                }
+
+                b.x += b.vx * subDt;
+                b.z += b.vz * subDt;
+
+                // 3. Collide with Static Playfield Walls
+                for (let w = 0; w < state.wallSegments.length; w++) {
+                    const seg = state.wallSegments[w];
+                    collideBallWithSegment(b, seg.x1, seg.z1, seg.x2, seg.z2, seg.radius, seg.restitution);
+                }
+
+                // 4. Collide with Rotating Flippers (Transfers angular swing momentum!)
+                [flippers.left, flippers.right].forEach(flip => {
+                    const tip = getFlipperTip(flip);
+                    const dir = flip.isLeft ? 1 : -1;
+                    // Approximate linear velocity at midpoint of flipper blade
+                    const midR = flip.length * 0.55;
+                    const surfVx = -Math.sin(flip.angle) * dir * midR * flip.angVel;
+                    const surfVz = Math.cos(flip.angle) * dir * midR * flip.angVel;
+
+                    const hit = collideBallWithSegment(
+                        b,
+                        flip.pivotX,
+                        flip.pivotZ,
+                        tip.x,
+                        tip.z,
+                        0.48,
+                        0.72,
+                        surfVx * 0.65,
+                        surfVz * 0.65
+                    );
+                    if (hit && Math.abs(flip.angVel) > 2.5) {
+                        // Add crisp upward/forward flipper shot kick
+                        b.vz -= Math.min(24, Math.abs(flip.angVel) * 0.85);
+                        b.vx += dir * 4.5 * Math.sign(flip.angVel);
+                    }
+                });
+
+                // 5. Collide with Gadget Pop Bumpers
+                for (let k = 0; k < state.bumpers.length; k++) {
+                    const bmp = state.bumpers[k];
+                    const dx = b.x - bmp.x;
+                    const dz = b.z - bmp.z;
+                    const dist = Math.hypot(dx, dz);
+                    const minD = PF.ballRadius + bmp.radius;
+
+                    if (dist < minD && dist > 1e-4) {
+                        const nx = dx / dist;
+                        const nz = dz / dist;
+                        b.x = bmp.x + nx * minD;
+                        b.z = bmp.z + nz * minD;
+
+                        const kickSpeed = Math.max(22, Math.hypot(b.vx, b.vz) * 1.18);
+                        b.vx = nx * kickSpeed + (Math.random() - 0.5) * 3;
+                        b.vz = nz * kickSpeed + (Math.random() - 0.5) * 3;
+
+                        bmp.pulse = 1.0;
+                        audio.playBumper(k);
+                        spawnSparks(bmp.x + nx * bmp.radius, bmp.z + nz * bmp.radius, bmp.color, 12, 13);
+                        addScore(1500, `${bmp.label} BUMPER`);
+                        advanceLaughTrack(6);
+                    }
+                }
+
+                // 6. Collide with Slingshots
+                for (let sIdx = 0; sIdx < state.slingshots.length; sIdx++) {
+                    const sl = state.slingshots[sIdx];
+                    const hit = collideBallWithSegment(b, sl.x1, sl.z1, sl.x2, sl.z2, 0.45, 1.25);
+                    if (hit) {
+                        b.vx += sl.nx * sl.kick;
+                        b.vz += sl.nz * sl.kick;
+                        sl.flash = 1.0;
+                        audio.playSlingshot();
+                        spawnSparks(b.x, b.z, sl.color, 10, 12);
+                        addScore(1200, sl.theme);
+                        if (sl.theme === 'LAUGH TRACK') advanceLaughTrack(8);
+                        else advanceSpyVault();
+                    }
+                }
+
+                // 7. Safecracker Vault Standup Targets
+                for (let tIdx = 0; tIdx < state.targets.length; tIdx++) {
+                    const trg = state.targets[tIdx];
+                    if (trg.cooldown > 0) continue;
+                    const d = Math.hypot(b.x - trg.x, b.z - trg.z);
+                    if (d < PF.ballRadius + trg.radius) {
+                        trg.cooldown = 0.35;
+                        trg.hit = true;
+                        trg.mesh.position.y = 0.35;
+                        b.vz = Math.abs(b.vz) * 0.85 + 10;
+                        spawnSparks(trg.x, trg.z, trg.color, 14, 14);
+                        advanceSpyVault();
+
+                        // If all 3 vault targets hit in a sequence, reset & award bonus!
+                        if (state.targets.every(t => t.hit)) {
+                            state.targets.forEach(t => {
+                                t.hit = false;
+                                t.mesh.position.y = 0.85;
+                            });
+                            addScore(10000, 'VAULT CRACKED!');
+                        }
+                    }
+                }
+
+                // 8. Sitcom Rollover Lanes
+                for (let rIdx = 0; rIdx < state.rollovers.length; rIdx++) {
+                    const ro = state.rollovers[rIdx];
+                    if (ro.cooldown > 0) continue;
+                    if (Math.hypot(b.x - ro.x, b.z - ro.z) < PF.ballRadius + ro.radius) {
+                        ro.cooldown = 0.45;
+                        state.sitcomCombo++;
+                        audio.playTargetChime(rIdx + 1);
+                        spawnSparks(ro.x, ro.z, 0xfacc15, 9, 9);
+                        addScore(2000 * state.sitcomCombo, 'SITCOM ROLLOVER');
+                        advanceLaughTrack(12);
+                    }
+                }
+
+                // Microfilm Orbit Bonus when crossing top arch
+                if (b.z < -19.2 && Math.abs(b.vz) > 4) {
+                    if (!b.orbitScored) {
+                        b.orbitScored = true;
+                        audio.playTargetChime(4);
+                        addScore(4000, 'MICROFILM ORBIT');
+                        advanceSpyVault();
+                    }
+                } else if (b.z > -12) {
+                    b.orbitScored = false;
+                }
+
+                // 9. Drain Check at Bottom of Playfield
+                if (b.z > PF.bottomZ + 1.5) {
+                    playfieldGroup.remove(b.mesh);
+                    state.balls.splice(i, 1);
+                }
+            }
+
+            // Handle Drain / Ball Save / Multiball Continuation / Game Over
+            if (state.phase === 'playing' && state.balls.length === 0) {
+                audio.playDrain();
+                if (state.ballSaveTimer > 0) {
+                    state.ballSaveTimer = 0;
+                    setDMD('BALL SAVED!', 'SHOOTER LANE READY — LAUNCH AGAIN', 2.4);
+                    spawnBall(PF.laneX, PF.bottomZ - 3.2, 0, 0);
+                } else if (state.ballNumber < PF.maxBalls) {
+                    state.ballNumber++;
+                    state.tilted = false;
+                    state.nudgeWarnings = 0;
+                    setDMD(`BALL ${state.ballNumber} OF ${PF.maxBalls}`, 'PULL PLUNGER TO LAUNCH', 2.4);
+                    spawnBall(PF.laneX, PF.bottomZ - 3.2, 0, 0);
+                } else {
+                    state.phase = 'gameover';
+                    document.getElementById('hud-overlay').classList.add('hidden');
+                    document.getElementById('touch-controls').classList.add('hidden');
+                    document.getElementById('go-score').textContent = state.score.toLocaleString();
+                    document.getElementById('go-hi').textContent = state.highScore.toLocaleString();
+                    document.getElementById('go-laugh').textContent = LAUGH_LEVELS[state.peakLaughTier].name;
+                    document.getElementById('gameover-screen').classList.remove('hidden');
+                }
+            }
+        }
+
+        // ============================================================
+        // 8. PLUNGER, TABLE NUDGE, CAMERA & INPUT CONTROLS
+        // ============================================================
+        function triggerNudge(dirX = 0) {
+            if (state.phase !== 'playing') return;
+            state.nudgeWarnings++;
+            state.nudgeDecayTimer = 4.5;
+
+            if (state.nudgeWarnings >= 3) {
+                state.tilted = true;
+                audio.playNudge(true);
+                setDMD('TILT! FLIPPERS LOCKED', 'WAIT FOR NEXT BALL', 3.0);
+                return;
+            }
+
+            audio.playNudge(false);
+            state.nudgeOffsetX = (dirX || (Math.random() > 0.5 ? 1 : -1)) * 0.45;
+            state.nudgeOffsetZ = -0.25;
+
+            state.balls.forEach(b => {
+                b.vx += (dirX || (Math.random() > 0.5 ? 1 : -1)) * 7.5;
+                b.vz -= 4.2;
+            });
+            setDMD(`TABLE NUDGE (${state.nudgeWarnings}/3)`, 'WATCH THE TILT METER!', 1.2);
+        }
+
+        function releasePlunger(chargeAmt) {
+            const power = THREE.MathUtils.clamp(chargeAmt, 0.2, 1.0);
+            state.plungerCharging = false;
+            state.plungerCharge = 0;
+            state.plungerExtension = 0;
+            document.getElementById('plunger-gauge-wrap').classList.add('hidden');
+
+            // Launch any ball sitting in the shooter lane
+            let launchedAny = false;
+            state.balls.forEach(b => {
+                if (b.x > PF.laneWallX && b.z > 6) {
+                    b.vz = -(38 + power * 36);
+                    b.vx = -1.2;
+                    launchedAny = true;
+                }
+            });
+
+            if (launchedAny) {
+                audio.playLaunch(power);
+                state.ballSaveTimer = 10.0;
+                setDMD('BALL IN PLAY!', 'HIT SPY VAULT & LAUGH LANES', 2.0);
+            }
+        }
+
+        function cycleCamera() {
+            state.cameraPreset = (state.cameraPreset + 1) % 3;
+            const names = ['CABINET ANGLE', 'OVERHEAD VIEW', 'ACTION CLOSE-UP'];
+            if (state.phase === 'playing') {
+                setDMD(`CAMERA: ${names[state.cameraPreset]}`, 'PRESS [C] TO CYCLE VIEW', 1.5);
+            }
+        }
+
+        window.addEventListener('keydown', (e) => {
+            audio.init();
+            const prevDown = !!state.keys[e.code];
+            state.keys[e.code] = true;
+
+            if (state.phase !== 'playing') return;
+
+            if ((e.code === 'ArrowLeft' || e.code === 'KeyA') && !prevDown && !state.tilted) {
+                audio.playFlipper(true);
+            }
+            if ((e.code === 'ArrowRight' || e.code === 'KeyD') && !prevDown && !state.tilted) {
+                audio.playFlipper(true);
+            }
+            if ((e.code === 'Space' || e.code === 'ArrowDown') && !prevDown) {
+                state.plungerCharging = true;
+            }
+            if ((e.code === 'KeyW' || e.code === 'ArrowUp' || e.code === 'KeyX') && !prevDown) {
+                triggerNudge(e.code === 'KeyA' ? -1 : 1);
+            }
+            if ((e.code === 'KeyC' || e.code === 'KeyR') && !prevDown) {
+                cycleCamera();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            state.keys[e.code] = false;
+            if (state.phase !== 'playing') return;
+
+            if ((e.code === 'ArrowLeft' || e.code === 'KeyA') && !state.tilted) {
+                audio.playFlipper(false);
+            }
+            if ((e.code === 'ArrowRight' || e.code === 'KeyD') && !state.tilted) {
+                audio.playFlipper(false);
+            }
+            if ((e.code === 'Space' || e.code === 'ArrowDown') && state.plungerCharging) {
+                releasePlunger(state.plungerCharge);
+            }
+        });
+
+        // HUD & Touch Button Bindings
+        document.getElementById('btn-cam').addEventListener('click', () => { audio.init(); cycleCamera(); });
+        document.getElementById('btn-music').addEventListener('click', (e) => {
+            audio.init();
+            audio.musicEnabled = !audio.musicEnabled;
+            e.target.textContent = `GROOVE: ${audio.musicEnabled ? 'ON' : 'OFF'}`;
+        });
+        document.getElementById('btn-sfx').addEventListener('click', (e) => {
+            audio.init();
+            audio.sfxEnabled = !audio.sfxEnabled;
+            e.target.textContent = `SFX: ${audio.sfxEnabled ? 'ON' : 'OFF'}`;
+        });
+
+        const touchOverlay = document.getElementById('touch-controls');
+        function setTouchControlsVisible(show) {
+            state.touchPadVisible = show;
+            if (show && state.phase === 'playing') {
+                touchOverlay.classList.remove('hidden');
+            } else {
+                touchOverlay.classList.add('hidden');
+            }
+        }
+        document.getElementById('btn-touch-toggle').addEventListener('click', () => {
+            audio.init();
+            setTouchControlsVisible(!state.touchPadVisible);
+        });
+
+        // Auto-enable touch pad on coarse-pointer / touch screens
+        if (('ontouchstart' in window) || navigator.maxTouchPoints > 0) {
+            state.touchPadVisible = true;
+        }
+
+        const tLeft = document.getElementById('touch-left-flipper');
+        tLeft.addEventListener('touchstart', (e) => { e.preventDefault(); audio.init(); state.touch.leftFlipper = true; tLeft.classList.add('active'); if (!state.tilted) audio.playFlipper(true); }, { passive: false });
+        tLeft.addEventListener('touchend', (e) => { e.preventDefault(); state.touch.leftFlipper = false; tLeft.classList.remove('active'); if (!state.tilted) audio.playFlipper(false); }, { passive: false });
+
+        const tRight = document.getElementById('touch-right-flipper');
+        tRight.addEventListener('touchstart', (e) => { e.preventDefault(); audio.init(); state.touch.rightFlipper = true; tRight.classList.add('active'); if (!state.tilted) audio.playFlipper(true); }, { passive: false });
+        tRight.addEventListener('touchend', (e) => { e.preventDefault(); state.touch.rightFlipper = false; tRight.classList.remove('active'); if (!state.tilted) audio.playFlipper(false); }, { passive: false });
+
+        const tPlunger = document.getElementById('touch-plunger');
+        tPlunger.addEventListener('touchstart', (e) => { e.preventDefault(); audio.init(); state.plungerCharging = true; tPlunger.classList.add('active'); }, { passive: false });
+        tPlunger.addEventListener('touchend', (e) => { e.preventDefault(); tPlunger.classList.remove('active'); if (state.plungerCharging) releasePlunger(state.plungerCharge); }, { passive: false });
+
+        document.getElementById('touch-nudge').addEventListener('touchstart', (e) => { e.preventDefault(); audio.init(); triggerNudge(0); }, { passive: false });
+
+        // ============================================================
+        // 9. HUD UPDATER, START / RESTART & MAIN ANIMATION LOOP
+        // ============================================================
+        function updateHUD(dt) {
+            document.getElementById('hud-score').textContent = state.score.toLocaleString();
+            document.getElementById('hud-hi').textContent = state.highScore.toLocaleString();
+            document.getElementById('hud-ball').textContent = `BALL ${state.ballNumber}/${PF.maxBalls}`;
+
+            const totalMult = state.baseMultiplier + LAUGH_LEVELS[state.laughTier].multBonus;
+            document.getElementById('hud-mult').textContent = `${totalMult}X`;
+
+            document.getElementById('hud-laugh-label').textContent = `LAUGH: ${LAUGH_LEVELS[state.laughTier].name} (${Math.round(state.laughProgress)}%)`;
+            document.getElementById('hud-spy-label').textContent = `VAULT: ${state.vaultHits}/3`;
+
+            const saveBadge = document.getElementById('hud-save-badge');
+            if (state.ballSaveTimer > 0) {
+                saveBadge.classList.remove('hidden');
+            } else {
+                saveBadge.classList.add('hidden');
+            }
+
+            if (state.dmdTimer > 0) {
+                state.dmdTimer -= dt;
+            } else {
+                state.dmdTop = `CHANNEL 86 • ${totalMult}X ACTIVE`;
+                state.dmdSub = `SPY COMBO ${state.spyCombo} • LAUGH ${LAUGH_LEVELS[state.laughTier].name}`;
+            }
+
+            document.getElementById('dmd-top').textContent = state.dmdTop;
+            document.getElementById('dmd-sub').textContent = state.dmdSub;
+
+            // Tilt pips
+            const pips = document.getElementById('tilt-pips').children;
+            for (let i = 0; i < pips.length; i++) {
+                pips[i].className = i < state.nudgeWarnings
+                    ? 'w-2.5 h-2.5 rounded-full bg-pink-500 border border-pink-200'
+                    : 'w-2.5 h-2.5 rounded-full bg-slate-700 border border-slate-500';
+            }
+            const tiltSt = document.getElementById('tilt-status');
+            if (state.tilted) {
+                tiltSt.textContent = 'TILT!';
+                tiltSt.className = 'text-red-400 font-black';
+            } else if (state.nudgeWarnings > 0) {
+                tiltSt.textContent = 'CAUTION';
+                tiltSt.className = 'text-amber-300 font-bold';
+            } else {
+                tiltSt.textContent = 'STEADY';
+                tiltSt.className = 'text-emerald-300 font-bold';
+            }
+        }
+
+        function startNewGame() {
+            audio.init();
+            audio.playSpySting();
+
+            // Reset balls & table targets
+            state.balls.forEach(b => playfieldGroup.remove(b.mesh));
+            state.balls = [];
+            state.particles.forEach(p => playfieldGroup.remove(p.mesh));
+            state.particles = [];
+
+            state.targets.forEach(t => {
+                t.hit = false;
+                t.cooldown = 0;
+                t.mesh.position.y = 0.85;
+            });
+
+            state.score = 0;
+            state.ballNumber = 1;
+            state.baseMultiplier = 1;
+            state.laughProgress = 0;
+            state.laughTier = 0;
+            state.peakLaughTier = 0;
+            state.vaultHits = 0;
+            state.spyCombo = 0;
+            state.sitcomCombo = 0;
+            state.nudgeWarnings = 0;
+            state.tilted = false;
+            state.ballSaveTimer = 0;
+            state.plungerCharging = false;
+            state.plungerCharge = 0;
+            state.phase = 'playing';
+
+            spawnBall(PF.laneX, PF.bottomZ - 3.2, 0, 0);
+            setDMD('SHOWTIME 1986!', 'HOLD SPACE OR PLUNGER TO LAUNCH', 3.0);
+
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('gameover-screen').classList.add('hidden');
+            document.getElementById('hud-overlay').classList.remove('hidden');
+            setTouchControlsVisible(state.touchPadVisible);
+        }
+
+        document.getElementById('btn-start').addEventListener('click', startNewGame);
+        document.getElementById('btn-restart').addEventListener('click', startNewGame);
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        const clock = new THREE.Clock();
+
+        function updateCameraPosition(dt) {
+            const leadBall = state.balls[0];
+            let targetPos, lookTarget;
+
+            if (state.cameraPreset === 1) {
+                // Steep Overhead Tactical View
+                targetPos = new THREE.Vector3(0.6, 52, 8);
+                lookTarget = new THREE.Vector3(0.6, 0, 1);
+            } else if (state.cameraPreset === 2 && leadBall) {
+                // Close Action View following lead ball
+                targetPos = new THREE.Vector3(leadBall.x * 0.45, 22, leadBall.z + 18);
+                lookTarget = new THREE.Vector3(leadBall.x * 0.6, 0, leadBall.z - 6);
+            } else {
+                // Classic Angled Arcade Cabinet View (Default)
+                targetPos = new THREE.Vector3(0.8, 36.5, 34.5);
+                lookTarget = new THREE.Vector3(0.8, 0.5, 1.5);
+            }
+
+            camera.position.lerp(targetPos, 1 - Math.exp(-7 * dt));
+            camera.lookAt(lookTarget);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = Math.min(clock.getDelta(), 0.05);
+
+            // Spin 80s Spy Radar Dish
+            if (state.radarDish) {
+                state.radarDish.rotation.y += 2.2 * dt;
+            }
+
+            // Decay Bumper & Slingshot visual pulses & target cooldowns
+            state.bumpers.forEach(bmp => {
+                if (bmp.pulse > 0) {
+                    bmp.pulse = Math.max(0, bmp.pulse - 5.5 * dt);
+                    const s = 1 + bmp.pulse * 0.28;
+                    bmp.cap.scale.set(s, 1 + bmp.pulse * 0.2, s);
+                }
+            });
+            state.targets.forEach(trg => {
+                if (trg.cooldown > 0) trg.cooldown = Math.max(0, trg.cooldown - dt);
+            });
+            state.rollovers.forEach(ro => {
+                if (ro.cooldown > 0) ro.cooldown = Math.max(0, ro.cooldown - dt);
+            });
+
+            // Decay table nudge shake
+            if (state.nudgeDecayTimer > 0) {
+                state.nudgeDecayTimer -= dt;
+                if (state.nudgeDecayTimer <= 0 && !state.tilted) {
+                    state.nudgeWarnings = Math.max(0, state.nudgeWarnings - 1);
+                }
+            }
+            state.nudgeOffsetX = THREE.MathUtils.lerp(state.nudgeOffsetX, 0, 1 - Math.exp(-12 * dt));
+            state.nudgeOffsetZ = THREE.MathUtils.lerp(state.nudgeOffsetZ, 0, 1 - Math.exp(-12 * dt));
+            playfieldGroup.position.set(state.nudgeOffsetX, 0, state.nudgeOffsetZ);
+
+            // Plunger charging
+            if (state.phase === 'playing') {
+                if (state.ballSaveTimer > 0) {
+                    state.ballSaveTimer = Math.max(0, state.ballSaveTimer - dt);
+                }
+
+                if (state.plungerCharging) {
+                    state.plungerCharge = Math.min(1, state.plungerCharge + 1.15 * dt);
+                    state.plungerExtension = state.plungerCharge * 2.2;
+                    document.getElementById('plunger-gauge-wrap').classList.remove('hidden');
+                    document.getElementById('plunger-gauge-wrap').classList.add('flex');
+                    const pct = Math.round(state.plungerCharge * 100);
+                    document.getElementById('plunger-gauge-fill').style.height = `${pct}%`;
+                    document.getElementById('plunger-pct').textContent = `${pct}%`;
+                }
+
+                plungerMesh.position.z = PF.bottomZ - 1.5 + state.plungerExtension;
+
+                // 6 Physics Substeps per frame for rock-solid ball & flipper collision accuracy
+                const substeps = 6;
+                const subDt = dt / substeps;
+                for (let s = 0; s < substeps; s++) {
+                    stepPinballPhysics(subDt);
+                }
+
+                // Sync 3D Ball Meshes & Subtle Trails
+                state.balls.forEach(b => {
+                    b.mesh.position.set(b.x, PF.ballY, b.z);
+                    b.mesh.rotation.x += b.vz * dt * 0.35;
+                    b.mesh.rotation.z -= b.vx * dt * 0.35;
+                });
+
+                updateHUD(dt);
+                audio.updateGroove(dt, true);
+            } else if (state.phase === 'title') {
+                // Attract mode gentle camera sway over the 1986 table
+                const t = clock.elapsedTime;
+                camera.position.set(0.8 + Math.sin(t * 0.5) * 5.5, 36.5 + Math.cos(t * 0.4) * 2.5, 34.5);
+                camera.lookAt(0.8, 0.5, 1.5);
+                audio.updateGroove(dt, false);
+            }
+
+            if (state.phase !== 'title') {
+                updateCameraPosition(dt);
+            }
+
+            updateParticles(dt);
+            renderer.render(scene, camera);
+        }
+
+        window.onload = function () {
+            animate();
+        };
+    </script>
+</body>
+</html>

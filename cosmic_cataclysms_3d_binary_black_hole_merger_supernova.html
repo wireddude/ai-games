@@ -1,0 +1,1194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>COSMIC CATACLYSMS 3D — Binary Black Hole Merger &amp; Supernova</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #03050c;
+            font-family: 'Inter', sans-serif;
+            color: #f8fafc;
+        }
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+            font-variant-numeric: tabular-nums;
+        }
+        #sim-canvas {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        .glass-panel {
+            background: rgba(7, 12, 26, 0.72);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1px solid rgba(148, 163, 184, 0.22);
+            box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55);
+        }
+        .ctrl-btn {
+            background: rgba(15, 24, 46, 0.82);
+            border: 1px solid rgba(148, 163, 184, 0.24);
+            transition: background-color 0.14s ease, border-color 0.14s ease, transform 0.08s ease;
+        }
+        .ctrl-btn:hover {
+            background: rgba(30, 46, 82, 0.92);
+            border-color: rgba(125, 211, 252, 0.65);
+        }
+        .ctrl-btn:active {
+            transform: scale(0.97);
+        }
+        .ctrl-btn.active-bbh {
+            background: rgba(124, 58, 237, 0.36);
+            border-color: #a78bfa;
+            color: #ede9fe;
+        }
+        .ctrl-btn.active-sn {
+            background: rgba(234, 88, 12, 0.36);
+            border-color: #fb923c;
+            color: #ffedd5;
+        }
+        .ctrl-btn.active-accent {
+            background: rgba(14, 116, 144, 0.45);
+            border-color: #38bdf8;
+            color: #e0f2fe;
+        }
+    </style>
+</head>
+<body class="relative w-full h-full overflow-hidden">
+
+    <!-- Fullscreen 3D Astrophysics Canvas -->
+    <canvas id="sim-canvas"></canvas>
+
+    <!-- Top Bar: Simulation Switcher, Trigger/Replay, Time & Global Audio/Pause -->
+    <header class="fixed top-2.5 left-2.5 right-2.5 z-30 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+        <!-- Left: Mode Switcher (BBH vs Supernova) + Trigger/Replay -->
+        <div class="flex flex-wrap items-center gap-1.5 pointer-events-auto">
+            <div class="glass-panel rounded-xl p-1 flex items-center gap-1">
+                <button id="btn-mode-bbh" class="ctrl-btn active-bbh rounded-lg px-3 py-1.5 text-xs font-bold flex items-center gap-1.5 cursor-pointer">
+                    <span>🌀</span>
+                    <span>BINARY BLACK HOLES</span>
+                </button>
+                <button id="btn-mode-sn" class="ctrl-btn rounded-lg px-3 py-1.5 text-xs font-bold text-slate-200 flex items-center gap-1.5 cursor-pointer">
+                    <span>💥</span>
+                    <span>SUPERNOVA</span>
+                </button>
+            </div>
+
+            <button id="btn-trigger" class="ctrl-btn active-accent rounded-xl px-3 py-2 text-xs font-bold text-cyan-200 flex items-center gap-1.5 cursor-pointer">
+                <span>⚡</span>
+                <span id="trigger-label">TRIGGER / REPLAY</span>
+            </button>
+        </div>
+
+        <!-- Right: Playback Speed, Pause, Mute & Inspector Toggle -->
+        <div class="flex flex-wrap items-center gap-1.5 pointer-events-auto">
+            <button data-time="0.25" class="time-btn ctrl-btn rounded-xl px-2.5 py-2 text-[11px] font-semibold text-slate-200 cursor-pointer">0.25× SLOW</button>
+            <button data-time="1.0" class="time-btn ctrl-btn active-accent rounded-xl px-2.5 py-2 text-[11px] font-semibold text-cyan-200 cursor-pointer">1.0× REAL</button>
+            <button id="btn-pause" class="ctrl-btn rounded-xl px-2.5 py-2 text-[11px] font-semibold text-amber-200 cursor-pointer">PAUSE [P]</button>
+            <button id="btn-mute" class="ctrl-btn rounded-xl px-2.5 py-2 text-[11px] font-semibold text-emerald-200 cursor-pointer">🔊 SOUND [M]</button>
+            <button id="btn-telemetry" class="ctrl-btn active-accent rounded-xl px-2.5 py-2 text-[11px] font-semibold text-white cursor-pointer">DATA</button>
+        </div>
+    </header>
+
+    <!-- Bottom Bar: Camera Presets & Free Flight Hints -->
+    <footer class="fixed bottom-2.5 left-2.5 right-2.5 z-30 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+        <div class="glass-panel rounded-xl p-1 flex flex-wrap items-center gap-1 pointer-events-auto">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 hidden sm:inline">CAM</span>
+            <button data-cam="overview" class="cam-preset-btn ctrl-btn active-accent rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-cyan-200 cursor-pointer">OVERVIEW</button>
+            <button data-cam="closeup" class="cam-preset-btn ctrl-btn rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 cursor-pointer">CLOSE-UP</button>
+            <button data-cam="polar" id="btn-cam-third" class="cam-preset-btn ctrl-btn rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 cursor-pointer">POLAR</button>
+        </div>
+
+        <div class="glass-panel rounded-xl px-3 py-1.5 hidden md:flex items-center gap-3 text-[11px] text-slate-300 mono">
+            <span id="hud-flight-status">FREE FLIGHT: WASD / ARROWS • Q/E: ALT • SHIFT: BOOST • DRAG: ORBIT/LOOK • WHEEL: ZOOM</span>
+        </div>
+    </footer>
+
+    <!-- Compact Telemetry & Physics Readout Card -->
+    <aside id="telemetry-panel" class="fixed top-16 right-2.5 z-20 w-72 sm:w-80 glass-panel rounded-2xl p-3.5 flex flex-col gap-2.5">
+        <div class="flex items-center justify-between border-b border-slate-700/70 pb-2">
+            <div>
+                <div id="tel-subtitle" class="text-[10px] font-bold uppercase tracking-wider text-purple-300">GENERAL RELATIVITY • GW</div>
+                <h2 id="tel-title" class="text-sm font-bold text-white mt-0.5">Binary Black Hole Merger</h2>
+            </div>
+            <span id="tel-phase-pill" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/25 text-purple-200 border border-purple-400/35 mono">INSPIRAL</span>
+        </div>
+
+        <p id="tel-desc" class="text-[11px] leading-relaxed text-slate-200/90">
+            Two stellar-mass/intermediate black holes spiral inward, emitting quadrupole gravitational waves and relativistic plasma streams before merging into a spinning remnant.
+        </p>
+
+        <!-- Dynamic 2x2 Telemetry Grid -->
+        <div class="grid grid-cols-2 gap-1.5 text-xs">
+            <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2">
+                <div id="m1-label" class="text-[9.5px] text-slate-400 uppercase">Separation</div>
+                <div id="m1-val" class="text-xs font-bold text-cyan-300 mono mt-0.5">18.4 rs</div>
+            </div>
+            <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2">
+                <div id="m2-label" class="text-[9.5px] text-slate-400 uppercase">Orbital Velocity</div>
+                <div id="m2-val" class="text-xs font-bold text-amber-300 mono mt-0.5">0.24 c</div>
+            </div>
+            <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2">
+                <div id="m3-label" class="text-[9.5px] text-slate-400 uppercase">GW Strain (h)</div>
+                <div id="m3-val" class="text-xs font-bold text-purple-300 mono mt-0.5">1.4×10⁻²¹</div>
+            </div>
+            <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2">
+                <div id="m4-label" class="text-[9.5px] text-slate-400 uppercase">Radiated Energy</div>
+                <div id="m4-val" class="text-xs font-bold text-emerald-300 mono mt-0.5">0.4 M☉c²</div>
+            </div>
+        </div>
+
+        <!-- Timeline Progress Bar -->
+        <div>
+            <div class="flex items-center justify-between text-[10px] text-slate-400 mono mb-1">
+                <span>EVENT TIMELINE</span>
+                <span id="tel-progress-pct">0%</span>
+            </div>
+            <div class="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                <div id="tel-progress-bar" class="h-full bg-gradient-to-r from-purple-400 via-cyan-400 to-amber-300 transition-all duration-100" style="width: 0%"></div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Mobile Quick Thrust Buttons (Bottom-Right above footer on small screens) -->
+    <div class="fixed bottom-14 right-2.5 z-30 flex md:hidden items-center gap-1.5 pointer-events-auto">
+        <button id="m-fwd" class="ctrl-btn rounded-xl px-2.5 py-2 text-[11px] font-bold text-cyan-200 cursor-pointer">▲ FWD</button>
+        <button id="m-back" class="ctrl-btn rounded-xl px-2.5 py-2 text-[11px] font-bold text-slate-200 cursor-pointer">▼ BACK</button>
+        <button id="m-up" class="ctrl-btn rounded-xl px-2.5 py-2 text-[11px] font-bold text-amber-200 cursor-pointer">↑ ALT</button>
+        <button id="m-dn" class="ctrl-btn rounded-xl px-2.5 py-2 text-[11px] font-bold text-purple-200 cursor-pointer">↓ ALT</button>
+    </div>
+
+    <script>
+        /**
+         * COSMIC CATACLYSMS 3D — BINARY BLACK HOLE MERGER & SUPERNOVA
+         * Self-contained Single-File HTML5 Three.js (r128) + Web Audio API Simulation
+         */
+
+        // =====================================================================
+        // 1. WEB AUDIO API SYNTHESIZER (COSMIC BASS, GW CHIRP, IMPLOSION & BLAST)
+        // =====================================================================
+        class CosmicAudioSynth {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+                this.droneTimer = 0;
+                this.lastBurstPhase = '';
+            }
+
+            init() {
+                if (this.ctx) {
+                    if (this.ctx.state === 'suspended') {
+                        this.ctx.resume().catch(() => {});
+                    }
+                    return;
+                }
+                try {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                } catch (err) {
+                    console.warn('Web Audio API unavailable:', err);
+                }
+            }
+
+            toggleMute() {
+                this.muted = !this.muted;
+                return this.muted;
+            }
+
+            playTone(freq, type, startTime, duration, volume = 0.06, slideTo = null) {
+                if (this.muted || !this.ctx || !freq || freq <= 0) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, startTime);
+                if (slideTo) {
+                    osc.frequency.exponentialRampToValueAtTime(Math.max(22, slideTo), startTime + duration);
+                }
+
+                gain.gain.setValueAtTime(0.0008, startTime);
+                gain.gain.linearRampToValueAtTime(volume, startTime + 0.015);
+                gain.gain.exponentialRampToValueAtTime(0.0008, startTime + duration);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(startTime);
+                osc.stop(startTime + duration + 0.025);
+            }
+
+            playNoiseBurst(duration, cutoff = 650, volume = 0.14) {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const len = Math.max(1, Math.floor(this.ctx.sampleRate * duration));
+                const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+                const data = buf.getChannelData(0);
+                for (let i = 0; i < len; i++) {
+                    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * duration * 0.45));
+                }
+                const src = this.ctx.createBufferSource();
+                src.buffer = buf;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(cutoff, now);
+                filter.frequency.exponentialRampToValueAtTime(80, now + duration);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(volume, now);
+                gain.gain.exponentialRampToValueAtTime(0.0008, now + duration);
+
+                src.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                src.start(now);
+            }
+
+            triggerMergerSurge() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                // Gravitational wave chirp rising into relativistic energy surge
+                this.playTone(68, 'sawtooth', now, 0.65, 0.11, 290);
+                this.playTone(136, 'triangle', now, 0.75, 0.09, 520);
+                this.playNoiseBurst(0.85, 1400, 0.16);
+            }
+
+            triggerSupernovaDetonation() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                // Core implosion dive followed by shockwave boom & harmonic shimmer
+                this.playTone(210, 'sine', now, 0.35, 0.09, 44);
+                this.playTone(55, 'sawtooth', now + 0.25, 1.1, 0.13, 28);
+                this.playNoiseBurst(1.25, 1800, 0.22);
+                [220, 329.63, 440, 659.25].forEach((f, idx) => {
+                    this.playTone(f, 'sine', now + 0.35 + idx * 0.07, 1.3, 0.035);
+                });
+            }
+
+            updateContinuous(dt, active, simMode, phaseKey, intensity) {
+                if (!this.ctx || this.muted || !active) return;
+
+                if (phaseKey !== this.lastBurstPhase) {
+                    this.lastBurstPhase = phaseKey;
+                    if (simMode === 'bbh' && (phaseKey === 'MERGER' || phaseKey === 'ENERGY SURGE')) {
+                        this.triggerMergerSurge();
+                    } else if (simMode === 'sn' && (phaseKey === 'SHOCK BREAKOUT' || phaseKey === 'SUPERNOVA FLASH')) {
+                        this.triggerSupernovaDetonation();
+                    }
+                }
+
+                this.droneTimer -= dt;
+                if (this.droneTimer <= 0) {
+                    const now = this.ctx.currentTime;
+                    if (simMode === 'bbh') {
+                        const baseFreq = 46 + intensity * 42;
+                        this.playTone(baseFreq, 'sine', now, 0.36, 0.045 + intensity * 0.035);
+                        this.playTone(baseFreq * 1.5, 'triangle', now, 0.32, 0.022);
+                        this.droneTimer = Math.max(0.14, 0.38 - intensity * 0.2);
+                    } else {
+                        const baseFreq = 42 + intensity * 38;
+                        this.playTone(baseFreq, 'triangle', now, 0.42, 0.045 + intensity * 0.03);
+                        this.playTone(baseFreq * 2, 'sine', now, 0.38, 0.02);
+                        this.droneTimer = 0.34;
+                    }
+                }
+            }
+        }
+
+        const synth = new CosmicAudioSynth();
+
+        // =====================================================================
+        // 2. THREE.JS SCENE, DEEP STARFIELD & SHARED SPACE INFRASTRUCTURE
+        // =====================================================================
+        const canvas = document.getElementById('sim-canvas');
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.15;
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x03050c);
+
+        const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.25, 3600);
+
+        // Deep starfield & subtle cosmic dust background
+        function buildDeepSpaceBackdrop() {
+            const starCount = 3400;
+            const pos = new Float32Array(starCount * 3);
+            const cols = new Float32Array(starCount * 3);
+            const palette = [
+                new THREE.Color(0xffffff),
+                new THREE.Color(0xc4b5fd),
+                new THREE.Color(0x7dd3fc),
+                new THREE.Color(0xfde68a),
+                new THREE.Color(0xfdba74)
+            ];
+
+            for (let i = 0; i < starCount; i++) {
+                const r = 680 + Math.random() * 1350;
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+                pos[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
+                pos[i * 3 + 1] = r * Math.cos(phi);
+                pos[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+
+                const c = palette[i % palette.length];
+                const b = 0.45 + Math.random() * 0.55;
+                cols[i * 3]     = c.r * b;
+                cols[i * 3 + 1] = c.g * b;
+                cols[i * 3 + 2] = c.b * b;
+            }
+
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+            const mat = new THREE.PointsMaterial({ size: 2.3, vertexColors: true, sizeAttenuation: true });
+            const stars = new THREE.Points(geo, mat);
+            scene.add(stars);
+
+            // Soft ambient & point lights
+            const amb = new THREE.AmbientLight(0x334155, 0.85);
+            scene.add(amb);
+
+            const keyLight = new THREE.PointLight(0xe0f2fe, 2.2, 600, 0.5);
+            keyLight.position.set(45, 55, 45);
+            scene.add(keyLight);
+
+            return { stars, keyLight };
+        }
+
+        const { stars: starfieldMesh, keyLight } = buildDeepSpaceBackdrop();
+
+        // =====================================================================
+        // 3. SIMULATION 1: BINARY BLACK HOLE MERGER (BBH)
+        // =====================================================================
+        const bbhGroup = new THREE.Group();
+        scene.add(bbhGroup);
+
+        function createBlackHoleAssembly(radius, ringColor, diskColor) {
+            const grp = new THREE.Group();
+
+            // Event horizon sphere
+            const horizon = new THREE.Mesh(
+                new THREE.SphereGeometry(radius, 36, 28),
+                new THREE.MeshBasicMaterial({ color: 0x000000 })
+            );
+            grp.add(horizon);
+
+            // Bright photon ring / gravitational lensing halo
+            const photonRing = new THREE.Mesh(
+                new THREE.TorusGeometry(radius * 1.18, radius * 0.085, 16, 64),
+                new THREE.MeshBasicMaterial({ color: ringColor, transparent: true, opacity: 0.92 })
+            );
+            grp.add(photonRing);
+
+            // Secondary tilted lensed ring for 3D relativistic depth
+            const lensedRing = new THREE.Mesh(
+                new THREE.TorusGeometry(radius * 1.32, radius * 0.045, 12, 64),
+                new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45 })
+            );
+            lensedRing.rotation.x = Math.PI * 0.36;
+            lensedRing.rotation.y = Math.PI * 0.18;
+            grp.add(lensedRing);
+
+            // Relativistic accretion disk
+            const disk = new THREE.Mesh(
+                new THREE.RingGeometry(radius * 1.35, radius * 2.85, 64),
+                new THREE.MeshBasicMaterial({
+                    color: diskColor,
+                    transparent: true,
+                    opacity: 0.52,
+                    side: THREE.DoubleSide
+                })
+            );
+            disk.rotation.x = Math.PI * 0.45;
+            grp.add(disk);
+
+            return { grp, horizon, photonRing, lensedRing, disk };
+        }
+
+        const bhA = createBlackHoleAssembly(3.4, 0xc084fc, 0x7c3aed);
+        const bhB = createBlackHoleAssembly(2.8, 0x38bdf8, 0x0284c7);
+        const bhRemnant = createBlackHoleAssembly(4.7, 0xfde047, 0xf97316);
+        bhRemnant.grp.visible = false;
+
+        bbhGroup.add(bhA.grp);
+        bbhGroup.add(bhB.grp);
+        bbhGroup.add(bhRemnant.grp);
+
+        // Relativistic bipolar jets emitted during merger & energy surge
+        const jetMat = new THREE.MeshBasicMaterial({
+            color: 0x38bdf8,
+            transparent: true,
+            opacity: 0.0,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        const jetNorth = new THREE.Mesh(new THREE.ConeGeometry(3.2, 68, 24, 1, true), jetMat);
+        jetNorth.position.y = 35;
+        const jetSouth = new THREE.Mesh(new THREE.ConeGeometry(3.2, 68, 24, 1, true), jetMat);
+        jetSouth.rotation.x = Math.PI;
+        jetSouth.position.y = -35;
+        bbhGroup.add(jetNorth);
+        bbhGroup.add(jetSouth);
+
+        // Spiral Gravitational Wave / Spacetime Ripple Rings propagating outward
+        const gwWaveCount = 14;
+        const gwWaves = [];
+        for (let i = 0; i < gwWaveCount; i++) {
+            const wGeo = new THREE.RingGeometry(0.88, 1.0, 72);
+            wGeo.rotateX(-Math.PI / 2);
+            const wMat = new THREE.MeshBasicMaterial({
+                color: i % 2 === 0 ? 0xa78bfa : 0x38bdf8,
+                transparent: true,
+                opacity: 0.25,
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+            const mesh = new THREE.Mesh(wGeo, wMat);
+            bbhGroup.add(mesh);
+            gwWaves.push({ mesh, mat: wMat, phase: i / gwWaveCount });
+        }
+
+        // Relativistic Plasma / Energy Surge Particles
+        const bbhParticleCount = 420;
+        const bbhPartPos = new Float32Array(bbhParticleCount * 3);
+        const bbhPartVel = new Float32Array(bbhParticleCount * 3);
+        const bbhPartCols = new Float32Array(bbhParticleCount * 3);
+        for (let i = 0; i < bbhParticleCount; i++) {
+            const ang = Math.random() * Math.PI * 2;
+            const rad = 12 + Math.random() * 28;
+            bbhPartPos[i * 3]     = Math.cos(ang) * rad;
+            bbhPartPos[i * 3 + 1] = (Math.random() - 0.5) * 4;
+            bbhPartPos[i * 3 + 2] = Math.sin(ang) * rad;
+
+            bbhPartVel[i * 3]     = (Math.random() - 0.5) * 6;
+            bbhPartVel[i * 3 + 1] = (Math.random() - 0.5) * 4;
+            bbhPartVel[i * 3 + 2] = (Math.random() - 0.5) * 6;
+
+            const c = i % 2 === 0 ? new THREE.Color(0xc084fc) : new THREE.Color(0x38bdf8);
+            bbhPartCols[i * 3]     = c.r;
+            bbhPartCols[i * 3 + 1] = c.g;
+            bbhPartCols[i * 3 + 2] = c.b;
+        }
+        const bbhPartGeo = new THREE.BufferGeometry();
+        bbhPartGeo.setAttribute('position', new THREE.BufferAttribute(bbhPartPos, 3));
+        bbhPartGeo.setAttribute('color', new THREE.BufferAttribute(bbhPartCols, 3));
+        const bbhPartPoints = new THREE.Points(
+            bbhPartGeo,
+            new THREE.PointsMaterial({ size: 1.55, vertexColors: true, transparent: true, opacity: 0.85 })
+        );
+        bbhGroup.add(bbhPartPoints);
+
+        // =====================================================================
+        // 4. SIMULATION 2: CORE-COLLAPSE SUPERNOVA (SN)
+        // =====================================================================
+        const snGroup = new THREE.Group();
+        snGroup.visible = false;
+        scene.add(snGroup);
+
+        // Massive Supergiant Star: outer convective envelope + hot inner core
+        const snEnvelopeMat = new THREE.MeshStandardMaterial({
+            color: 0xf97316,
+            emissive: 0xdc2626,
+            emissiveIntensity: 0.72,
+            roughness: 0.55,
+            transparent: true,
+            opacity: 0.92
+        });
+        const snEnvelope = new THREE.Mesh(new THREE.SphereGeometry(11.5, 40, 32), snEnvelopeMat);
+        snGroup.add(snEnvelope);
+
+        const snCoreMat = new THREE.MeshBasicMaterial({
+            color: 0xfef08a,
+            transparent: true,
+            opacity: 0.95
+        });
+        const snCore = new THREE.Mesh(new THREE.SphereGeometry(5.2, 28, 24), snCoreMat);
+        snGroup.add(snCore);
+
+        // Brilliant Supernova Flash Sphere
+        const snFlashMat = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.0,
+            depthWrite: false
+        });
+        const snFlashMesh = new THREE.Mesh(new THREE.SphereGeometry(14, 32, 24), snFlashMat);
+        snGroup.add(snFlashMesh);
+
+        // Expanding Supernova Shockwave Shell & Remnant Nebula Shell
+        const snShockMat = new THREE.MeshBasicMaterial({
+            color: 0x38bdf8,
+            transparent: true,
+            opacity: 0.0,
+            wireframe: false,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        const snShockMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 36, 28), snShockMat);
+        snGroup.add(snShockMesh);
+
+        const snNebulaMat = new THREE.MeshBasicMaterial({
+            color: 0xf97316,
+            transparent: true,
+            opacity: 0.0,
+            wireframe: true,
+            depthWrite: false
+        });
+        const snNebulaMesh = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 3), snNebulaMat);
+        snGroup.add(snNebulaMesh);
+
+        // Central Compact Remnant (Neutron Star / Pulsar with sweeping beams)
+        const remnantGroup = new THREE.Group();
+        remnantGroup.visible = false;
+        const pulsarStar = new THREE.Mesh(
+            new THREE.SphereGeometry(1.5, 24, 20),
+            new THREE.MeshBasicMaterial({ color: 0xe0f2fe })
+        );
+        remnantGroup.add(pulsarStar);
+
+        const beamMat = new THREE.MeshBasicMaterial({
+            color: 0x38bdf8,
+            transparent: true,
+            opacity: 0.45,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        const beamTop = new THREE.Mesh(new THREE.ConeGeometry(2.6, 52, 20, 1, true), beamMat);
+        beamTop.position.y = 26;
+        const beamBot = new THREE.Mesh(new THREE.ConeGeometry(2.6, 52, 20, 1, true), beamMat);
+        beamBot.rotation.x = Math.PI;
+        beamBot.position.y = -26;
+        remnantGroup.add(beamTop);
+        remnantGroup.add(beamBot);
+        snGroup.add(remnantGroup);
+
+        // Expanding Ejecta & Plasma Filament Particles
+        const snEjectaCount = 750;
+        const snEjectaPos = new Float32Array(snEjectaCount * 3);
+        const snEjectaDir = new Float32Array(snEjectaCount * 3);
+        const snEjectaCols = new Float32Array(snEjectaCount * 3);
+        const snPalette = [
+            new THREE.Color(0xfef08a),
+            new THREE.Color(0xf97316),
+            new THREE.Color(0xef4444),
+            new THREE.Color(0x38bdf8),
+            new THREE.Color(0xc084fc)
+        ];
+
+        for (let i = 0; i < snEjectaCount; i++) {
+            // Fibonacci/spherical random directions
+            const u = Math.random();
+            const v = Math.random();
+            const theta = 2 * Math.PI * u;
+            const phi = Math.acos(2 * v - 1);
+            const dx = Math.sin(phi) * Math.cos(theta);
+            const dy = Math.cos(phi);
+            const dz = Math.sin(phi) * Math.sin(theta);
+
+            snEjectaDir[i * 3]     = dx;
+            snEjectaDir[i * 3 + 1] = dy;
+            snEjectaDir[i * 3 + 2] = dz;
+
+            snEjectaPos[i * 3]     = dx * 3;
+            snEjectaPos[i * 3 + 1] = dy * 3;
+            snEjectaPos[i * 3 + 2] = dz * 3;
+
+            const c = snPalette[i % snPalette.length];
+            snEjectaCols[i * 3]     = c.r;
+            snEjectaCols[i * 3 + 1] = c.g;
+            snEjectaCols[i * 3 + 2] = c.b;
+        }
+
+        const snEjectaGeo = new THREE.BufferGeometry();
+        snEjectaGeo.setAttribute('position', new THREE.BufferAttribute(snEjectaPos, 3));
+        snEjectaGeo.setAttribute('color', new THREE.BufferAttribute(snEjectaCols, 3));
+        const snEjectaPoints = new THREE.Points(
+            snEjectaGeo,
+            new THREE.PointsMaterial({ size: 1.9, vertexColors: true, transparent: true, opacity: 0.9 })
+        );
+        snGroup.add(snEjectaPoints);
+
+        // =====================================================================
+        // 5. UNIFIED SIMULATION STATE, CAMERA RIG & TELEMETRY CONTROLLER
+        // =====================================================================
+        const simState = {
+            mode: 'bbh',       // 'bbh' or 'sn'
+            paused: false,
+            timeScale: 1.0,
+            bbhTime: 0,        // Cycle duration: ~18s (0..18)
+            snTime: 0,         // Cycle duration: ~19s (0..19)
+            simClock: 0,
+
+            // Camera rig (supports presets, free WASD/Arrows/QE flight, drag look & wheel zoom)
+            camPreset: 'overview',
+            camPos: new THREE.Vector3(0, 26, 66),
+            camTarget: new THREE.Vector3(0, 0, 0),
+            camYaw: 0,
+            camPitch: -0.34,
+            camDist: 72,
+            freeFlightMode: false,
+
+            keys: {},
+            dragging: false,
+            lastPointer: { x: 0, y: 0 },
+            touchThrust: { fwd: 0, vert: 0 }
+        };
+
+        function applyCameraPreset(presetName) {
+            simState.camPreset = presetName;
+            simState.freeFlightMode = false;
+            simState.camTarget.set(0, 0, 0);
+
+            if (presetName === 'overview') {
+                simState.camYaw = 0.25;
+                simState.camPitch = -0.36;
+                simState.camDist = simState.mode === 'bbh' ? 68 : 82;
+            } else if (presetName === 'closeup') {
+                simState.camYaw = 0.55;
+                simState.camPitch = -0.18;
+                simState.camDist = simState.mode === 'bbh' ? 28 : 30;
+            } else if (presetName === 'polar') {
+                simState.camYaw = 0.1;
+                simState.camPitch = -1.28;
+                simState.camDist = simState.mode === 'bbh' ? 64 : 74;
+            }
+
+            const cosP = Math.cos(simState.camPitch);
+            simState.camPos.set(
+                Math.sin(simState.camYaw) * cosP * simState.camDist,
+                -Math.sin(simState.camPitch) * simState.camDist,
+                Math.cos(simState.camYaw) * cosP * simState.camDist
+            );
+
+            document.querySelectorAll('.cam-preset-btn').forEach(btn => {
+                btn.classList.toggle('active-accent', btn.dataset.cam === presetName);
+            });
+        }
+
+        function triggerReplayCurrentSim() {
+            synth.init();
+            if (simState.mode === 'bbh') {
+                simState.bbhTime = 0;
+                synth.triggerMergerSurge();
+            } else {
+                simState.snTime = 0;
+                synth.triggerSupernovaDetonation();
+            }
+        }
+
+        function switchSimMode(newMode) {
+            if (simState.mode === newMode) return;
+            simState.mode = newMode;
+            const isBBH = newMode === 'bbh';
+
+            bbhGroup.visible = isBBH;
+            snGroup.visible = !isBBH;
+
+            document.getElementById('btn-mode-bbh').classList.toggle('active-bbh', isBBH);
+            document.getElementById('btn-mode-bbh').classList.toggle('text-slate-200', !isBBH);
+            document.getElementById('btn-mode-sn').classList.toggle('active-sn', !isBBH);
+            document.getElementById('btn-mode-sn').classList.toggle('text-slate-200', isBBH);
+
+            document.getElementById('btn-cam-third').textContent = isBBH ? 'POLAR' : 'REMNANT';
+
+            applyCameraPreset('overview');
+            synth.init();
+        }
+
+        function updateBBHSimulation(dt) {
+            const dur = 18.0;
+            simState.bbhTime = (simState.bbhTime + dt) % dur;
+            const t = simState.bbhTime;
+            const prog = t / dur;
+
+            // Phases:
+            // 0.00 - 0.56 (0..10.1s): Inspiral orbit decaying toward merger
+            // 0.56 - 0.70 (10.1..12.6s): Merger & relativistic energy surge / bipolar jets
+            // 0.70 - 1.00 (12.6..18.0s): Ringdown of larger remnant black hole & propagating GW ripples
+            let phaseKey = 'INSPIRAL';
+            let sepRs = 18.5;
+            let orbVelC = 0.22;
+            let gwStrain = 1.2e-21;
+            let radEnergy = 0.3;
+            let waveIntensity = 0.35;
+
+            if (prog < 0.56) {
+                const u = prog / 0.56;
+                phaseKey = u > 0.75 ? 'TIGHT INSPIRAL' : 'INSPIRAL';
+                const separation = Math.max(4.4, 21.0 * Math.pow(1 - u * 0.79, 1.15));
+                const omega = 1.6 + Math.pow(u, 2.2) * 8.5;
+                const angle = simState.simClock * omega * 0.38;
+
+                bhA.grp.visible = true;
+                bhB.grp.visible = true;
+                bhRemnant.grp.visible = false;
+
+                const rA = separation * 0.45;
+                const rB = separation * 0.55;
+                bhA.grp.position.set(Math.cos(angle) * rA, 0, Math.sin(angle) * rA);
+                bhB.grp.position.set(-Math.cos(angle) * rB, 0, -Math.sin(angle) * rB);
+
+                bhA.disk.rotation.z += dt * 4.5;
+                bhB.disk.rotation.z -= dt * 5.2;
+
+                jetMat.opacity = Math.max(0, (u - 0.78) * 1.4);
+                const jetScale = 0.4 + u * 0.9;
+                jetNorth.scale.set(jetScale, jetScale, jetScale);
+                jetSouth.scale.set(jetScale, jetScale, jetScale);
+
+                sepRs = separation * 1.15;
+                orbVelC = Math.min(0.62, 0.16 + Math.pow(u, 1.5) * 0.45);
+                gwStrain = 1.1e-21 * Math.pow(1 + u * 7, 1.4);
+                radEnergy = 0.2 + u * 2.1;
+                waveIntensity = 0.35 + u * 0.65;
+            } else if (prog < 0.72) {
+                const u = (prog - 0.56) / 0.16;
+                phaseKey = u < 0.45 ? 'MERGER' : 'ENERGY SURGE';
+                bhA.grp.visible = false;
+                bhB.grp.visible = false;
+                bhRemnant.grp.visible = true;
+
+                const pulse = 1 + Math.sin(u * Math.PI) * 0.26;
+                bhRemnant.grp.scale.setScalar(pulse);
+                bhRemnant.disk.rotation.z += dt * 9.5;
+
+                jetMat.opacity = Math.sin(u * Math.PI) * 0.78;
+                const surgeScale = 1.1 + Math.sin(u * Math.PI) * 0.95;
+                jetNorth.scale.set(surgeScale, surgeScale * 1.35, surgeScale);
+                jetSouth.scale.set(surgeScale, surgeScale * 1.35, surgeScale);
+
+                sepRs = 0.0;
+                orbVelC = 0.68;
+                gwStrain = 9.4e-21 * Math.sin(u * Math.PI * 0.75 + 0.35);
+                radEnergy = 2.3 + u * 1.6;
+                waveIntensity = 1.0;
+            } else {
+                const u = (prog - 0.72) / 0.28;
+                phaseKey = 'RINGDOWN';
+                bhA.grp.visible = false;
+                bhB.grp.visible = false;
+                bhRemnant.grp.visible = true;
+
+                const ringOsc = 1 + Math.sin(u * 18) * 0.05 * (1 - u);
+                bhRemnant.grp.scale.setScalar(ringOsc);
+                bhRemnant.disk.rotation.z += dt * (7.0 - u * 3.0);
+
+                jetMat.opacity = Math.max(0, (1 - u) * 0.35);
+                sepRs = 0.0;
+                orbVelC = 0.0;
+                gwStrain = 3.2e-21 * (1 - u * 0.75);
+                radEnergy = 3.9 + u * 0.4;
+                waveIntensity = Math.max(0.25, 0.85 * (1 - u * 0.65));
+            }
+
+            // Propagate spiral gravitational wave rings outward
+            gwWaves.forEach((w, idx) => {
+                w.phase = (w.phase + dt * (0.34 + waveIntensity * 0.38)) % 1;
+                const rad = 6 + w.phase * 115;
+                w.mesh.scale.setScalar(rad);
+                w.mesh.rotation.y = simState.simClock * 1.4 + idx * 0.35;
+                w.mat.opacity = (1 - w.phase) * (0.14 + waveIntensity * 0.36);
+            });
+
+            // Update relativistic plasma particles
+            const pAttr = bbhPartGeo.attributes.position;
+            for (let i = 0; i < bbhParticleCount; i++) {
+                let px = pAttr.getX(i);
+                let py = pAttr.getY(i);
+                let pz = pAttr.getZ(i);
+                const r = Math.max(2.5, Math.hypot(px, pz));
+                const swirl = (18 / r) * dt * (1.2 + waveIntensity * 2.2);
+                const nx = px * Math.cos(swirl) - pz * Math.sin(swirl);
+                const nz = px * Math.sin(swirl) + pz * Math.cos(swirl);
+
+                if (phaseKey === 'MERGER' || phaseKey === 'ENERGY SURGE') {
+                    const outPush = 1 + dt * 1.35;
+                    px = nx * outPush;
+                    pz = nz * outPush;
+                    py += (Math.sin(i + simState.simClock * 6) * 8) * dt;
+                } else {
+                    const pull = 1 - dt * 0.25;
+                    px = nx * pull;
+                    pz = nz * pull;
+                    py *= 0.96;
+                }
+
+                if (Math.hypot(px, py, pz) > 78 || Math.hypot(px, pz) < 3.2) {
+                    const ang = Math.random() * Math.PI * 2;
+                    const rad = 14 + Math.random() * 22;
+                    px = Math.cos(ang) * rad;
+                    py = (Math.random() - 0.5) * 3;
+                    pz = Math.sin(ang) * rad;
+                }
+
+                pAttr.setXYZ(i, px, py, pz);
+            }
+            pAttr.needsUpdate = true;
+
+            synth.updateContinuous(dt, !simState.paused, 'bbh', phaseKey, waveIntensity);
+
+            // Update Telemetry UI
+            document.getElementById('tel-subtitle').textContent = 'GENERAL RELATIVITY • GRAVITATIONAL WAVES';
+            document.getElementById('tel-title').textContent = 'Binary Black Hole Merger';
+            document.getElementById('tel-phase-pill').textContent = phaseKey;
+            document.getElementById('tel-desc').textContent =
+                'Spinning black holes spiral inward around their barycenter, driving spacetime ripples, merger energy surges, and bipolar relativistic jets.';
+            document.getElementById('m1-label').textContent = 'Separation';
+            document.getElementById('m1-val').textContent = `${sepRs.toFixed(1)} rs`;
+            document.getElementById('m2-label').textContent = 'Orbital Speed';
+            document.getElementById('m2-val').textContent = `${orbVelC.toFixed(2)} c`;
+            document.getElementById('m3-label').textContent = 'GW Strain (h)';
+            document.getElementById('m3-val').textContent = `${gwStrain.toExponential(1)}`;
+            document.getElementById('m4-label').textContent = 'Radiated Mass-E';
+            document.getElementById('m4-val').textContent = `${radEnergy.toFixed(1)} M☉c²`;
+            document.getElementById('tel-progress-pct').textContent = `${Math.round(prog * 100)}%`;
+            document.getElementById('tel-progress-bar').style.width = `${Math.round(prog * 100)}%`;
+        }
+
+        function updateSupernovaSimulation(dt) {
+            const dur = 19.0;
+            simState.snTime = (simState.snTime + dt) % dur;
+            const t = simState.snTime;
+            const prog = t / dur;
+
+            // Phases:
+            // 0.00 - 0.24 (0..4.56s): Pre-supernova instability & pulsing supergiant
+            // 0.24 - 0.36 (4.56..6.84s): Core collapse & bounce
+            // 0.36 - 0.48 (6.84..9.12s): Shock breakout & brilliant supernova flash
+            // 0.48 - 1.00 (9.12..19.0s): Expanding ejecta shell, SNR nebula & central pulsar remnant
+            let phaseKey = 'PRE-SN PULSATION';
+            let shockRadiusKm = 0.0;
+            let ejectaVelKmS = 0;
+            let lumSolar = 1.2e5;
+            let expansionFactor = 0.0;
+            let intensity = 0.4;
+
+            if (prog < 0.24) {
+                const u = prog / 0.24;
+                phaseKey = 'PRE-SN PULSATION';
+                const pulse = 1 + Math.sin(simState.simClock * (5 + u * 8)) * (0.06 + u * 0.08);
+                snEnvelope.visible = true;
+                snCore.visible = true;
+                remnantGroup.visible = false;
+                snEnvelope.scale.setScalar(pulse);
+                snCore.scale.setScalar(1 + Math.cos(simState.simClock * 9) * 0.12);
+                snEnvelopeMat.emissiveIntensity = 0.65 + u * 0.65;
+                snFlashMat.opacity = 0;
+                snShockMat.opacity = 0;
+                snNebulaMat.opacity = 0;
+                expansionFactor = 0.02;
+                lumSolar = 1.2e5 * (1 + u * 1.4);
+                intensity = 0.35 + u * 0.3;
+            } else if (prog < 0.36) {
+                const u = (prog - 0.24) / 0.12;
+                phaseKey = 'CORE COLLAPSE';
+                const squeeze = Math.max(0.22, 1 - u * 0.76);
+                snEnvelope.scale.setScalar(squeeze);
+                snCore.scale.setScalar(1.15 + u * 0.45);
+                snEnvelopeMat.emissiveIntensity = 1.3 + u * 1.2;
+                snFlashMat.opacity = Math.pow(u, 2) * 0.45;
+                snShockMat.opacity = 0;
+                snNebulaMat.opacity = 0;
+                expansionFactor = 0.02;
+                shockRadiusKm = 1800 * (1 - u * 0.7);
+                ejectaVelKmS = 4200;
+                lumSolar = 4.5e6 * (1 + u * 3);
+                intensity = 0.7 + u * 0.25;
+            } else if (prog < 0.50) {
+                const u = (prog - 0.36) / 0.14;
+                phaseKey = u < 0.45 ? 'SHOCK BREAKOUT' : 'SUPERNOVA FLASH';
+                snEnvelope.visible = u < 0.25;
+                snCore.visible = false;
+                remnantGroup.visible = u > 0.55;
+
+                const flashCurve = Math.sin(u * Math.PI);
+                snFlashMesh.scale.setScalar(0.8 + u * 2.8);
+                snFlashMat.opacity = flashCurve * 0.92;
+
+                const shockR = 6 + u * 44;
+                snShockMesh.scale.setScalar(shockR);
+                snShockMat.opacity = Math.max(0, (1 - u * 0.75) * 0.52);
+
+                snNebulaMesh.scale.setScalar(8 + u * 28);
+                snNebulaMat.opacity = u * 0.36;
+
+                expansionFactor = 0.05 + u * 0.38;
+                shockRadiusKm = 1200 + u * 26000;
+                ejectaVelKmS = 14800;
+                lumSolar = 2.8e9 * flashCurve + 4.0e8;
+                intensity = 1.0;
+            } else {
+                const u = (prog - 0.50) / 0.50;
+                phaseKey = 'SNR & REMNANT';
+                snEnvelope.visible = false;
+                snCore.visible = false;
+                remnantGroup.visible = true;
+                pulsarStar.rotation.y += dt * 12;
+                beamTop.rotation.y += dt * 8.5;
+                beamBot.rotation.y += dt * 8.5;
+
+                snFlashMat.opacity = Math.max(0, 0.22 * (1 - u * 2));
+                const shockR = 50 + u * 72;
+                snShockMesh.scale.setScalar(shockR);
+                snShockMat.opacity = Math.max(0, (1 - u) * 0.24);
+
+                snNebulaMesh.scale.setScalar(36 + u * 54);
+                snNebulaMesh.rotation.y += dt * 0.18;
+                snNebulaMat.opacity = Math.max(0.08, (1 - u * 0.65) * 0.34);
+
+                expansionFactor = 0.43 + u * 0.57;
+                shockRadiusKm = 27200 + u * 68000;
+                ejectaVelKmS = Math.round(11200 * (1 - u * 0.35));
+                lumSolar = 1.8e7 * Math.pow(1 - u * 0.6, 1.4);
+                intensity = Math.max(0.28, 0.72 * (1 - u * 0.55));
+            }
+
+            // Expand glowing ejecta shell & plasma filaments
+            const eAttr = snEjectaGeo.attributes.position;
+            const shellDist = 2.5 + expansionFactor * 74;
+            for (let i = 0; i < snEjectaCount; i++) {
+                const dx = snEjectaDir[i * 3];
+                const dy = snEjectaDir[i * 3 + 1];
+                const dz = snEjectaDir[i * 3 + 2];
+                const jitter = 0.78 + ((i % 19) / 19) * 0.44;
+                const rad = shellDist * jitter;
+                eAttr.setXYZ(i, dx * rad, dy * rad, dz * rad);
+            }
+            eAttr.needsUpdate = true;
+
+            synth.updateContinuous(dt, !simState.paused, 'sn', phaseKey, intensity);
+
+            // Update Telemetry UI
+            document.getElementById('tel-subtitle').textContent = 'STELLAR EVOLUTION • CORE COLLAPSE';
+            document.getElementById('tel-title').textContent = 'Core-Collapse Supernova';
+            document.getElementById('tel-phase-pill').textContent = phaseKey;
+            document.getElementById('tel-desc').textContent =
+                'Iron core collapse rebounds into a blast shockwave, driving luminous ejecta filaments, an expanding SNR nebula, and a compact neutron star.';
+            document.getElementById('m1-label').textContent = 'Stellar Phase';
+            document.getElementById('m1-val').textContent = phaseKey.split(' ')[0];
+            document.getElementById('m2-label').textContent = 'Shock Radius';
+            document.getElementById('m2-val').textContent = `${Math.round(shockRadiusKm).toLocaleString()} km`;
+            document.getElementById('m3-label').textContent = 'Ejecta Speed';
+            document.getElementById('m3-val').textContent = `${ejectaVelKmS.toLocaleString()} km/s`;
+            document.getElementById('m4-label').textContent = 'Luminosity';
+            document.getElementById('m4-val').textContent = `${lumSolar.toExponential(1)} L☉`;
+            document.getElementById('tel-progress-pct').textContent = `${Math.round(prog * 100)}%`;
+            document.getElementById('tel-progress-bar').style.width = `${Math.round(prog * 100)}%`;
+        }
+
+        function updateSimulation(dt) {
+            if (simState.paused) return;
+            const scaledDt = dt * simState.timeScale;
+            simState.simClock += scaledDt;
+            starfieldMesh.rotation.y += scaledDt * 0.012;
+
+            // Free 3D flight / camera look movement
+            let fwd = simState.touchThrust.fwd;
+            let right = 0;
+            let vert = simState.touchThrust.vert;
+
+            if (simState.keys['KeyW'] || simState.keys['ArrowUp']) fwd += 1;
+            if (simState.keys['KeyS'] || simState.keys['ArrowDown']) fwd -= 1;
+            if (simState.keys['KeyD'] || simState.keys['ArrowRight']) right += 1;
+            if (simState.keys['KeyA'] || simState.keys['ArrowLeft']) right -= 1;
+            if (simState.keys['KeyE'] || simState.keys['Space']) vert += 1;
+            if (simState.keys['KeyQ'] || simState.keys['KeyC']) vert -= 1;
+
+            const boost = (simState.keys['ShiftLeft'] || simState.keys['ShiftRight']) ? 2.4 : 1.0;
+            const moving = Math.hypot(fwd, right, vert) > 0.02;
+
+            if (moving) {
+                simState.freeFlightMode = true;
+                const dirVec = new THREE.Vector3();
+                camera.getWorldDirection(dirVec);
+                const rightVec = new THREE.Vector3().crossVectors(dirVec, camera.up).normalize();
+                const spd = 36 * boost * dt;
+
+                simState.camPos.addScaledVector(dirVec, fwd * spd);
+                simState.camPos.addScaledVector(rightVec, right * spd);
+                simState.camPos.y += vert * spd * 0.85;
+                simState.camTarget.addScaledVector(dirVec, fwd * spd);
+                simState.camTarget.addScaledVector(rightVec, right * spd);
+                simState.camTarget.y += vert * spd * 0.85;
+            } else if (!simState.freeFlightMode) {
+                const cosP = Math.cos(simState.camPitch);
+                simState.camPos.set(
+                    simState.camTarget.x + Math.sin(simState.camYaw) * cosP * simState.camDist,
+                    simState.camTarget.y - Math.sin(simState.camPitch) * simState.camDist,
+                    simState.camTarget.z + Math.cos(simState.camYaw) * cosP * simState.camDist
+                );
+            }
+
+            camera.position.copy(simState.camPos);
+            if (simState.freeFlightMode) {
+                const lookEuler = new THREE.Euler(simState.camPitch, simState.camYaw, 0, 'YXZ');
+                camera.quaternion.setFromEuler(lookEuler);
+            } else {
+                camera.lookAt(simState.camTarget);
+            }
+
+            if (simState.mode === 'bbh') {
+                updateBBHSimulation(scaledDt);
+            } else {
+                updateSupernovaSimulation(scaledDt);
+            }
+        }
+
+        // =====================================================================
+        // 6. EVENT LISTENERS, KEYBOARD, POINTER DRAG, WHEEL & TOUCH CONTROLS
+        // =====================================================================
+        document.getElementById('btn-mode-bbh').addEventListener('click', () => switchSimMode('bbh'));
+        document.getElementById('btn-mode-sn').addEventListener('click', () => switchSimMode('sn'));
+        document.getElementById('btn-trigger').addEventListener('click', triggerReplayCurrentSim);
+
+        document.querySelectorAll('.time-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                synth.init();
+                simState.timeScale = parseFloat(btn.dataset.time);
+                document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active-accent', 'text-cyan-200'));
+                btn.classList.add('active-accent', 'text-cyan-200');
+            });
+        });
+
+        function togglePause() {
+            simState.paused = !simState.paused;
+            document.getElementById('btn-pause').textContent = simState.paused ? 'RESUME [P]' : 'PAUSE [P]';
+            document.getElementById('btn-pause').classList.toggle('active-accent', simState.paused);
+        }
+
+        function toggleMute() {
+            synth.init();
+            const isMuted = synth.toggleMute();
+            document.getElementById('btn-mute').textContent = isMuted ? '🔇 MUTED [M]' : '🔊 SOUND [M]';
+        }
+
+        document.getElementById('btn-pause').addEventListener('click', togglePause);
+        document.getElementById('btn-mute').addEventListener('click', toggleMute);
+
+        document.getElementById('btn-telemetry').addEventListener('click', () => {
+            const panel = document.getElementById('telemetry-panel');
+            panel.classList.toggle('hidden');
+            document.getElementById('btn-telemetry').classList.toggle('active-accent', !panel.classList.contains('hidden'));
+        });
+
+        document.querySelectorAll('.cam-preset-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                synth.init();
+                applyCameraPreset(btn.dataset.cam);
+            });
+        });
+
+        // Mouse / Touch drag to orbit or look around
+        canvas.addEventListener('pointerdown', (e) => {
+            synth.init();
+            simState.dragging = true;
+            simState.lastPointer.x = e.clientX;
+            simState.lastPointer.y = e.clientY;
+        });
+
+        window.addEventListener('pointermove', (e) => {
+            if (!simState.dragging) return;
+            const dx = e.clientX - simState.lastPointer.x;
+            const dy = e.clientY - simState.lastPointer.y;
+            simState.lastPointer.x = e.clientX;
+            simState.lastPointer.y = e.clientY;
+
+            simState.camYaw -= dx * 0.0052;
+            simState.camPitch = Math.max(-1.48, Math.min(1.48, simState.camPitch + dy * 0.0046));
+        });
+
+        window.addEventListener('pointerup', () => {
+            simState.dragging = false;
+        });
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            if (simState.freeFlightMode) {
+                const dir = new THREE.Vector3();
+                camera.getWorldDirection(dir);
+                simState.camPos.addScaledVector(dir, -Math.sign(e.deltaY) * 8);
+                simState.camTarget.addScaledVector(dir, -Math.sign(e.deltaY) * 8);
+            } else {
+                const mult = e.deltaY > 0 ? 1.12 : 0.89;
+                simState.camDist = Math.max(12, Math.min(220, simState.camDist * mult));
+            }
+        }, { passive: false });
+
+        window.addEventListener('keydown', (e) => {
+            synth.init();
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+                e.preventDefault();
+            }
+            simState.keys[e.code] = true;
+            if (e.repeat) return;
+
+            if (e.code === 'KeyM') toggleMute();
+            else if (e.code === 'KeyP') togglePause();
+            else if (e.code === 'KeyR') triggerReplayCurrentSim();
+            else if (e.code === 'Digit1') applyCameraPreset('overview');
+            else if (e.code === 'Digit2') applyCameraPreset('closeup');
+            else if (e.code === 'Digit3') applyCameraPreset('polar');
+        });
+
+        window.addEventListener('keyup', (e) => {
+            simState.keys[e.code] = false;
+        });
+
+        function bindTouchThrust(id, prop, val) {
+            const el = document.getElementById(id);
+            el.addEventListener('pointerdown', (e) => { e.preventDefault(); synth.init(); simState.touchThrust[prop] = val; });
+            const clear = () => { simState.touchThrust[prop] = 0; };
+            el.addEventListener('pointerup', clear);
+            el.addEventListener('pointerleave', clear);
+            el.addEventListener('pointercancel', clear);
+        }
+        bindTouchThrust('m-fwd', 'fwd', 1);
+        bindTouchThrust('m-back', 'fwd', -1);
+        bindTouchThrust('m-up', 'vert', 1);
+        bindTouchThrust('m-dn', 'vert', -1);
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // =====================================================================
+        // 7. WINDOW ONLOAD & MAIN ANIMATION LOOP
+        // =====================================================================
+        let prevTime = performance.now();
+
+        function animate(now) {
+            requestAnimationFrame(animate);
+            const dt = Math.min((now - prevTime) / 1000, 0.05);
+            prevTime = now;
+
+            updateSimulation(dt);
+            renderer.render(scene, camera);
+        }
+
+        window.onload = function () {
+            applyCameraPreset('overview');
+            requestAnimationFrame(animate);
+        };
+    </script>
+</body>
+</html>

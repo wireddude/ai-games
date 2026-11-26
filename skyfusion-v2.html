@@ -102,6 +102,18 @@
   .keys b{color:var(--cyan);font-weight:800}
   #fly,#again,#resumeBtn{margin-top:4px;border:0;color:#07202c;background:linear-gradient(#e7fbff,#5fd0ef);
     font-size:18px;letter-spacing:.14em;padding:14px 32px;border-radius:14px;box-shadow:0 10px 28px rgba(95,208,239,.35)}
+  .planes{display:flex;gap:10px;justify-content:center;margin:16px auto 4px;flex-wrap:wrap;max-width:520px}
+  .plane-card{cursor:pointer;padding:10px 12px 11px;border-radius:14px;border:2px solid var(--line);
+    background:rgba(6,18,28,.5);text-align:center;min-width:132px;flex:0 1 auto;
+    transition:transform .12s,border-color .12s,background .12s,box-shadow .12s;pointer-events:auto}
+  .plane-card:hover{transform:translateY(-2px);border-color:rgba(142,235,242,.6)}
+  .plane-card.sel{border-color:var(--gold);background:rgba(255,211,138,.15);box-shadow:0 0 22px rgba(255,211,138,.28)}
+  .plane-ico{display:block;margin:0 auto 7px;width:64px;height:34px}
+  .plane-name{font:800 14px/1.1 ui-monospace,SFMono-Regular,monospace;letter-spacing:.08em;color:var(--ink)}
+  .plane-card.sel .plane-name{color:var(--gold)}
+  .plane-blurb{font-size:10.5px;color:var(--muted);margin-top:5px;line-height:1.32;max-width:150px}
+  .plane-key{display:inline-block;margin-top:7px;font:800 9px/1 ui-monospace,monospace;letter-spacing:.1em;
+    color:var(--cyan);border:1px solid var(--line);border-radius:6px;padding:3px 6px}
   .foot{margin-top:10px;font-size:11px;letter-spacing:.04em;color:rgba(231,244,251,.62)}
   body.live #start{display:none}
   @media (pointer:coarse){ #hint{display:none} #stats b{font-size:18px} #scorebox b{font-size:22px} }
@@ -147,10 +159,11 @@
       <button id="qBtn" type="button">HIGH</button>
       <button id="resetBtn" type="button">RESET</button>
       <button id="dnBtn" type="button">☾ NIGHT</button>
+      <button id="trafficBtn" type="button">TRAFFIC: ON</button>
       <button id="pauseBtn" type="button">❚❚ PAUSE</button>
     </div>
   </div>
-  <div id="hint" class="hud">WASD / ARROWS FLY · SHIFT CTRL OR +/- POWER · WHEEL POWER · SPACE FIRES · DRAG STEERS · G BANDITS · T DAY/NIGHT · P PAUSE</div>
+  <div id="hint" class="hud">WASD / ARROWS FLY · SHIFT CTRL OR +/- POWER · WHEEL POWER · SPACE FIRES · DRAG STEERS · Q PLANE · G BANDITS · H TRAFFIC · T DAY/NIGHT · P PAUSE</div>
   <div id="reticle" class="hud"></div>
   <div id="toast" class="hud"></div>
   <div id="pips"></div>
@@ -160,7 +173,8 @@
   <div id="start">
     <div class="card glass">
       <h1>SKYFUSION</h1>
-      <p class="lede">San Diego, sketched from the air. Lift off Lindbergh Field, thread the rings over the bay, the bridge, downtown, and Point Loma. Bandits drop in every minute or so. You do not need to fly like a pilot.</p>
+      <p class="lede">San Diego, sketched from the air. Pick a plane, lift off Lindbergh Field, thread the rings over the bay, the bridge, downtown, Cowles Mountain, and Point Loma. Bandits drop in every minute or so. You do not need to fly like a pilot.</p>
+      <div class="planes" id="planes"></div>
       <div class="keys">
         <div><b>W / ↑</b> · nose up, climb</div>
         <div><b>S / ↓</b> · nose down, dive</div>
@@ -175,6 +189,7 @@
         <div><b>Slider</b> · touch throttle</div>
         <div><b>FIRE</b> · touch trigger</div>
         <div><b>C / V</b> · chase or cockpit</div>
+        <div><b>Q</b> · next plane (or tap a card)</div>
         <div><b>R / M / G</b> · reset, mute, bandits</div>
         <div><b>T / N</b> · day &amp; night, auto-dusk</div>
         <div><b>P / Esc</b> · pause (auto on window blur)</div>
@@ -1082,12 +1097,289 @@ function buildEnemyMesh(){
   g.scale.setScalar(1.7);
   return g;
 }
-const plane = buildPlayer();
+function buildMarauderMesh(){
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(
+    fuselageGeo([[0.02,-3.8],[0.6,-3.1],[1.0,-1.5],[1.05,0.4],[0.9,1.9],[0.4,3.1],[0.05,3.6]], 12),
+    new THREE.MeshStandardMaterial({ color: 0x2b2f36, roughness: 0.75, metalness: 0.35 })
+  );
+  g.add(body);
+  const wingMat = new THREE.MeshStandardMaterial({ color: 0x3a4048, roughness: 0.7, metalness: 0.3, side: THREE.DoubleSide });
+  const wing = new THREE.Mesh(taperedWing(9.5, 2.7, 1.5, 0.28, 0.55), wingMat);
+  g.add(wing);
+  const engMat = new THREE.MeshStandardMaterial({ color: 0x1c1f24, roughness: 0.6, metalness: 0.5 });
+  const engGeo = new THREE.CylinderGeometry(0.55, 0.55, 1.5, 10);
+  engGeo.rotateX(Math.PI / 2);
+  const cowGeo = new THREE.CylinderGeometry(0.6, 0.5, 0.5, 10);
+  cowGeo.rotateX(Math.PI / 2);
+  const cowMat = new THREE.MeshStandardMaterial({ color: 0xd24a3e, roughness: 0.5, metalness: 0.4, emissive: 0x4a140f, emissiveIntensity: 0.4 });
+  for (const s of [-1, 1]){
+    const eng = new THREE.Mesh(engGeo, engMat);
+    eng.position.set(s * 4.6, -0.45, -0.6);
+    g.add(eng);
+    const cow = new THREE.Mesh(cowGeo, cowMat);
+    cow.position.set(s * 4.6, -0.45, -1.45);
+    g.add(cow);
+  }
+  const tailWing = new THREE.Mesh(taperedWing(2.7, 1.2, 0.6, 0.08, 0.3), wingMat);
+  tailWing.position.set(0, 0.6, 3.0);
+  g.add(tailWing);
+  for (const s of [-1, 1]){
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.16, 2.0, 1.5), wingMat);
+    fin.position.set(s * 0.7, 1.35, 3.0);
+    fin.rotation.y = s * 0.25;
+    g.add(fin);
+  }
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.35, 10, 8), engMat);
+  nose.scale.set(1, 0.8, 1.4);
+  nose.position.set(0, 0.1, -3.9);
+  g.add(nose);
+  const stripeMat = new THREE.MeshBasicMaterial({ color: 0xd24a3e, side: THREE.DoubleSide });
+  for (const s of [-1, 1]){
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.2, 5.2), stripeMat);
+    stripe.position.set(s * 1.0, 0.25, -0.4);
+    g.add(stripe);
+  }
+  g.scale.setScalar(2.25);
+  return g;
+}
+function buildAirlinerMesh(accent = 0x2f6fd0){
+  const g = new THREE.Group();
+  const white = new THREE.MeshStandardMaterial({ color: 0xf3f5f7, roughness: 0.35, metalness: 0.15, side: THREE.DoubleSide });
+  const accentM = new THREE.MeshStandardMaterial({ color: accent, roughness: 0.4, metalness: 0.2 });
+  const glass = new THREE.MeshStandardMaterial({ color: 0x8fb6d6, roughness: 0.15, metalness: 0.4 });
+  const engM = new THREE.MeshStandardMaterial({ color: 0x8a949c, roughness: 0.4, metalness: 0.5 });
+  const body = new THREE.Mesh(fuselageGeo([
+    [0.03, 5.4], [0.34, 4.7], [0.6, 2.6], [0.66, 0.0], [0.6, -2.4], [0.42, -4.4], [0.2, -5.4], [0.04, -5.9]
+  ], 18), white);
+  g.add(body);
+  const wing = new THREE.Mesh(taperedWing(8.5, 1.7, 0.7, 0.1, 2.1), white);
+  wing.position.set(0, -0.05, 0.4);
+  g.add(wing);
+  const tail = new THREE.Mesh(taperedWing(2.7, 0.95, 0.4, 0.06, 0.7), white);
+  tail.position.set(0, 0.1, 5.0);
+  g.add(tail);
+  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.9, 1.5), accentM);
+  fin.position.set(0, 1.0, 5.3);
+  g.add(fin);
+  const cock = new THREE.Mesh(new THREE.SphereGeometry(0.62, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), glass);
+  cock.scale.set(0.8, 0.6, 1.2);
+  cock.position.set(0, 0.5, -4.5);
+  g.add(cock);
+  const engGeo = new THREE.CylinderGeometry(0.5, 0.55, 1.5, 12);
+  engGeo.rotateX(Math.PI / 2);
+  for (const s of [-1, 1]){
+    const eng = new THREE.Mesh(engGeo, engM);
+    eng.position.set(s * 3.4, -0.5, 0.8);
+    g.add(eng);
+    const intake = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.25, 12), new THREE.MeshStandardMaterial({ color: 0x1a1d22, roughness: 0.5, metalness: 0.4 }));
+    intake.geometry.rotateX(Math.PI / 2);
+    intake.position.set(s * 3.4, -0.5, 0.05);
+    g.add(intake);
+  }
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.22, 9.5), accentM);
+  stripe.position.set(0.66, 0.15, -0.2);
+  g.add(stripe);
+  g.scale.setScalar(1.5);
+  return g;
+}
+// A Boeing 787 Dreamliner you can actually fly: long blended-wing-body fuselage,
+// raked wingtips, twin underwing turbofans, a "787" nose, and retractable gear.
+function buildDreamliner(){
+  const g = new THREE.Group();
+  const white = new THREE.MeshStandardMaterial({ color: 0xf4f6f8, roughness: 0.28, metalness: 0.2, side: THREE.DoubleSide });
+  const belly = new THREE.MeshStandardMaterial({ color: 0xc9d2d8, roughness: 0.5, metalness: 0.25 });
+  const glass = new THREE.MeshStandardMaterial({ color: 0x243a4a, roughness: 0.1, metalness: 0.5 });
+  const engM = new THREE.MeshStandardMaterial({ color: 0xb9c2c9, roughness: 0.35, metalness: 0.55 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x1b1e24, roughness: 0.5, metalness: 0.4 });
+  // Long, slender, tapered fuselage (blended wing-body feel).
+  const fuse = new THREE.Mesh(fuselageGeo([
+    [0.03, 6.6], [0.3, 6.1], [0.55, 5.2], [0.72, 3.4], [0.8, 0.6],
+    [0.78, -1.6], [0.66, -3.6], [0.44, -5.2], [0.2, -6.2], [0.05, -6.7]
+  ], 22), white);
+  g.add(fuse);
+  const bellyStrip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.3, 11.5), belly);
+  bellyStrip.position.set(0.8, -0.1, -0.3);
+  g.add(bellyStrip);
+  // Low, long, swept wing with raked tips.
+  const wing = new THREE.Mesh(taperedWing(9.6, 1.9, 0.62, 0.09, 2.6), white);
+  wing.position.set(0, -0.12, 0.5);
+  g.add(wing);
+  // Twin raked tailplanes + a tall swept fin.
+  const tail = new THREE.Mesh(taperedWing(2.9, 1.0, 0.42, 0.06, 0.9), white);
+  tail.position.set(0, 0.05, 5.6);
+  g.add(tail);
+  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.2, 1.7), white);
+  fin.position.set(0, 1.2, 5.9);
+  fin.rotation.x = -0.28;
+  g.add(fin);
+  const finTip = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.5, 0.7), dark);
+  finTip.position.set(0, 2.15, 6.15);
+  finTip.rotation.x = -0.28;
+  g.add(finTip);
+  // Cockpit windshield band (the 787's dark "eyebrow").
+  const cock = new THREE.Mesh(new THREE.SphereGeometry(0.66, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), glass);
+  cock.scale.set(0.82, 0.5, 1.5);
+  cock.position.set(0, 0.55, -5.5);
+  g.add(cock);
+  // Big underwing turbofans (the 787's signature large-diameter engines).
+  const engGeo = new THREE.CylinderGeometry(0.62, 0.68, 1.9, 14);
+  engGeo.rotateX(Math.PI / 2);
+  const fanGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.2, 14);
+  fanGeo.rotateX(Math.PI / 2);
+  for (const s of [-1, 1]){
+    const eng = new THREE.Mesh(engGeo, engM);
+    eng.position.set(s * 3.7, -0.72, 1.0);
+    g.add(eng);
+    const intake = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.28, 14), dark);
+    intake.geometry.rotateX(Math.PI / 2);
+    intake.position.set(s * 3.7, -0.72, 0.02);
+    g.add(intake);
+    const fan = new THREE.Mesh(fanGeo, new THREE.MeshStandardMaterial({ color: 0x2a2f36, roughness: 0.3, metalness: 0.6 }));
+    fan.position.set(s * 3.7, -0.72, 0.1);
+    g.add(fan);
+  }
+  // Landing gear (main + nose) — visible so the takeoff reads.
+  const gearM = new THREE.MeshStandardMaterial({ color: 0x2c3138, roughness: 0.6, metalness: 0.4 });
+  const wheelGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.3, 10);
+  wheelGeo.rotateZ(Math.PI / 2);
+  function wheel(x, y, z){ const w = new THREE.Mesh(wheelGeo, gearM); w.position.set(x, y, z); g.add(w); return w; }
+  const strutM = new THREE.MeshStandardMaterial({ color: 0x8a929a, roughness: 0.4, metalness: 0.6 });
+  function strut(x, y, z, h){ const s = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, h, 6), strutM); s.position.set(x, y, z); g.add(s); }
+  // Nose gear
+  strut(0, -1.05, -5.2, 1.0);
+  wheel(0, -1.55, -5.2);
+  // Main gear (twin bogies under the wings)
+  for (const s of [-1, 1]){
+    strut(s * 2.6, -1.05, 0.9, 1.0);
+    wheel(s * 2.6, -1.55, 0.5);
+    wheel(s * 2.6, -1.55, 1.3);
+  }
+  g.scale.setScalar(1.55);
+  return g;
+}
+// The flyable aircraft. `plane` is swapped when you pick a different one.
+let plane = buildPlayer();
 scene.add(plane);
 const blob = new THREE.Mesh(new THREE.CircleGeometry(7.5, 24), new THREE.MeshBasicMaterial({ color: 0x061018, transparent: true, opacity: 0.3, depthWrite: false }));
 blob.rotation.x = -Math.PI / 2;
 blob.renderOrder = 2;
 scene.add(blob);
+
+/* ---------- aircraft selection ---------- */
+// Per-aircraft data. Offsets (tipL/tipR/nose) are in the mesh's local, pre-scale
+// space — plane.localToWorld() applies the mesh's own scale, so these line up with
+// the visible wingtips/nose. Physics fields tune speed, control, and takeoff.
+const PLANES = {
+  fighter: {
+    name: "FIGHTER",
+    blurb: "Agile red prop. Starts airborne over the bay, ready to fight.",
+    build: buildPlayer,
+    start: { x: -70, y: 150, z: -18, yaw: -Math.PI / 2, pitch: 0.03, speed: 96, throttle: 0.66, landed: false },
+    tipL: [-3.7, 0.15, -0.15], tipR: [3.7, 0.15, -0.15], nose: [0, 0.25, -5.3],
+    hasProp: true,
+    airMin: 64, airMax: 132, airClampMin: 56, airClampMax: 150,
+    rollBase: 30, rollMax: 48, rotateSpeed: 64, rotatePitch: 0.12,
+    blob: 7.5,
+  },
+  dreamliner: {
+    name: "DREAMLINER",
+    blurb: "Boeing 787. Rolls down the runway at Lindbergh Field and lifts off.",
+    build: buildDreamliner,
+    // Starts at the west end of the runway facing down-track (east, +x): ~470 units
+    // of runway ahead. Push the throttle (Shift/+/wheel) to a roll, then pull up (W/↑)
+    // once past rotateSpeed to lift off.
+    start: { x: RUNWAY.x - 200, y: RUNWAY.y + 3.5, z: RUNWAY.z, yaw: -Math.PI / 2, pitch: 0, speed: 0, throttle: 0.12, landed: true },
+    tipL: [-8.6, -0.12, 0.5], tipR: [8.6, -0.12, 0.5], nose: [0, 0.2, -6.5],
+    hasProp: false,
+    airMin: 70, airMax: 152, airClampMin: 60, airClampMax: 160,
+    rollBase: 8, rollMax: 82, rotateSpeed: 62, rotatePitch: 0.13,
+    blob: 11,
+  }
+};
+let planeKey = "fighter";
+let planeTips = { tipL: new THREE.Vector3().fromArray(PLANES.fighter.tipL), tipR: new THREE.Vector3().fromArray(PLANES.fighter.tipR), nose: new THREE.Vector3().fromArray(PLANES.fighter.nose) };
+function selectPlane(key){
+  if (!PLANES[key]) return;
+  planeKey = key;
+  const P = PLANES[key];
+  // Swap the mesh: drop the old, build the new.
+  if (plane){ scene.remove(plane); plane.traverse((o) => { if (o.geometry && !o.geometry.userData.keep) o.geometry.dispose(); }); }
+  plane = P.build();
+  scene.add(plane);
+  plane.userData.prop = plane.userData.prop || null;
+  // buildPlayer sets userData.prop; buildDreamliner has none.
+  planeTips.tipL.fromArray(P.tipL);
+  planeTips.tipR.fromArray(P.tipR);
+  planeTips.nose.fromArray(P.nose);
+  blob.scale.setScalar(P.blob / 7.5);
+  syncPlane();
+  try { localStorage.setItem("skyfusion.plane", key); } catch (e) {}
+}
+function currentPlane(){ return PLANES[planeKey]; }
+// A tiny top-down silhouette for the picker card.
+function planeIcon(key){
+  const W = 64, H = 34, S = 2;
+  const cv = document.createElement("canvas");
+  cv.width = W * S; cv.height = H * S;
+  cv.className = "plane-ico";
+  const g = cv.getContext("2d");
+  g.scale(S, S);
+  const isFighter = key === "fighter";
+  const body = isFighter ? "#e24b3b" : "#eef2f5";
+  const wing = isFighter ? "#f6f3ec" : "#c3ccd3";
+  const noseY = 4, tailY = H - 4;
+  g.lineCap = "round"; g.lineJoin = "round";
+  g.strokeStyle = body; g.lineWidth = isFighter ? 3 : 4;
+  g.beginPath(); g.moveTo(W / 2, noseY); g.lineTo(W / 2, tailY); g.stroke();
+  const wingY = isFighter ? 15 : 19, wingSpan = isFighter ? 12 : 25;
+  g.strokeStyle = wing; g.lineWidth = isFighter ? 2.5 : 3.2;
+  g.beginPath();
+  g.moveTo(W / 2 - wingSpan, wingY + (isFighter ? 0 : 5));
+  g.lineTo(W / 2, wingY);
+  g.lineTo(W / 2 + wingSpan, wingY + (isFighter ? 0 : 5));
+  g.stroke();
+  g.lineWidth = isFighter ? 2 : 2.6;
+  g.beginPath();
+  g.moveTo(W / 2 - 7, tailY - 2); g.lineTo(W / 2, tailY - 6); g.lineTo(W / 2 + 7, tailY - 2);
+  g.stroke();
+  if (isFighter){
+    g.strokeStyle = "#2a2e34"; g.lineWidth = 1.4;
+    g.beginPath(); g.arc(W / 2, noseY, 4, 0, Math.PI * 2); g.stroke();
+  }
+  return cv;
+}
+function buildPlanePicker(){
+  const wrap = $("planes");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+  Object.keys(PLANES).forEach((key) => {
+    const P = PLANES[key];
+    const card = document.createElement("div");
+    card.className = "plane-card" + (key === planeKey ? " sel" : "");
+    card.dataset.plane = key;
+    card.appendChild(planeIcon(key));
+    const nm = document.createElement("div"); nm.className = "plane-name"; nm.textContent = P.name;
+    const bl = document.createElement("div"); bl.className = "plane-blurb"; bl.textContent = P.blurb;
+    const kk = document.createElement("span"); kk.className = "plane-key"; kk.textContent = "TAP";
+    card.appendChild(nm); card.appendChild(bl); card.appendChild(kk);
+    card.addEventListener("click", () => { selectPlane(key); refreshPlanePicker(); toast(P.name); });
+    wrap.appendChild(card);
+  });
+}
+function refreshPlanePicker(){
+  const wrap = $("planes");
+  if (!wrap) return;
+  for (const card of wrap.children) card.classList.toggle("sel", card.dataset.plane === planeKey);
+}
+function cyclePlane(){
+  const order = Object.keys(PLANES);
+  const i = order.indexOf(planeKey);
+  const next = order[(i + 1) % order.length];
+  selectPlane(next);
+  refreshPlanePicker();
+  toast(PLANES[next].name);
+}
 
 /* ---------- contrails ---------- */
 const MAXC = 120;
@@ -1119,7 +1411,6 @@ const cPts = new THREE.Points(cGeo, cMat);
 cPts.frustumCulled = false;
 cPts.renderOrder = 3;
 scene.add(cPts);
-const _tipL = new THREE.Vector3(-3.7, 0.15, -0.15), _tipR = new THREE.Vector3(3.7, 0.15, -0.15);
 function updateContrail(dt){
   const gy = Math.max(terrainHeight(flight.pos.x, flight.pos.z), SEA);
   const alt = flight.pos.y - gy;
@@ -1132,7 +1423,7 @@ function updateContrail(dt){
     cEmit += dt * 46 * em;
     while (cEmit >= 1){
       cEmit -= 1;
-      const tip = (cHead & 1 ? _tipR : _tipL).clone();
+      const tip = (cHead & 1 ? planeTips.tipR : planeTips.tipL).clone();
       plane.localToWorld(tip);
       const i = cHead; cHead = (cHead + 1) % MAXC;
       cPos[i * 3] = tip.x; cPos[i * 3 + 1] = tip.y; cPos[i * 3 + 2] = tip.z;
@@ -1151,7 +1442,7 @@ const fwd = new THREE.Vector3(), camPos = new THREE.Vector3(), camLook = new THR
 const playerVel = new THREE.Vector3(), noseW = new THREE.Vector3(), aim = new THREE.Vector3();
 const state = {
   started: false, dead: false, score: 0, combo: 0, comboT: 0, got: 0, cam: 0,
-  hp: 100, invuln: 2.4, shots: 0, kills: 0, dogfights: true, waveIn: 72, wave: 0, hurt: 0, gun: 0, hold: false, paused: false
+  hp: 100, invuln: 2.4, shots: 0, kills: 0, dogfights: true, traffic: true, waveIn: 72, wave: 0, hurt: 0, gun: 0, hold: false, paused: false
 };
 let camSnap = false;
 let respawnTimer = 0;
@@ -1165,13 +1456,14 @@ function applyAttitude(obj, yaw, pitch, roll, pos){
 }
 function syncPlane(){ applyAttitude(plane, flight.yaw, flight.pitch, flight.roll, flight.pos); }
 function startPose(){
-  flight.pos.set(-70, 150, -18);
-  flight.yaw = -Math.PI / 2;
-  flight.pitch = 0.03;
+  const S = currentPlane().start;
+  flight.pos.set(S.x, S.y, S.z);
+  flight.yaw = S.yaw;
+  flight.pitch = S.pitch;
   flight.roll = 0;
-  flight.speed = 96;
-  flight.throttle = 0.66;
-  flight.landed = false;
+  flight.speed = S.speed;
+  flight.throttle = S.throttle;
+  flight.landed = S.landed;
   state.hp = 100;
   state.invuln = 2.6;
   state.dead = false;
@@ -1186,7 +1478,7 @@ function removeEnemy(e, boom){
   e.alive = false;
   e.mesh.visible = false;
   e.bar.visible = false;
-  if (boom) explode(e.pos, 1);
+  if (boom) explode(e.pos, e.type === "marauder" ? 1.8 : 1);
 }
 function resetFlight(full){
   clearTimeout(respawnTimer);
@@ -1289,15 +1581,16 @@ function explode(pos, scale){
     boom.userData.life = 0.35;
     boom.scale.setScalar(18 * (scale || 1));
   }
-  playBoom();
+  playBoom(scale || 1);
 }
-function launchShot(pool, origin, dir, speed, life){
+function launchShot(pool, origin, dir, speed, life, dmg){
   const t = pool.find((s) => s.userData.life <= 0);
   if (!t) return false;
   t.visible = true;
   t.position.copy(origin);
   t.userData.prev.copy(origin);
   t.userData.life = life;
+  t.userData.dmg = dmg || 7;
   t.userData.vel.copy(dir).multiplyScalar(speed);
   const n = t.userData.vel.clone().normalize();
   t.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
@@ -1307,7 +1600,7 @@ function fireGun(){
   if (state.gun > 0 || state.dead || !state.started) return;
   state.gun = 0.12;
   state.shots++;
-  noseW.set(0, 0.25, -5.3).multiplyScalar(PLANE_SCALE).applyQuaternion(plane.quaternion).add(plane.position);
+  noseW.copy(planeTips.nose).multiplyScalar(plane.scale.x).applyQuaternion(plane.quaternion).add(plane.position);
   fwd.set(0, 0, -1).applyQuaternion(plane.quaternion);
   launchShot(playerShots, noseW, fwd, 340, 0.85);
   muzzle.position.copy(noseW);
@@ -1320,8 +1613,16 @@ function fireGun(){
 
 const enemies = [];
 const barGeo = new THREE.PlaneGeometry(8, 0.85);
+const ETYPES = {
+  fighter:  { maxHp: 100, score: 250, spdFar: 112, spdNear: 80,  cool: [1.35, 0.45], aimErr: 0.42, shotSpd: 155, orbit: 78,  spread: 28, dmg: 7  },
+  marauder: { maxHp: 190, score: 420, spdFar: 96,  spdNear: 62,  cool: [0.85, 0.35],  aimErr: 0.5,  shotSpd: 185, orbit: 130, spread: 20, dmg: 12 }
+};
 function makeEnemy(){
-  const mesh = buildEnemyMesh();
+  const mesh = new THREE.Group();
+  const fighter = buildEnemyMesh();
+  const marauder = buildMarauderMesh();
+  marauder.visible = false;
+  mesh.add(fighter, marauder);
   mesh.visible = false;
   scene.add(mesh);
   const bar = new THREE.Group();
@@ -1333,11 +1634,13 @@ function makeEnemy(){
   bar.userData.fg = fg;
   scene.add(bar);
   return {
-    mesh, bar, alive: false, hp: 100, yaw: 0, pitch: 0, roll: 0, speed: 90,
+    mesh, fighter, marauder, bar, type: "fighter", alive: false, hp: 100, maxHp: 100, yaw: 0, pitch: 0, roll: 0, speed: 90,
     pos: new THREE.Vector3(), vel: new THREE.Vector3(), cool: 1.2, side: 1
   };
 }
-function spawnEnemy(debug, at){
+function spawnEnemy(debug, at, type){
+  type = type || "fighter";
+  const T = ETYPES[type];
   const alive = enemies.filter((e) => e.alive).length;
   if (!debug && !state.dogfights) return null;
   if (alive >= (debug ? 5 : 3)) return null;
@@ -1347,11 +1650,15 @@ function spawnEnemy(debug, at){
     e = makeEnemy();
     enemies.push(e);
   }
+  e.type = type;
+  e.fighter.visible = type === "fighter";
+  e.marauder.visible = type === "marauder";
   e.alive = true;
-  e.hp = 100;
+  e.maxHp = T.maxHp;
+  e.hp = T.maxHp;
   e.cool = 0.8 + rnd() * 0.6;
   e.side = rnd() > 0.5 ? 1 : -1;
-  e.speed = 86;
+  e.speed = T.spdNear;
   if (at) e.pos.set(at.x, at.y, at.z);
   else {
     const a = rnd() * Math.PI * 2;
@@ -1370,28 +1677,36 @@ function spawnEnemy(debug, at){
 }
 function spawnWave(){
   const n = 1 + Math.floor(rnd() * 3);
-  for (let i = 0; i < n; i++) spawnEnemy(false);
-  toast(n === 1 ? "BANDIT" : `BANDITS ${n}`);
+  const chance = state.wave >= 2 ? Math.min(0.3 + (state.wave - 2) * 0.1, 0.6) : 0;
+  let marauders = 0;
+  for (let i = 0; i < n; i++){
+    const type = rnd() < chance ? "marauder" : "fighter";
+    if (type === "marauder") marauders++;
+    spawnEnemy(false, null, type);
+  }
+  if (marauders > 0) toast(n === 1 ? "MARAUDER" : `BANDITS ${n} — MARAUDER`);
+  else toast(n === 1 ? "BANDIT" : `BANDITS ${n}`);
 }
 function updateEnemies(dt){
   for (const e of enemies){
     if (!e.alive) continue;
     if (state.hold){
-      e.bar.position.set(e.pos.x, e.pos.y + 11, e.pos.z);
+      e.bar.position.set(e.pos.x, e.pos.y + (e.type === "marauder" ? 16 : 11), e.pos.z);
       e.bar.quaternion.copy(camera.quaternion);
       continue;
     }
     let ax = flight.pos.x + playerVel.x * 0.45;
     let ay = flight.pos.y + playerVel.y * 0.45 + 6;
     let az = flight.pos.z + playerVel.z * 0.45;
+    const T = ETYPES[e.type];
     const dx0 = ax - e.pos.x, dy0 = ay - e.pos.y, dz0 = az - e.pos.z;
     const dist = Math.hypot(dx0, dy0, dz0);
-    if (dist < 78){
+    if (dist < T.orbit){
       const nx = -dz0, nz = dx0;
       const len = Math.hypot(nx, nz) || 1;
-      ax = flight.pos.x + (nx / len) * 110 * e.side;
+      ax = flight.pos.x + (nx / len) * T.orbit * 1.4 * e.side;
       ay = flight.pos.y + 24;
-      az = flight.pos.z + (nz / len) * 110 * e.side;
+      az = flight.pos.z + (nz / len) * T.orbit * 1.4 * e.side;
     }
     const dx = ax - e.pos.x, dy = ay - e.pos.y, dz = az - e.pos.z;
     const desired = Math.atan2(-dx, -dz);
@@ -1401,7 +1716,7 @@ function updateEnemies(dt){
     const targetPitch = clamp(Math.atan2(dy, flat), -0.4, 0.5);
     e.pitch = THREE.MathUtils.damp(e.pitch, targetPitch, 2.1, dt);
     e.roll = THREE.MathUtils.damp(e.roll, clamp(-err * 1.15, -0.85, 0.85), 3, dt);
-    e.speed = THREE.MathUtils.damp(e.speed, dist > 280 ? 112 : 80, 1.1, dt);
+    e.speed = THREE.MathUtils.damp(e.speed, dist > 280 ? T.spdFar : T.spdNear, 1.1, dt);
     applyAttitude(e.mesh, e.yaw, e.pitch, e.roll, e.pos);
     fwd.set(0, 0, -1).applyQuaternion(e.mesh.quaternion);
     e.vel.copy(fwd).multiplyScalar(e.speed);
@@ -1409,25 +1724,25 @@ function updateEnemies(dt){
     const floor = Math.max(terrainHeight(e.pos.x, e.pos.z) + 28, 36);
     if (e.pos.y < floor) e.pos.y = floor;
     applyAttitude(e.mesh, e.yaw, e.pitch, e.roll, e.pos);
-    const k = clamp(e.hp / 100, 0, 1);
+    const k = clamp(e.hp / e.maxHp, 0, 1);
     const fg = e.bar.userData.fg;
     fg.scale.x = Math.max(0.05, k);
     fg.position.x = (k - 1) * 4;
     fg.material.color.setHex(k > 0.55 ? 0x7dff9a : k > 0.3 ? 0xffd36a : 0xff5d5d);
-    e.bar.position.set(e.pos.x, e.pos.y + 11, e.pos.z);
+    e.bar.position.set(e.pos.x, e.pos.y + (e.type === "marauder" ? 16 : 11), e.pos.z);
     e.bar.quaternion.copy(camera.quaternion);
     e.cool -= dt;
     const aimErr = Math.hypot(wrap(Math.atan2(-(flight.pos.x - e.pos.x), -(flight.pos.z - e.pos.z)) - e.yaw), e.pitch);
-    if (state.dogfights && e.cool <= 0 && dist > 55 && dist < 270 && aimErr < 0.42){
-      e.cool = 1.35 + rnd() * 0.45;
+    if (state.dogfights && e.cool <= 0 && dist > 55 && dist < 270 && aimErr < T.aimErr){
+      e.cool = T.cool[0] + rnd() * T.cool[1];
       aim.set(flight.pos.x + playerVel.x * 0.35 - e.pos.x, flight.pos.y + playerVel.y * 0.35 - e.pos.y, flight.pos.z + playerVel.z * 0.35 - e.pos.z);
-      aim.x += (rnd() - 0.5) * 28;
-      aim.y += (rnd() - 0.5) * 14;
-      aim.z += (rnd() - 0.5) * 28;
+      aim.x += (rnd() - 0.5) * T.spread;
+      aim.y += (rnd() - 0.5) * T.spread * 0.5;
+      aim.z += (rnd() - 0.5) * T.spread;
       if (aim.lengthSq() > 0){
         aim.normalize();
         noseW.copy(e.pos).addScaledVector(aim, 8);
-        launchShot(enemyShots, noseW, aim, 155, 1.7);
+        launchShot(enemyShots, noseW, aim, T.shotSpd, 1.7, T.dmg);
       }
     }
   }
@@ -1451,8 +1766,9 @@ function updateShots(dt){
             explode(b, 0.45);
             if (e.hp <= 0){
               state.kills++;
-              state.score += 250;
-              toast("+250 BANDIT");
+              const pts = ETYPES[e.type].score;
+              state.score += pts;
+              toast(`+${pts} ${e.type === "marauder" ? "MARAUDER" : "BANDIT"}`);
               removeEnemy(e, true);
             }
             break;
@@ -1461,7 +1777,7 @@ function updateShots(dt){
       } else if (segDist(flight.pos.x, flight.pos.y, flight.pos.z, a.x, a.y, a.z, b.x, b.y, b.z) < 4.2){
         s.userData.life = 0;
         s.visible = false;
-        hurt(7, "A bandit nicked the airframe.");
+        hurt(s.userData.dmg || 7, "A bandit nicked the airframe.");
       }
     }
   };
@@ -1524,6 +1840,65 @@ function updatePips(){
     n++;
   }
   for (let i = n; i < list.length; i++) list[i].style.display = "none";
+}
+
+/* ---------- civilian air traffic (ambience) ---------- */
+const traffic = [];
+const trafficPos = new THREE.Vector3();
+const TRAFFIC_ROUTES = [
+  { cx: 100, cz: 420, rx: 190, rz: 165, alt: 250, dir: 1,  om: 0.26, accent: 0x2f6fd0 },
+  { cx: 430, cz: 120, rx: 210, rz: 185, alt: 320, dir: -1, om: 0.22, accent: 0xd24a3e },
+  { cx: -140, cz: 220, rx: 270, rz: 245, alt: 360, dir: 1,  om: 0.19, accent: 0x3aa66b },
+  { cx: 220, cz: 300, rx: 150, rz: 140, alt: 270, dir: -1, om: 0.30, accent: 0xe0a020 },
+  { cx: 260, cz: 470, rx: 300, rz: 285, alt: 410, dir: 1,  om: 0.16, accent: 0x7a4fd0 }
+];
+function makeTraffic(def, i){
+  const mesh = buildAirlinerMesh(def.accent);
+  const t = {
+    mesh, def,
+    t: rnd() * Math.PI * 2,
+    bob: rnd() * Math.PI * 2,
+    bobAmp: 6 + rnd() * 8,
+    bank: 0
+  };
+  scene.add(mesh);
+  traffic.push(t);
+  updateTrafficPose(t, 0);
+  return t;
+}
+function updateTrafficPose(t, dt){
+  const d = t.def;
+  t.t += d.om * d.dir * dt;
+  const x = d.cx + d.rx * Math.cos(t.t);
+  const z = d.cz + d.rz * Math.sin(t.t);
+  const bob = Math.sin(t.t * 1.7 + t.bob) * t.bobAmp;
+  let y = d.alt + bob;
+  const floor = terrainHeight(x, z) + 45;
+  if (y < floor) y = floor;
+  const dx = -d.rx * Math.sin(t.t) * d.dir;
+  const dz = d.rz * Math.cos(t.t) * d.dir;
+  const yaw = Math.atan2(-dx, -dz);
+  // bank into the turn: derive the bank from how the heading is actually changing
+  const ea = 0.05;
+  const dxa = -d.rx * Math.sin(t.t + ea) * d.dir;
+  const dza = d.rz * Math.cos(t.t + ea) * d.dir;
+  let dyaw = Math.atan2(-dxa, -dza) - yaw;
+  while (dyaw > Math.PI) dyaw -= Math.PI * 2;
+  while (dyaw < -Math.PI) dyaw += Math.PI * 2;
+  const targetBank = clamp(dyaw * 6, -0.4, 0.4);
+  t.bank += (targetBank - t.bank) * Math.min(1, dt * 2.5);
+  applyAttitude(t.mesh, yaw, 0, t.bank, trafficPos.set(x, y, z));
+}
+function updateTraffic(dt){
+  if (!state.traffic) return;
+  for (const t of traffic) updateTrafficPose(t, dt);
+}
+function toggleTraffic(){
+  state.traffic = !state.traffic;
+  for (const t of traffic) t.mesh.visible = state.traffic;
+  const b = $("trafficBtn");
+  if (b){ b.textContent = state.traffic ? "Traffic: ON" : "Traffic: OFF"; b.style.borderColor = state.traffic ? "#8fe" : "#666"; }
+  toast(state.traffic ? "AIR TRAFFIC ON" : "AIR TRAFFIC OFF");
 }
 
 function hurt(amount, why){
@@ -1609,7 +1984,53 @@ function playShot(){
   src.connect(bp); bp.connect(g); g.connect(audio.master);
   src.start(now); src.stop(now + 0.06);
 }
-function playBoom(){ blip(90, 0.4, "sine", 0.2); }
+// A filtered noise burst — the raw "crack" and "rumble" material for booms.
+function noiseBurst(dur, filterType, freq, gain, q, when){
+  if (!audio.ctx || audio.muted || !audio.noiseBuf) return;
+  const c = audio.ctx, t0 = (when != null ? when : c.currentTime);
+  const src = c.createBufferSource();
+  src.buffer = audio.noiseBuf;
+  src.loop = true;
+  const f = c.createBiquadFilter();
+  f.type = filterType; f.frequency.value = freq; f.Q.value = q || 0.8;
+  const g = c.createGain();
+  g.gain.setValueAtTime(gain, t0);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  src.connect(f); f.connect(g); g.connect(audio.master);
+  src.start(t0); src.stop(t0 + dur + 0.03);
+}
+// A loud, long, exciting explosion. `scale` >1 makes it bigger (marauder, player death).
+function playBoom(scale){
+  const s = scale || 1;
+  if (!audio.ctx || audio.muted) return;
+  const c = audio.ctx, now = c.currentTime;
+  // 1) The sub "thump" you feel in your chest — long and deep.
+  const boom = c.createOscillator(), boomG = c.createGain();
+  boom.type = "sine";
+  boom.frequency.setValueAtTime(160, now);
+  boom.frequency.exponentialRampToValueAtTime(32, now + 0.7 + 0.5 * s);
+  boomG.gain.setValueAtTime(0.0001, now);
+  boomG.gain.exponentialRampToValueAtTime(Math.min(0.9, 0.55 * s), now + 0.02);
+  boomG.gain.exponentialRampToValueAtTime(0.0001, now + (1.1 + 0.7 * s));
+  boom.connect(boomG); boomG.connect(audio.master);
+  boom.start(now); boom.stop(now + 1.2 + 0.8 * s);
+  // 2) The sharp initial crack — a bright noise burst, fast attack.
+  noiseBurst(0.22, "highpass", 1200, 0.5 * s, 0.6, now);
+  // 3) A low, hot rumble that lingers (the fireball).
+  noiseBurst(1.4 + 0.5 * s, "lowpass", 420, 0.4 * s, 0.5, now);
+  // 4) A cracking debris tail, a touch later.
+  noiseBurst(0.6 + 0.3 * s, "bandpass", 900, 0.16 * s, 1.4, now + 0.05);
+  // 5) A secondary deep thump ~120ms in for weight.
+  const thump = c.createOscillator(), thumpG = c.createGain();
+  thump.type = "sine";
+  thump.frequency.setValueAtTime(90, now + 0.12);
+  thump.frequency.exponentialRampToValueAtTime(40, now + 0.5);
+  thumpG.gain.setValueAtTime(0.0001, now + 0.12);
+  thumpG.gain.exponentialRampToValueAtTime(0.3 * s, now + 0.16);
+  thumpG.gain.exponentialRampToValueAtTime(0.0001, now + 0.7);
+  thump.connect(thumpG); thumpG.connect(audio.master);
+  thump.start(now + 0.12); thump.stop(now + 0.75);
+}
 function playHit(){ blip(240, 0.12, "triangle", 0.07); }
 function playThump(){ blip(110, 0.35, "sine", 0.18); }
 function playChime(combo){
@@ -1646,14 +2067,15 @@ function setMute(){
 const keys = {};
 const stickIn = { pitch: 0, turn: 0 };
 const dragIn = { pitch: 0, turn: 0 };
+const testDrive = { pitch: 0, turn: 0 }; // test hook: added to input, 0 in normal play
 function readInput(){
   let pitch = 0, turn = 0;
   if (keys.ArrowUp || keys.KeyW) pitch += 1;
   if (keys.ArrowDown || keys.KeyS) pitch -= 1;
   if (keys.ArrowLeft || keys.KeyA) turn -= 1;
   if (keys.ArrowRight || keys.KeyD) turn += 1;
-  pitch += stickIn.pitch + dragIn.pitch;
-  turn += stickIn.turn + dragIn.turn;
+  pitch += stickIn.pitch + dragIn.pitch + testDrive.pitch;
+  turn += stickIn.turn + dragIn.turn + testDrive.turn;
   return { pitch: clamp(pitch, -1, 1), turn: clamp(turn, -1, 1) };
 }
 function begin(){
@@ -1674,6 +2096,9 @@ function togglePause(){
   state.paused = !state.paused;
   document.body.classList.toggle("paused", state.paused);
   $("pauseBtn").textContent = state.paused ? "▶ RESUME" : "❚❚ PAUSE";
+  // Pausing also mutes the whole mix (engine, wind, booms) and restores it on resume.
+  if (audio.master && audio.ctx) audio.master.gain.setTargetAtTime(
+    state.paused ? 0 : (audio.muted ? 0 : 0.28), audio.ctx.currentTime, 0.08);
   if (state.paused){
     for (const k in keys) delete keys[k];
     stickIn.pitch = stickIn.turn = dragIn.pitch = dragIn.turn = 0;
@@ -1697,11 +2122,13 @@ addEventListener("keydown", (e) => {
     return;
   }
   if (state.paused) return;
+  if (e.code === "KeyQ" && !keys[e.code]){ cyclePlane(); return; }
   if (!keys[e.code]){
     if (e.code === "KeyC" || e.code === "KeyV") setCamera();
     if (e.code === "KeyR") resetFlight(true);
     if (e.code === "KeyM"){ unlockAudio(); setMute(); }
     if (e.code === "KeyG") toggleDogs();
+    if (e.code === "KeyH") toggleTraffic();
     if (e.code === "KeyK") spawnEnemy(true);
     if (e.code === "KeyT") toggleDayNight();
     if (e.code === "KeyN") toggleAutoDay();
@@ -1810,6 +2237,7 @@ $("qBtn").addEventListener("click", () => {
 });
 $("resetBtn").addEventListener("click", () => { begin(); resetFlight(true); toast("RESET"); });
 $("dnBtn").addEventListener("click", () => { toggleDayNight(); });
+$("trafficBtn").addEventListener("click", () => { toggleTraffic(); });
 $("pauseBtn").addEventListener("click", () => { togglePause(); });
 $("resumeBtn").addEventListener("click", () => { togglePause(); });
 $("again").addEventListener("click", () => respawn());
@@ -1832,6 +2260,7 @@ function collect(r){
   }
 }
 function updateFlight(dt){
+  const P = currentPlane();
   const up = keys.ShiftLeft || keys.ShiftRight || keys.Equal || keys.NumpadAdd;
   const down = keys.ControlLeft || keys.ControlRight || keys.Minus || keys.NumpadSubtract;
   let th = 0;
@@ -1843,7 +2272,7 @@ function updateFlight(dt){
     flight.pitch = THREE.MathUtils.damp(flight.pitch, input.pitch > 0.15 ? input.pitch * 0.4 : 0, 4, dt);
     flight.roll = THREE.MathUtils.damp(flight.roll, 0, 5, dt);
     flight.yaw += -input.turn * 0.85 * dt;
-    flight.speed = THREE.MathUtils.damp(flight.speed, 30 + flight.throttle * 48, 1.4, dt);
+    flight.speed = THREE.MathUtils.damp(flight.speed, P.rollBase + flight.throttle * P.rollMax, 1.4, dt);
     syncPlane();
     fwd.set(0, 0, -1).applyQuaternion(plane.quaternion);
     fwd.y = 0;
@@ -1853,13 +2282,13 @@ function updateFlight(dt){
     playerVel.copy(fwd).multiplyScalar(flight.speed);
     const still = Math.abs(flight.pos.x - RUNWAY.x) < RUNWAY.halfL + 10 && Math.abs(flight.pos.z - RUNWAY.z) < RUNWAY.halfW + 8;
     if (!still) flight.landed = false;
-    else if (flight.speed > 64 && flight.pitch > 0.12){ flight.landed = false; toast("ROTATE"); }
+    else if (flight.speed > P.rotateSpeed && flight.pitch > P.rotatePitch){ flight.landed = false; toast("ROTATE"); }
     syncPlane();
     return;
   }
   const climb = Math.sin(Math.max(0, flight.pitch));
   const dive = Math.sin(Math.min(0, flight.pitch));
-  const target = clamp(THREE.MathUtils.lerp(64, 132, flight.throttle) - climb * 16 - dive * 10, 56, 150);
+  const target = clamp(THREE.MathUtils.lerp(P.airMin, P.airMax, flight.throttle) - climb * 16 - dive * 10, P.airClampMin, P.airClampMax);
   flight.speed = THREE.MathUtils.damp(flight.speed, target, 1.25, dt);
   const heldP = Math.abs(input.pitch) > 0.08;
   const heldT = Math.abs(input.turn) > 0.08;
@@ -1990,16 +2419,24 @@ function updateHUD(){
   api.kills = state.kills;
   api.gfx = quality;
   api.dogfight = state.dogfights;
+  api.traffic = state.traffic;
   api.landed = flight.landed;
 }
 const api = {
   ready: false,
-  pose, spawn: () => spawnEnemy(true),
-  spawnAt: (x, y, z) => spawnEnemy(true, { x, y, z }),
+  pose, spawn: (type) => spawnEnemy(true, null, type),
+  spawnAt: (x, y, z, type) => spawnEnemy(true, { x, y, z }, type),
   clear(){ for (const e of enemies) removeEnemy(e, false); },
   hold(v){ state.hold = v !== false; },
   quality: (level) => { if (level === quality) qualityLock = true; else setQuality(level, true); },
-  land: (x, z) => isLand(x, z)
+  traffic: (v) => { if (v === undefined) toggleTraffic(); else if (v !== state.traffic) toggleTraffic(); },
+  land: (x, z) => isLand(x, z),
+  planes: Object.keys(PLANES),
+  plane: () => planeKey,
+  selectPlane: (k) => { if (PLANES[k]) { selectPlane(k); refreshPlanePicker(); } },
+  cyclePlane,
+  reset(){ resetFlight(true); },
+  _drive(pitch, turn, throttle){ testDrive.pitch = pitch; testDrive.turn = turn; if (throttle != null) flight.throttle = clamp(throttle, 0.12, 1); }
 };
 window.__SKY = api;
 
@@ -2010,8 +2447,15 @@ for (let i = 0; i < 5; i++){
   $("pips").appendChild(d);
 }
 
+// Restore the last chosen aircraft, then build the start-screen picker.
+try { const savedPlane = localStorage.getItem("skyfusion.plane"); if (savedPlane && PLANES[savedPlane]) planeKey = savedPlane; } catch (e) {}
+selectPlane(planeKey);
+buildPlanePicker();
+
 setQuality(quality, false);
 startPose();
+
+for (let i = 0; i < TRAFFIC_ROUTES.length; i++) makeTraffic(TRAFFIC_ROUTES[i], i);
 
 const clock = new THREE.Clock();
 let elapsed = 0;
@@ -2045,9 +2489,10 @@ function frame(){
   }
   updateShots(dt);
   if (state.hurt > 0) state.hurt -= dt;
-  plane.userData.prop.rotation.z += dt * (12 + flight.throttle * 48);
+  if (plane.userData.prop) plane.userData.prop.rotation.z += dt * (12 + flight.throttle * 48);
   updateDayNight(dt);
   updateContrail(dt);
+  updateTraffic(dt);
   if (oceanMat){
     oceanMat.uniforms.t.value = elapsed;
     oceanMat.uniforms.camPos.value.copy(camera.position);

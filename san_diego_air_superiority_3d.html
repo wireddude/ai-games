@@ -1,0 +1,1736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>San Diego Air Superiority 3D</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #091526;
+            font-family: 'Rajdhani', sans-serif;
+            color: #e0f7fa;
+        }
+        #game-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        .font-hud {
+            font-family: 'Orbitron', sans-serif;
+        }
+        .hud-glow {
+            text-shadow: 0 0 8px rgba(0, 255, 170, 0.7);
+        }
+        .hud-glow-red {
+            text-shadow: 0 0 10px rgba(255, 50, 50, 0.9);
+        }
+        .hud-panel {
+            background: rgba(6, 22, 36, 0.65);
+            border: 1px solid rgba(0, 255, 170, 0.35);
+            backdrop-filter: blur(4px);
+            box-shadow: 0 0 15px rgba(0, 255, 170, 0.1);
+        }
+        /* Virtual Joystick Styling */
+        #joystick-zone {
+            position: absolute;
+            bottom: 24px;
+            left: 24px;
+            width: 130px;
+            height: 130px;
+            border-radius: 50%;
+            background: rgba(0, 255, 170, 0.08);
+            border: 2px solid rgba(0, 255, 170, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 30;
+        }
+        #joystick-knob {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, rgba(0, 255, 170, 0.8), rgba(0, 140, 100, 0.6));
+            border: 2px solid #a7ffeb;
+            box-shadow: 0 0 12px rgba(0, 255, 170, 0.6);
+            transform: translate(0px, 0px);
+            pointer-events: none;
+        }
+        .touch-btn {
+            background: rgba(6, 28, 44, 0.75);
+            border: 2px solid rgba(0, 255, 170, 0.5);
+            box-shadow: 0 0 12px rgba(0, 255, 170, 0.25);
+            transition: transform 0.08s, background 0.1s;
+        }
+        .touch-btn:active, .touch-btn.active {
+            transform: scale(0.92);
+            background: rgba(0, 255, 170, 0.35);
+        }
+        .touch-btn-red {
+            border-color: rgba(255, 75, 75, 0.7);
+            box-shadow: 0 0 12px rgba(255, 75, 75, 0.3);
+        }
+        .touch-btn-red:active, .touch-btn-red.active {
+            background: rgba(255, 75, 75, 0.4);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Main 3D Canvas -->
+    <canvas id="game-canvas"></canvas>
+
+    <!-- Active Combat HUD -->
+    <div id="hud-layer" class="fixed inset-0 pointer-events-none z-20 hidden">
+        
+        <!-- Top Bar: Score, Wave, Mission Title, Camera & Touch Toggle -->
+        <div class="flex justify-between items-start p-3 sm:p-5">
+            <!-- Left: Wave & Targets -->
+            <div class="hud-panel rounded-lg px-3 py-2 sm:px-4 sm:py-2.5 flex flex-col gap-1">
+                <div class="flex items-center gap-3">
+                    <span class="font-hud text-xs sm:text-sm tracking-widest text-emerald-400 font-bold hud-glow" id="hud-wave">WAVE 1</span>
+                    <span class="text-xs text-cyan-200/70">|</span>
+                    <span class="font-hud text-xs sm:text-sm text-amber-300 font-semibold" id="hud-enemies">BANDITS: 3</span>
+                </div>
+                <div class="text-xs sm:text-sm text-cyan-100 font-semibold tracking-wider">
+                    SCORE: <span id="hud-score" class="font-hud text-emerald-300">00000</span>
+                </div>
+            </div>
+
+            <!-- Center: Compass / Landmark Indicator -->
+            <div class="hidden md:flex flex-col items-center hud-panel rounded-lg px-5 py-1.5">
+                <div class="font-hud text-xs tracking-widest text-emerald-400/90" id="hud-heading">HDG 000° N</div>
+                <div class="text-xs text-cyan-200 font-semibold tracking-wider mt-0.5" id="hud-sector">SECTOR: SAN DIEGO BAY</div>
+            </div>
+
+            <!-- Right: Tactical Radar Minimap + Quick Toggles -->
+            <div class="flex flex-col items-end gap-2 pointer-events-auto">
+                <div class="relative rounded-full overflow-hidden border-2 border-emerald-400/60 shadow-lg bg-slate-950/80" style="width: 115px; height: 115px;">
+                    <canvas id="radar-canvas" width="115" height="115"></canvas>
+                    <div class="absolute bottom-1 inset-x-0 text-center text-[9px] font-hud text-emerald-400/80 pointer-events-none">RADAR</div>
+                </div>
+                <div class="flex gap-1.5">
+                    <button id="btn-cam-toggle" class="hud-panel hover:bg-emerald-900/50 text-emerald-300 font-hud text-[10px] sm:text-xs px-2.5 py-1.5 rounded cursor-pointer">
+                        CAM [C]
+                    </button>
+                    <button id="btn-touch-toggle" class="hud-panel hover:bg-emerald-900/50 text-emerald-300 font-hud text-[10px] sm:text-xs px-2.5 py-1.5 rounded cursor-pointer">
+                        TOUCH UI
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Center Gun Crosshair & Dynamic Target Lock Reticle -->
+        <div id="gun-crosshair" class="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+            <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+                <circle cx="32" cy="32" r="14" stroke="rgba(0, 255, 170, 0.55)" stroke-width="1.5" stroke-dasharray="4 4"/>
+                <line x1="32" y1="6" x2="32" y2="16" stroke="rgba(0, 255, 170, 0.8)" stroke-width="1.5"/>
+                <line x1="32" y1="48" x2="32" y2="58" stroke="rgba(0, 255, 170, 0.8)" stroke-width="1.5"/>
+                <line x1="6" y1="32" x2="16" y2="32" stroke="rgba(0, 255, 170, 0.8)" stroke-width="1.5"/>
+                <line x1="48" y1="32" x2="58" y2="32" stroke="rgba(0, 255, 170, 0.8)" stroke-width="1.5"/>
+                <circle cx="32" cy="32" r="2" fill="#00ffaa"/>
+            </svg>
+        </div>
+
+        <!-- Target Lock Box (Positioned dynamically in JS) -->
+        <div id="target-reticle" class="fixed hidden pointer-events-none -translate-x-1/2 -translate-y-1/2 transition-colors duration-75">
+            <div id="reticle-diamond" class="w-12 h-12 border-2 border-emerald-400 rotate-45 flex items-center justify-center shadow-[0_0_10px_rgba(0,255,170,0.6)]">
+                <div class="w-1.5 h-1.5 bg-emerald-400 rounded-full"></div>
+            </div>
+            <div id="reticle-label" class="mt-3 text-center font-hud text-[10px] tracking-wider text-emerald-300 whitespace-nowrap bg-slate-950/70 px-1.5 py-0.5 rounded">
+                TRG 1200m
+            </div>
+        </div>
+
+        <!-- Warning / Alert Banner -->
+        <div id="hud-alert" class="fixed top-24 left-1/2 -translate-x-1/2 hidden font-hud text-sm sm:text-base font-bold tracking-widest px-4 py-1.5 rounded bg-red-950/80 border border-red-500 text-red-300 hud-glow-red">
+            PULL UP! ALTITUDE LOW
+        </div>
+
+        <!-- Bottom Telemetry Bar: Speed, Hull Integrity, Missiles, Throttle -->
+        <div class="fixed bottom-3 sm:bottom-5 left-1/2 -translate-x-1/2 flex items-end gap-3 sm:gap-6 pointer-events-none">
+            <!-- Airspeed & Altitude -->
+            <div class="hud-panel rounded-lg px-3 py-2 sm:px-4 sm:py-2.5 flex gap-4 sm:gap-6 items-center">
+                <div>
+                    <div class="text-[10px] text-cyan-300/80 font-hud">AIRSPEED</div>
+                    <div class="font-hud text-base sm:text-xl font-bold text-emerald-300 hud-glow"><span id="hud-speed">420</span> <span class="text-xs font-normal">KTS</span></div>
+                </div>
+                <div class="h-7 w-px bg-emerald-500/30"></div>
+                <div>
+                    <div class="text-[10px] text-cyan-300/80 font-hud">ALTITUDE</div>
+                    <div class="font-hud text-base sm:text-xl font-bold text-emerald-300 hud-glow"><span id="hud-alt">1250</span> <span class="text-xs font-normal">FT</span></div>
+                </div>
+            </div>
+
+            <!-- Hull & Missile Status -->
+            <div class="hud-panel rounded-lg px-3 py-2 sm:px-4 sm:py-2.5 flex flex-col gap-1.5 min-w-[145px] sm:min-w-[180px]">
+                <div class="flex justify-between items-center text-[10px] sm:text-xs font-hud">
+                    <span class="text-cyan-200">HULL</span>
+                    <span id="hud-hull-text" class="text-emerald-400 font-bold">100%</span>
+                </div>
+                <div class="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-emerald-500/30">
+                    <div id="hud-hull-bar" class="h-full bg-gradient-to-r from-emerald-500 to-teal-300 transition-all duration-150" style="width: 100%"></div>
+                </div>
+                <div class="flex justify-between items-center text-[10px] sm:text-xs font-hud mt-0.5">
+                    <span class="text-amber-300">AIM-9X LOCK</span>
+                    <span id="hud-missile-status" class="text-emerald-300 font-bold">READY [4]</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile / Touch On-Screen Flight Controls -->
+    <div id="touch-controls" class="fixed inset-0 pointer-events-none z-30 hidden">
+        <!-- Left Virtual Flight Stick -->
+        <div id="joystick-zone" class="pointer-events-auto">
+            <div id="joystick-knob"></div>
+        </div>
+
+        <!-- Right Action Buttons -->
+        <div class="fixed bottom-6 right-5 flex flex-col items-end gap-3 pointer-events-auto">
+            <div class="flex gap-3">
+                <button id="touch-boost" class="touch-btn w-16 h-16 rounded-full flex flex-col items-center justify-center text-cyan-200 font-hud text-[10px] font-bold">
+                    <span>BURN</span>
+                    <span class="text-[8px] text-emerald-400">BOOST</span>
+                </button>
+                <button id="touch-missile" class="touch-btn touch-btn-red w-16 h-16 rounded-full flex flex-col items-center justify-center text-red-200 font-hud text-[10px] font-bold">
+                    <span>FOX-2</span>
+                    <span class="text-[8px] text-red-400">MISSILE</span>
+                </button>
+            </div>
+            <button id="touch-fire" class="touch-btn w-24 h-20 rounded-2xl flex flex-col items-center justify-center text-emerald-200 font-hud text-xs font-bold tracking-wider">
+                <span>VULCAN</span>
+                <span class="text-[9px] text-emerald-400">20MM GUN</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Start / Title Screen Overlay -->
+    <div id="start-screen" class="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/75 backdrop-blur-md p-4">
+        <div class="max-w-xl w-full hud-panel rounded-2xl p-6 sm:p-8 border border-emerald-400/50 shadow-2xl text-center">
+            <div class="inline-block px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/40 text-emerald-300 font-hud text-xs tracking-widest mb-3">
+                NAS NORTH ISLAND • SECTOR 06
+            </div>
+            <h1 class="font-hud text-2xl sm:text-4xl font-extrabold text-white tracking-wider hud-glow mb-2">
+                SAN DIEGO<br><span class="text-emerald-400">AIR SUPERIORITY</span>
+            </h1>
+            <p class="text-cyan-100/80 text-sm sm:text-base mb-6 max-w-md mx-auto">
+                Patrol San Diego Bay, fly under the Coronado Bridge, and intercept hostile bandit squadrons over Downtown and Point Loma.
+            </p>
+
+            <!-- Flight Controls Legend -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left bg-slate-950/70 rounded-xl p-4 border border-cyan-500/20 mb-6 text-xs sm:text-sm">
+                <div>
+                    <div class="font-hud text-emerald-400 text-xs mb-1.5">FLIGHT CONTROLS</div>
+                    <ul class="space-y-1 text-cyan-100/90">
+                        <li><span class="text-amber-300 font-bold">W / S or ↑ / ↓</span> : Pitch Nose Down / Up</li>
+                        <li><span class="text-amber-300 font-bold">A / D or ← / →</span> : Smooth Bank & Turn Left / Right</li>
+                        <li><span class="text-amber-300 font-bold">Release Stick</span> : Auto-Levels Wings & Horizon</li>
+                        <li><span class="text-amber-300 font-bold">SHIFT / SPACE</span> : Afterburner Boost</li>
+                    </ul>
+                </div>
+                <div>
+                    <div class="font-hud text-emerald-400 text-xs mb-1.5">WEAPONS & SYSTEMS</div>
+                    <ul class="space-y-1 text-cyan-100/90">
+                        <li><span class="text-amber-300 font-bold">F / Left Click</span> : 20mm Vulcan Cannon</li>
+                        <li><span class="text-amber-300 font-bold">R / Right Click</span> : Heat-Seeking Missile</li>
+                        <li><span class="text-amber-300 font-bold">C</span> : Toggle Chase / Cockpit Cam</li>
+                        <li><span class="text-emerald-300 font-bold">Touch Devices</span> : Auto Virtual Stick</li>
+                    </ul>
+                </div>
+            </div>
+
+            <button id="btn-launch" class="w-full sm:w-auto px-10 py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-hud font-extrabold text-base sm:text-lg tracking-widest shadow-[0_0_25px_rgba(16,185,129,0.6)] transition transform hover:scale-105 cursor-pointer">
+                LAUNCH SORTIE
+            </button>
+        </div>
+    </div>
+
+    <!-- Game Over Overlay -->
+    <div id="gameover-screen" class="fixed inset-0 z-40 hidden flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
+        <div class="max-w-md w-full hud-panel rounded-2xl p-6 sm:p-8 border border-red-500/60 text-center">
+            <div class="font-hud text-xs tracking-widest text-red-400 mb-2">AIRCRAFT LOST</div>
+            <h2 id="gameover-title" class="font-hud text-3xl sm:text-4xl font-extrabold text-white hud-glow-red mb-4">
+                SHOT DOWN
+            </h2>
+            <div class="bg-slate-950/75 rounded-xl p-4 border border-slate-700 mb-6 flex justify-around">
+                <div>
+                    <div class="text-xs font-hud text-cyan-300/70">FINAL SCORE</div>
+                    <div id="final-score" class="font-hud text-2xl font-bold text-emerald-400">0</div>
+                </div>
+                <div class="w-px bg-slate-700"></div>
+                <div>
+                    <div class="text-xs font-hud text-cyan-300/70">WAVE REACHED</div>
+                    <div id="final-wave" class="font-hud text-2xl font-bold text-amber-300">1</div>
+                </div>
+            </div>
+            <button id="btn-restart" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-hud font-extrabold text-base tracking-widest shadow-[0_0_20px_rgba(16,185,129,0.5)] cursor-pointer">
+                REDEPLOY SORTIE
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * SAN DIEGO AIR SUPERIORITY 3D
+         * Complete Three.js Flight Simulator & Air Combat Game
+         */
+
+        // ==========================================
+        // 1. WEB AUDIO SYNTHESIZER (No External Audio)
+        // ==========================================
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+                this.engineOsc = null;
+                this.engineGain = null;
+                this.initialized = false;
+            }
+
+            init() {
+                if (this.initialized) return;
+                try {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                    
+                    // Continuous low-pass filtered sawtooth for jet turbine hum
+                    this.engineOsc = this.ctx.createOscillator();
+                    this.engineOsc.type = 'sawtooth';
+                    this.engineOsc.frequency.value = 55;
+
+                    const filter = this.ctx.createBiquadFilter();
+                    filter.type = 'lowpass';
+                    filter.frequency.value = 180;
+
+                    this.engineGain = this.ctx.createGain();
+                    this.engineGain.gain.value = 0.04;
+
+                    this.engineOsc.connect(filter);
+                    filter.connect(this.engineGain);
+                    this.engineGain.connect(this.ctx.destination);
+                    this.engineOsc.start();
+
+                    this.initialized = true;
+                } catch (e) {
+                    console.warn("Web Audio unavailable:", e);
+                }
+            }
+
+            updateEngine(speedRatio, isBoosting) {
+                if (!this.initialized || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const targetFreq = 48 + speedRatio * 55 + (isBoosting ? 35 : 0);
+                const targetGain = 0.035 + speedRatio * 0.03 + (isBoosting ? 0.03 : 0);
+                this.engineOsc.frequency.setTargetAtTime(targetFreq, now, 0.1);
+                this.engineGain.gain.setTargetAtTime(targetGain, now, 0.1);
+            }
+
+            playGun() {
+                if (!this.initialized || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(190, now);
+                osc.frequency.exponentialRampToValueAtTime(45, now + 0.06);
+
+                gain.gain.setValueAtTime(0.08, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.065);
+            }
+
+            playMissile() {
+                if (!this.initialized || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                // Noise burst + rising pitch
+                const bufferSize = this.ctx.sampleRate * 0.45;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.setValueAtTime(600, now);
+                filter.frequency.exponentialRampToValueAtTime(2200, now + 0.4);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.18, now);
+                gain.gain.exponentialRampToValueAtTime(0.005, now + 0.45);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                noise.start(now);
+            }
+
+            playExplosion() {
+                if (!this.initialized || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const bufferSize = this.ctx.sampleRate * 0.75;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * 0.25));
+                }
+
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(320, now);
+                filter.frequency.linearRampToValueAtTime(60, now + 0.7);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.32, now);
+                gain.gain.exponentialRampToValueAtTime(0.005, now + 0.75);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                noise.start(now);
+            }
+
+            playHit() {
+                if (!this.initialized || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(520, now);
+                osc.frequency.exponentialRampToValueAtTime(110, now + 0.12);
+                gain.gain.setValueAtTime(0.15, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.13);
+            }
+        }
+
+        const sound = new SoundEngine();
+
+        // ==========================================
+        // 2. GAME STATE & CONFIGURATION
+        // ==========================================
+        const state = {
+            running: false,
+            gameOver: false,
+            score: 0,
+            wave: 1,
+            cameraMode: 'chase', // 'chase' or 'cockpit'
+            touchVisible: false,
+            keys: {},
+            mouseFire: false,
+            touchInput: {
+                pitch: 0,
+                roll: 0,
+                firing: false,
+                boosting: false
+            },
+            player: {
+                pos: new THREE.Vector3(-450, 260, 1400),
+                quat: new THREE.Quaternion(),
+                speed: 220,
+                minSpeed: 130,
+                maxSpeed: 340,
+                boostSpeed: 490,
+                hull: 100,
+                maxHull: 100,
+                gunCooldown: 0,
+                missiles: 4,
+                maxMissiles: 4,
+                missileReloadTimer: 0,
+                lockedTarget: null,
+                lockProgress: 0
+            },
+            enemies: [],
+            bullets: [],
+            missiles: [],
+            particles: [],
+            waterMesh: null,
+            bridgeCurve: null
+        };
+
+        // ==========================================
+        // 3. THREE.JS SCENE SETUP
+        // ==========================================
+        const canvas = document.getElementById('game-canvas');
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.08;
+
+        const scene = new THREE.Scene();
+        // Golden-hour Southern California coastal sky & atmospheric haze
+        const skyColor = new THREE.Color(0x64b5f6);
+        scene.background = skyColor;
+        scene.fog = new THREE.FogExp2(0x8ecae6, 0.00014);
+
+        const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 1, 18000);
+
+        // Lighting
+        const hemiLight = new THREE.HemisphereLight(0xdbeafe, 0x1e3a5f, 0.85);
+        scene.add(hemiLight);
+
+        const sunLight = new THREE.DirectionalLight(0xfff3d6, 1.35);
+        sunLight.position.set(-2500, 3200, 1800);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 2048;
+        sunLight.shadow.mapSize.height = 2048;
+        sunLight.shadow.camera.near = 500;
+        sunLight.shadow.camera.far = 9000;
+        const d = 3200;
+        sunLight.shadow.camera.left = -d;
+        sunLight.shadow.camera.right = d;
+        sunLight.shadow.camera.top = d;
+        sunLight.shadow.camera.bottom = -d;
+        scene.add(sunLight);
+
+        // ==========================================
+        // 4. SAN DIEGO 3D ENVIRONMENT BUILDER
+        // ==========================================
+        function buildSanDiegoEnvironment() {
+            const worldGroup = new THREE.Group();
+
+            // --- A. Pacific Ocean & San Diego Bay Water ---
+            const waterGeo = new THREE.PlaneGeometry(26000, 26000, 64, 64);
+            waterGeo.rotateX(-Math.PI / 2);
+            const waterMat = new THREE.MeshStandardMaterial({
+                color: 0x0a4f70,
+                roughness: 0.25,
+                metalness: 0.65,
+                flatShading: false
+            });
+            const water = new THREE.Mesh(waterGeo, waterMat);
+            water.receiveShadow = true;
+            state.waterMesh = water;
+            worldGroup.add(water);
+
+            // Helper for creating land masses
+            function createLandBlock(x, z, w, d, h, color, rotY = 0) {
+                const geo = new THREE.BoxGeometry(w, h, d);
+                const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.85 });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.set(x, h / 2 - 2, z);
+                mesh.rotation.y = rotY;
+                mesh.receiveShadow = true;
+                mesh.castShadow = true;
+                worldGroup.add(mesh);
+                return mesh;
+            }
+
+            // --- B. Mainland San Diego (East & North of the Bay) ---
+            // Downtown & Embarcadero landmass
+            createLandBlock(1650, -300, 2600, 3600, 14, 0x3b4d3b);
+            // North / Airport / Little Italy extension
+            createLandBlock(950, -2400, 3200, 1800, 16, 0x41563e);
+            // South Bay / National City / Chula Vista coastline
+            createLandBlock(1950, 2300, 2600, 2400, 14, 0x46593f);
+
+            // --- C. Balboa Park Hills & Greenery (Northeast of Downtown) ---
+            const parkMat = new THREE.MeshStandardMaterial({ color: 0x2d6a3e, roughness: 0.9 });
+            const hillPositions = [
+                { x: 1450, z: -1200, r: 480, h: 95 },
+                { x: 1850, z: -1050, r: 550, h: 120 },
+                { x: 1650, z: -1550, r: 420, h: 85 }
+            ];
+            hillPositions.forEach(hp => {
+                const hillGeo = new THREE.ConeGeometry(hp.r, hp.h, 12);
+                const hill = new THREE.Mesh(hillGeo, parkMat);
+                hill.position.set(hp.x, hp.h / 2 + 8, hp.z);
+                hill.receiveShadow = true;
+                worldGroup.add(hill);
+            });
+
+            // --- D. Coronado Island & Silver Strand (West side of San Diego Bay) ---
+            // Main Coronado Island
+            createLandBlock(-720, 420, 1150, 1250, 13, 0x4b6344, 0.12);
+            // Sandy Coronado Beach strip facing Pacific
+            createLandBlock(-1280, 480, 140, 1320, 9, 0xe6cfa5, 0.12);
+            // Hotel del Coronado iconic red-roofed landmark
+            const delBase = new THREE.Mesh(
+                new THREE.BoxGeometry(110, 28, 160),
+                new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.6 })
+            );
+            delBase.position.set(-1160, 24, 650);
+            worldGroup.add(delBase);
+            const delRoof = new THREE.Mesh(
+                new THREE.ConeGeometry(95, 24, 4),
+                new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.5 })
+            );
+            delRoof.position.set(-1160, 48, 650);
+            delRoof.rotation.y = Math.PI / 4;
+            worldGroup.add(delRoof);
+
+            // Silver Strand narrow sandbar heading South
+            createLandBlock(-420, 2100, 190, 2400, 9, 0xdec69b, -0.18);
+
+            // --- E. Naval Air Station North Island (Runways & Carrier Dock) ---
+            createLandBlock(-920, -380, 1100, 950, 13, 0x475569, 0.08);
+            // Main Runway
+            const runwayGeo = new THREE.BoxGeometry(75, 2, 780);
+            const runwayMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.9 });
+            const runway = new THREE.Mesh(runwayGeo, runwayMat);
+            runway.position.set(-920, 12, -380);
+            runway.rotation.y = -0.35;
+            worldGroup.add(runway);
+
+            // Aircraft Carrier USS Midway / Nimitz docked in San Diego Bay!
+            const carrierGroup = new THREE.Group();
+            const hull = new THREE.Mesh(
+                new THREE.BoxGeometry(65, 22, 340),
+                new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.6 })
+            );
+            hull.position.y = 11;
+            carrierGroup.add(hull);
+
+            const deck = new THREE.Mesh(
+                new THREE.BoxGeometry(86, 4, 355),
+                new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.8 })
+            );
+            deck.position.y = 23;
+            carrierGroup.add(deck);
+
+            const island = new THREE.Mesh(
+                new THREE.BoxGeometry(16, 32, 48),
+                new THREE.MeshStandardMaterial({ color: 0x475569 })
+            );
+            island.position.set(28, 39, -20);
+            carrierGroup.add(island);
+
+            carrierGroup.position.set(160, 0, -520);
+            carrierGroup.rotation.y = 0.15;
+            worldGroup.add(carrierGroup);
+
+            // --- F. Point Loma Peninsula & Cabrillo Cliffs (West across harbor entrance) ---
+            createLandBlock(-2150, -650, 620, 2900, 48, 0x556b47, 0.06);
+            // Point Loma Ridge Spine
+            const ridgeGeo = new THREE.BoxGeometry(260, 85, 2500);
+            const ridgeMat = new THREE.MeshStandardMaterial({ color: 0x495e3d, roughness: 0.9 });
+            const ridge = new THREE.Mesh(ridgeGeo, ridgeMat);
+            ridge.position.set(-2150, 75, -650);
+            ridge.rotation.y = 0.06;
+            worldGroup.add(ridge);
+
+            // Old Point Loma Lighthouse at southern tip
+            const lighthouse = new THREE.Mesh(
+                new THREE.CylinderGeometry(8, 12, 34, 10),
+                new THREE.MeshStandardMaterial({ color: 0xffffff })
+            );
+            lighthouse.position.set(-2080, 130, 520);
+            worldGroup.add(lighthouse);
+
+            // --- G. Iconic San Diego-Coronado Bridge (Curved Blue Steel Girder Bridge) ---
+            // Spans from Coronado (-320, 560) curving over the bay up to Barrio Logan/Downtown (680, 380)
+            const bridgePoints = [
+                new THREE.Vector3(-340, 18, 620),
+                new THREE.Vector3(-120, 65, 520),
+                new THREE.Vector3(120, 145, 430), // High center clearance (~145ft) to fly underneath!
+                new THREE.Vector3(360, 120, 390),
+                new THREE.Vector3(640, 28, 380)
+            ];
+            const bridgeCurve = new THREE.CatmullRomCurve3(bridgePoints);
+            state.bridgeCurve = bridgeCurve;
+
+            // Bridge Deck Roadway
+            const deckGeo = new THREE.TubeGeometry(bridgeCurve, 48, 14, 6, false);
+            deckGeo.scale(1, 0.28, 1); // Flatten tube into roadbed
+            const bridgeBlueMat = new THREE.MeshStandardMaterial({
+                color: 0x1d6fa5,
+                metalness: 0.55,
+                roughness: 0.35
+            });
+            const bridgeDeck = new THREE.Mesh(deckGeo, bridgeBlueMat);
+            bridgeDeck.castShadow = true;
+            worldGroup.add(bridgeDeck);
+
+            // Bridge Concrete/Blue Support Towers
+            const pillarMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.7 });
+            for (let t = 0.12; t <= 0.88; t += 0.125) {
+                const pt = bridgeCurve.getPoint(t);
+                const pillarH = pt.y;
+                const pillar = new THREE.Mesh(
+                    new THREE.BoxGeometry(10, pillarH, 22),
+                    pillarMat
+                );
+                pillar.position.set(pt.x, pillarH / 2, pt.z);
+                pillar.castShadow = true;
+                worldGroup.add(pillar);
+            }
+
+            // --- H. Downtown San Diego Skyline & Petco Park ---
+            const glassMat1 = new THREE.MeshStandardMaterial({ color: 0x1e3a5f, metalness: 0.8, roughness: 0.18 });
+            const glassMat2 = new THREE.MeshStandardMaterial({ color: 0x0f766e, metalness: 0.75, roughness: 0.22 });
+            const stoneMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, metalness: 0.2, roughness: 0.6 });
+            const mats = [glassMat1, glassMat2, stoneMat];
+
+            // Deterministic pseudo-random skyline grid in Downtown
+            let seed = 42;
+            const rand = () => {
+                seed = (seed * 16807) % 2147483647;
+                return (seed - 1) / 2147483646;
+            };
+
+            for (let gx = 480; gx <= 1320; gx += 105) {
+                for (let gz = -1150; gz <= 120; gz += 105) {
+                    if (rand() < 0.22) continue; // Street plazas
+                    const distFromCenter = Math.hypot(gx - 850, gz + 500);
+                    const maxH = Math.max(65, 360 - distFromCenter * 0.38);
+                    const bHeight = 45 + rand() * maxH;
+                    const bWidth = 48 + rand() * 34;
+                    const bDepth = 48 + rand() * 34;
+
+                    const bGeo = new THREE.BoxGeometry(bWidth, bHeight, bDepth);
+                    const bMesh = new THREE.Mesh(bGeo, mats[Math.floor(rand() * mats.length)]);
+                    bMesh.position.set(gx, bHeight / 2 + 12, gz);
+                    bMesh.castShadow = true;
+                    bMesh.receiveShadow = true;
+                    worldGroup.add(bMesh);
+
+                    // Spire on tallest towers
+                    if (bHeight > 240) {
+                        const spire = new THREE.Mesh(
+                            new THREE.CylinderGeometry(1.5, 3, 45, 6),
+                            new THREE.MeshBasicMaterial({ color: 0xff4444 })
+                        );
+                        spire.position.set(gx, bHeight + 34, gz);
+                        worldGroup.add(spire);
+                    }
+                }
+            }
+
+            // Petco Park Stadium (East Village / South Downtown)
+            const stadiumGroup = new THREE.Group();
+            const bowl = new THREE.Mesh(
+                new THREE.CylinderGeometry(115, 95, 42, 24, 1, true),
+                new THREE.MeshStandardMaterial({ color: 0xd6c7b2, side: THREE.DoubleSide })
+            );
+            bowl.position.y = 21;
+            stadiumGroup.add(bowl);
+
+            const field = new THREE.Mesh(
+                new THREE.CircleGeometry(94, 24),
+                new THREE.MeshStandardMaterial({ color: 0x16a34a })
+            );
+            field.rotation.x = -Math.PI / 2;
+            field.position.y = 3;
+            stadiumGroup.add(field);
+
+            stadiumGroup.position.set(960, 12, 160);
+            worldGroup.add(stadiumGroup);
+
+            // San Diego Convention Center Sails along Embarcadero
+            for (let s = 0; s < 5; s++) {
+                const sail = new THREE.Mesh(
+                    new THREE.ConeGeometry(42, 48, 4),
+                    new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 })
+                );
+                sail.position.set(520 + s * 65, 34, -80 + s * 45);
+                sail.scale.set(1, 1, 1.6);
+                worldGroup.add(sail);
+            }
+
+            // Fluffy Low-Poly Clouds high above San Diego
+            const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.82 });
+            for (let c = 0; c < 28; c++) {
+                const cloudGroup = new THREE.Group();
+                const puffs = 3 + Math.floor(rand() * 3);
+                for (let p = 0; p < puffs; p++) {
+                    const puff = new THREE.Mesh(
+                        new THREE.DodecahedronGeometry(65 + rand() * 55, 1),
+                        cloudMat
+                    );
+                    puff.position.set((p - 1) * 75, (rand() - 0.5) * 20, (rand() - 0.5) * 50);
+                    puff.scale.y = 0.45;
+                    cloudGroup.add(puff);
+                }
+                cloudGroup.position.set(
+                    (rand() - 0.5) * 7500,
+                    950 + rand() * 550,
+                    (rand() - 0.5) * 7500
+                );
+                worldGroup.add(cloudGroup);
+            }
+
+            scene.add(worldGroup);
+        }
+
+        buildSanDiegoEnvironment();
+
+        // ==========================================
+        // 5. FIGHTER JET 3D MODEL BUILDER
+        // ==========================================
+        function createFighterJet(isEnemy = false) {
+            const jet = new THREE.Group();
+
+            const primaryColor = isEnemy ? 0x991b1b : 0x64748b;
+            const trimColor = isEnemy ? 0xef4444 : 0x0ea5e9;
+
+            const bodyMat = new THREE.MeshStandardMaterial({
+                color: primaryColor,
+                metalness: 0.65,
+                roughness: 0.3
+            });
+            const trimMat = new THREE.MeshStandardMaterial({
+                color: trimColor,
+                metalness: 0.5,
+                roughness: 0.35
+            });
+            const canopyMat = new THREE.MeshStandardMaterial({
+                color: 0x0f172a,
+                metalness: 0.9,
+                roughness: 0.1
+            });
+
+            // Fuselage (oriented along -Z forward)
+            const fuselage = new THREE.Mesh(new THREE.ConeGeometry(2.2, 22, 8), bodyMat);
+            fuselage.rotation.x = -Math.PI / 2;
+            fuselage.scale.set(1.15, 1, 0.72);
+            jet.add(fuselage);
+
+            // Rear Engine Section
+            const rearBody = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 1.7, 9, 8), bodyMat);
+            rearBody.rotation.x = -Math.PI / 2;
+            rearBody.position.z = 5.5;
+            rearBody.scale.set(1.2, 1, 0.75);
+            jet.add(rearBody);
+
+            // Cockpit Canopy
+            const canopy = new THREE.Mesh(new THREE.SphereGeometry(1.35, 12, 8), canopyMat);
+            canopy.scale.set(0.85, 0.75, 2.6);
+            canopy.position.set(0, 1.05, -2.5);
+            jet.add(canopy);
+
+            // Delta Swept Wings
+            const wingShape = new THREE.Shape();
+            wingShape.moveTo(0, 0);
+            wingShape.lineTo(13, 6.5);
+            wingShape.lineTo(13, 8.8);
+            wingShape.lineTo(0, 6.5);
+            wingShape.closePath();
+
+            const wingGeo = new THREE.ExtrudeGeometry(wingShape, { depth: 0.35, bevelEnabled: false });
+            wingGeo.rotateX(Math.PI / 2);
+
+            const rightWing = new THREE.Mesh(wingGeo, bodyMat);
+            rightWing.position.set(1.2, 0.1, 0.5);
+            jet.add(rightWing);
+
+            const leftWing = new THREE.Mesh(wingGeo, bodyMat);
+            leftWing.scale.x = -1;
+            leftWing.position.set(-1.2, 0.1, 0.5);
+            jet.add(leftWing);
+
+            // Wingtip Missile Rails / Accent Stripes
+            const tipGeo = new THREE.BoxGeometry(0.4, 0.4, 5.5);
+            const rightTip = new THREE.Mesh(tipGeo, trimMat);
+            rightTip.position.set(14.1, 0, 7.8);
+            jet.add(rightTip);
+
+            const leftTip = new THREE.Mesh(tipGeo, trimMat);
+            leftTip.position.set(-14.1, 0, 7.8);
+            jet.add(leftTip);
+
+            // Twin Canted Vertical Tail Stabilizers
+            const tailGeo = new THREE.BoxGeometry(0.35, 4.2, 3.6);
+            const rightTail = new THREE.Mesh(tailGeo, trimMat);
+            rightTail.position.set(1.8, 2.2, 7.8);
+            rightTail.rotation.z = -0.28;
+            jet.add(rightTail);
+
+            const leftTail = new THREE.Mesh(tailGeo, trimMat);
+            leftTail.position.set(-1.8, 2.2, 7.8);
+            leftTail.rotation.z = 0.28;
+            jet.add(leftTail);
+
+            // Horizontal Stabilizers
+            const hStabGeo = new THREE.BoxGeometry(8.5, 0.25, 2.6);
+            const hStab = new THREE.Mesh(hStabGeo, bodyMat);
+            hStab.position.set(0, 0.1, 8.4);
+            jet.add(hStab);
+
+            // Glowing Afterburner Flame Cones
+            const flameMat = new THREE.MeshBasicMaterial({
+                color: isEnemy ? 0xff6b00 : 0x38bdf8,
+                transparent: true,
+                opacity: 0.9
+            });
+            const flameGeo = new THREE.ConeGeometry(1.1, 6.5, 8);
+            flameGeo.rotateX(Math.PI / 2);
+
+            const flameL = new THREE.Mesh(flameGeo, flameMat);
+            flameL.position.set(-0.9, 0, 12.5);
+            jet.add(flameL);
+
+            const flameR = new THREE.Mesh(flameGeo, flameMat);
+            flameR.position.set(0.9, 0, 12.5);
+            jet.add(flameR);
+
+            jet.userData = { flameL, flameR };
+            return jet;
+        }
+
+        const playerJet = createFighterJet(false);
+        scene.add(playerJet);
+
+        // ==========================================
+        // 6. WEAPONS, PARTICLES & ENEMY AI SYSTEM
+        // ==========================================
+        const bulletGeo = new THREE.BoxGeometry(0.45, 0.45, 14);
+        const playerBulletMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
+        const enemyBulletMat = new THREE.MeshBasicMaterial({ color: 0xff4d4d });
+
+        function spawnBullet(pos, quat, isEnemy) {
+            const mesh = new THREE.Mesh(bulletGeo, isEnemy ? enemyBulletMat : playerBulletMat);
+            mesh.position.copy(pos);
+            mesh.quaternion.copy(quat);
+            scene.add(mesh);
+
+            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(quat);
+            state.bullets.push({
+                mesh,
+                vel: forward.multiplyScalar(isEnemy ? 680 : 1050),
+                life: 1.8,
+                isEnemy
+            });
+        }
+
+        function spawnMissile(pos, quat, target) {
+            const group = new THREE.Group();
+            const body = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.35, 0.35, 7, 6),
+                new THREE.MeshBasicMaterial({ color: 0xffffff })
+            );
+            body.rotation.x = Math.PI / 2;
+            group.add(body);
+
+            const glow = new THREE.Mesh(
+                new THREE.SphereGeometry(0.75, 6, 6),
+                new THREE.MeshBasicMaterial({ color: 0xff9900 })
+            );
+            glow.position.z = 3.8;
+            group.add(glow);
+
+            group.position.copy(pos);
+            group.quaternion.copy(quat);
+            scene.add(group);
+
+            state.missiles.push({
+                mesh: group,
+                quat: quat.clone(),
+                speed: 620,
+                target,
+                life: 5.5,
+                smokeTimer: 0
+            });
+        }
+
+        function spawnParticle(pos, color, scale = 3, life = 0.6, vel = null) {
+            const mesh = new THREE.Mesh(
+                new THREE.DodecahedronGeometry(scale, 0),
+                new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85 })
+            );
+            mesh.position.copy(pos);
+            scene.add(mesh);
+            state.particles.push({
+                mesh,
+                life,
+                maxLife: life,
+                vel: vel || new THREE.Vector3(
+                    (Math.random() - 0.5) * 40,
+                    (Math.random() - 0.5) * 40,
+                    (Math.random() - 0.5) * 40
+                )
+            });
+        }
+
+        function spawnExplosion(pos, count = 24) {
+            sound.playExplosion();
+            const colors = [0xff5500, 0xffaa00, 0xff2200, 0x334155];
+            for (let i = 0; i < count; i++) {
+                const c = colors[i % colors.length];
+                const vel = new THREE.Vector3(
+                    (Math.random() - 0.5) * 180,
+                    (Math.random() - 0.5) * 180,
+                    (Math.random() - 0.5) * 180
+                );
+                spawnParticle(pos, c, 4 + Math.random() * 8, 0.7 + Math.random() * 0.5, vel);
+            }
+        }
+
+        function spawnEnemyWave(waveNum) {
+            const count = 2 + waveNum;
+            const spawnZones = [
+                new THREE.Vector3(600, 420, -800),   // Over Downtown
+                new THREE.Vector3(-1400, 480, -400), // Over Point Loma / North Island
+                new THREE.Vector3(200, 350, 900),    // South Bay / Coronado Bridge
+                new THREE.Vector3(1400, 550, -1400), // Balboa Park
+                new THREE.Vector3(-600, 500, 1600)   // Silver Strand
+            ];
+
+            for (let i = 0; i < count; i++) {
+                const jet = createFighterJet(true);
+                const zone = spawnZones[i % spawnZones.length];
+                jet.position.set(
+                    zone.x + (Math.random() - 0.5) * 500,
+                    zone.y + (Math.random() - 0.5) * 140,
+                    zone.z + (Math.random() - 0.5) * 500
+                );
+                scene.add(jet);
+
+                state.enemies.push({
+                    mesh: jet,
+                    quat: new THREE.Quaternion(),
+                    speed: 195 + Math.min(waveNum * 12, 95),
+                    hp: 100,
+                    fireCooldown: 1 + Math.random() * 2,
+                    smokeTimer: 0,
+                    aiPhase: Math.random() * Math.PI * 2
+                });
+            }
+        }
+
+        // ==========================================
+        // 7. INPUT HANDLING (KEYBOARD, MOUSE, TOUCH)
+        // ==========================================
+        window.addEventListener('keydown', (e) => {
+            state.keys[e.code] = true;
+            if (!state.running) return;
+
+            if (e.code === 'KeyC') {
+                toggleCameraMode();
+            } else if (e.code === 'KeyR') {
+                firePlayerMissile();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            state.keys[e.code] = false;
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (!state.running) return;
+            if (e.button === 0) state.mouseFire = true;
+            if (e.button === 2) firePlayerMissile();
+        });
+
+        window.addEventListener('mouseup', (e) => {
+            if (e.button === 0) state.mouseFire = false;
+        });
+
+        canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        function toggleCameraMode() {
+            state.cameraMode = state.cameraMode === 'chase' ? 'cockpit' : 'chase';
+            playerJet.visible = (state.cameraMode === 'chase');
+        }
+
+        document.getElementById('btn-cam-toggle').addEventListener('click', toggleCameraMode);
+
+        // Touch UI Visibility & Virtual Joystick Logic
+        const touchLayer = document.getElementById('touch-controls');
+        function setTouchUI(visible) {
+            state.touchVisible = visible;
+            if (visible && state.running) {
+                touchLayer.classList.remove('hidden');
+            } else {
+                touchLayer.classList.add('hidden');
+            }
+        }
+
+        document.getElementById('btn-touch-toggle').addEventListener('click', () => {
+            setTouchUI(!state.touchVisible);
+        });
+
+        // Auto-detect touch devices
+        if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+            state.touchVisible = true;
+        }
+
+        const joyZone = document.getElementById('joystick-zone');
+        const joyKnob = document.getElementById('joystick-knob');
+        let joyTouchId = null;
+
+        joyZone.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.changedTouches[0];
+            joyTouchId = touch.identifier;
+            updateJoystick(touch);
+        }, { passive: false });
+
+        joyZone.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                if (e.changedTouches[i].identifier === joyTouchId) {
+                    updateJoystick(e.changedTouches[i]);
+                }
+            }
+        }, { passive: false });
+
+        function resetJoystick(e) {
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                if (e.changedTouches[i].identifier === joyTouchId) {
+                    joyTouchId = null;
+                    joyKnob.style.transform = 'translate(0px, 0px)';
+                    state.touchInput.pitch = 0;
+                    state.touchInput.roll = 0;
+                }
+            }
+        }
+        joyZone.addEventListener('touchend', resetJoystick);
+        joyZone.addEventListener('touchcancel', resetJoystick);
+
+        function updateJoystick(touch) {
+            const rect = joyZone.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const maxRadius = rect.width * 0.36;
+
+            let dx = touch.clientX - cx;
+            let dy = touch.clientY - cy;
+            const dist = Math.hypot(dx, dy);
+            if (dist > maxRadius) {
+                dx = (dx / dist) * maxRadius;
+                dy = (dy / dist) * maxRadius;
+            }
+            joyKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+            state.touchInput.roll = -(dx / maxRadius);
+            state.touchInput.pitch = -(dy / maxRadius);
+        }
+
+        // Touch Action Buttons
+        const btnFire = document.getElementById('touch-fire');
+        btnFire.addEventListener('touchstart', (e) => { e.preventDefault(); state.touchInput.firing = true; btnFire.classList.add('active'); });
+        btnFire.addEventListener('touchend', () => { state.touchInput.firing = false; btnFire.classList.remove('active'); });
+
+        const btnBoost = document.getElementById('touch-boost');
+        btnBoost.addEventListener('touchstart', (e) => { e.preventDefault(); state.touchInput.boosting = true; btnBoost.classList.add('active'); });
+        btnBoost.addEventListener('touchend', () => { state.touchInput.boosting = false; btnBoost.classList.remove('active'); });
+
+        const btnMissile = document.getElementById('touch-missile');
+        btnMissile.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            btnMissile.classList.add('active');
+            firePlayerMissile();
+            setTimeout(() => btnMissile.classList.remove('active'), 150);
+        });
+
+        // ==========================================
+        // 8. COMBAT ACTIONS
+        // ==========================================
+        function firePlayerMissile() {
+            if (!state.running || state.gameOver) return;
+            if (state.player.missiles <= 0) return;
+
+            state.player.missiles--;
+            sound.playMissile();
+
+            const target = (state.player.lockedTarget && state.player.lockProgress >= 0.7)
+                ? state.player.lockedTarget
+                : null;
+
+            const launchPos = state.player.pos.clone().add(
+                new THREE.Vector3(0, -2.5, -8).applyQuaternion(state.player.quat)
+            );
+            spawnMissile(launchPos, state.player.quat, target);
+        }
+
+        function damagePlayer(amount) {
+            if (state.gameOver) return;
+            state.player.hull = Math.max(0, state.player.hull - amount);
+            sound.playHit();
+
+            if (state.player.hull <= 0) {
+                triggerGameOver("AIRCRAFT DESTROYED");
+            }
+        }
+
+        function triggerGameOver(reason) {
+            state.gameOver = true;
+            state.running = false;
+            spawnExplosion(state.player.pos, 36);
+            playerJet.visible = false;
+
+            document.getElementById('hud-layer').classList.add('hidden');
+            document.getElementById('touch-controls').classList.add('hidden');
+            document.getElementById('gameover-title').textContent = reason;
+            document.getElementById('final-score').textContent = state.score;
+            document.getElementById('final-wave').textContent = state.wave;
+            document.getElementById('gameover-screen').classList.remove('hidden');
+        }
+
+        // ==========================================
+        // 9. TACTICAL RADAR & HUD UPDATER
+        // ==========================================
+        const radarCanvas = document.getElementById('radar-canvas');
+        const radarCtx = radarCanvas.getContext('2d');
+        const reticleEl = document.getElementById('target-reticle');
+        const reticleDiamond = document.getElementById('reticle-diamond');
+        const reticleLabel = document.getElementById('reticle-label');
+        const alertBanner = document.getElementById('hud-alert');
+
+        function updateRadar() {
+            const w = radarCanvas.width;
+            const h = radarCanvas.height;
+            const cx = w / 2;
+            const cy = h / 2;
+            const range = 3400; // World units visible on radar
+
+            radarCtx.clearRect(0, 0, w, h);
+
+            // Range rings
+            radarCtx.strokeStyle = 'rgba(0, 255, 170, 0.22)';
+            radarCtx.lineWidth = 1;
+            radarCtx.beginPath();
+            radarCtx.arc(cx, cy, w * 0.25, 0, Math.PI * 2);
+            radarCtx.arc(cx, cy, w * 0.45, 0, Math.PI * 2);
+            radarCtx.stroke();
+
+            // Forward heading direction
+            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(state.player.quat);
+            const headingAngle = Math.atan2(forward.x, -forward.z);
+
+            radarCtx.save();
+            radarCtx.translate(cx, cy);
+            radarCtx.rotate(-headingAngle);
+
+            // Draw Coronado Bridge line on radar for spatial reference
+            const bStart = new THREE.Vector3(-340, 0, 620).sub(state.player.pos);
+            const bEnd = new THREE.Vector3(640, 0, 380).sub(state.player.pos);
+            radarCtx.strokeStyle = 'rgba(56, 189, 248, 0.75)';
+            radarCtx.lineWidth = 2.5;
+            radarCtx.beginPath();
+            radarCtx.moveTo((bStart.x / range) * cx, (bStart.z / range) * cy);
+            radarCtx.lineTo((bEnd.x / range) * cx, (bEnd.z / range) * cy);
+            radarCtx.stroke();
+
+            // Draw Enemy Blips
+            state.enemies.forEach(enemy => {
+                const rel = enemy.mesh.position.clone().sub(state.player.pos);
+                let rx = (rel.x / range) * cx;
+                let rz = (rel.z / range) * cy;
+                const d = Math.hypot(rx, rz);
+                if (d > cx - 6) {
+                    rx = (rx / d) * (cx - 6);
+                    rz = (rz / d) * (cy - 6);
+                }
+                radarCtx.fillStyle = '#ff4444';
+                radarCtx.beginPath();
+                radarCtx.arc(rx, rz, 3.2, 0, Math.PI * 2);
+                radarCtx.fill();
+            });
+
+            radarCtx.restore();
+
+            // Player center chevron
+            radarCtx.fillStyle = '#00ffaa';
+            radarCtx.beginPath();
+            radarCtx.moveTo(cx, cy - 5);
+            radarCtx.lineTo(cx + 4, cy + 4);
+            radarCtx.lineTo(cx, cy + 2);
+            radarCtx.lineTo(cx - 4, cy + 4);
+            radarCtx.closePath();
+            radarCtx.fill();
+        }
+
+        function updateHUD() {
+            const p = state.player;
+            document.getElementById('hud-wave').textContent = `WAVE ${state.wave}`;
+            document.getElementById('hud-enemies').textContent = `BANDITS: ${state.enemies.length}`;
+            document.getElementById('hud-score').textContent = String(state.score).padStart(5, '0');
+
+            // Speed in Knots & Altitude in Feet
+            const knots = Math.round(p.speed * 1.45);
+            const altFt = Math.max(0, Math.round(p.pos.y * 3.28));
+            document.getElementById('hud-speed').textContent = knots;
+            document.getElementById('hud-alt').textContent = altFt;
+
+            // Heading & San Diego Landmark Sector
+            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(p.quat);
+            let deg = Math.round((Math.atan2(forward.x, -forward.z) * 180) / Math.PI);
+            if (deg < 0) deg += 360;
+            const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+            const cardinal = dirs[Math.round(deg / 45) % 8];
+            document.getElementById('hud-heading').textContent = `HDG ${String(deg).padStart(3, '0')}° ${cardinal}`;
+
+            let sector = 'SAN DIEGO BAY';
+            if (p.pos.x > 420 && p.pos.z < 250) sector = 'DOWNTOWN SAN DIEGO';
+            else if (p.pos.x < -1550) sector = 'POINT LOMA PENINSULA';
+            else if (p.pos.x < -300 && p.pos.z > -150 && p.pos.z < 1200) sector = 'CORONADO ISLAND';
+            else if (p.pos.x < -300 && p.pos.z <= -150) sector = 'NAS NORTH ISLAND';
+            else if (p.pos.z > 1200) sector = 'SILVER STRAND / SOUTH BAY';
+            document.getElementById('hud-sector').textContent = `SECTOR: ${sector}`;
+
+            // Hull Bar
+            const hullPct = Math.round((p.hull / p.maxHull) * 100);
+            document.getElementById('hud-hull-text').textContent = `${hullPct}%`;
+            const hullBar = document.getElementById('hud-hull-bar');
+            hullBar.style.width = `${hullPct}%`;
+            if (hullPct < 35) {
+                hullBar.className = 'h-full bg-red-500 transition-all duration-150';
+            } else {
+                hullBar.className = 'h-full bg-gradient-to-r from-emerald-500 to-teal-300 transition-all duration-150';
+            }
+
+            // Missile Status
+            const mStatus = document.getElementById('hud-missile-status');
+            if (p.missiles > 0) {
+                mStatus.textContent = p.lockProgress >= 0.7 ? `LOCKED [${p.missiles}]` : `READY [${p.missiles}]`;
+                mStatus.className = p.lockProgress >= 0.7 ? 'text-red-400 font-bold animate-pulse' : 'text-emerald-300 font-bold';
+            } else {
+                mStatus.textContent = `REARMING...`;
+                mStatus.className = 'text-amber-400 font-bold';
+            }
+
+            // Low Altitude Warning
+            if (p.pos.y < 65) {
+                alertBanner.classList.remove('hidden');
+            } else {
+                alertBanner.classList.add('hidden');
+            }
+
+            // Target Lock-On Reticle Projection
+            if (p.lockedTarget) {
+                const screenPos = p.lockedTarget.mesh.position.clone().project(camera);
+                if (screenPos.z < 1) {
+                    const sx = (screenPos.x * 0.5 + 0.5) * window.innerWidth;
+                    const sy = (-screenPos.y * 0.5 + 0.5) * window.innerHeight;
+                    reticleEl.style.left = `${sx}px`;
+                    reticleEl.style.top = `${sy}px`;
+                    reticleEl.classList.remove('hidden');
+
+                    const distM = Math.round(p.pos.distanceTo(p.lockedTarget.mesh.position));
+                    const isLocked = p.lockProgress >= 0.7;
+                    reticleLabel.textContent = isLocked ? `LOCK ${distM}m` : `TRG ${distM}m`;
+
+                    if (isLocked) {
+                        reticleDiamond.className = 'w-12 h-12 border-2 border-red-500 rotate-45 flex items-center justify-center shadow-[0_0_15px_rgba(239,68,68,0.9)]';
+                        reticleLabel.className = 'mt-3 text-center font-hud text-[10px] tracking-wider text-red-400 font-bold whitespace-nowrap bg-slate-950/80 px-1.5 py-0.5 rounded';
+                    } else {
+                        reticleDiamond.className = 'w-12 h-12 border-2 border-emerald-400 rotate-45 flex items-center justify-center shadow-[0_0_10px_rgba(0,255,170,0.6)]';
+                        reticleLabel.className = 'mt-3 text-center font-hud text-[10px] tracking-wider text-emerald-300 whitespace-nowrap bg-slate-950/70 px-1.5 py-0.5 rounded';
+                    }
+                } else {
+                    reticleEl.classList.add('hidden');
+                }
+            } else {
+                reticleEl.classList.add('hidden');
+            }
+
+            updateRadar();
+        }
+
+        // ==========================================
+        // 10. MAIN SIMULATION & PHYSICS LOOP
+        // ==========================================
+        const clock = new THREE.Clock();
+
+        function updatePlayer(dt) {
+            const p = state.player;
+            const k = state.keys;
+
+            // Pitch, Turn (Left/Right), and optional Rudder inputs
+            let pitchInput = state.touchInput.pitch;
+            let turnInput = -state.touchInput.roll; // Negative = Left, Positive = Right
+            let yawInput = 0;
+
+            if (k['KeyW'] || k['ArrowUp']) pitchInput -= 1;
+            if (k['KeyS'] || k['ArrowDown']) pitchInput += 1;
+            if (k['KeyA'] || k['ArrowLeft']) turnInput -= 1;
+            if (k['KeyD'] || k['ArrowRight']) turnInput += 1;
+            if (k['KeyQ']) yawInput += 1;
+            if (k['KeyE']) yawInput -= 1;
+
+            pitchInput = THREE.MathUtils.clamp(pitchInput, -1, 1);
+            turnInput = THREE.MathUtils.clamp(turnInput, -1, 1);
+
+            const isBoosting = k['ShiftLeft'] || k['ShiftRight'] || k['Space'] || state.touchInput.boosting;
+            const targetSpeed = isBoosting ? p.boostSpeed : p.speed;
+
+            // Smooth throttle adjustment
+            if (k['Equal'] || k['NumpadAdd']) p.speed = Math.min(p.maxSpeed, p.speed + 90 * dt);
+            if (k['Minus'] || k['NumpadSubtract']) p.speed = Math.max(p.minSpeed, p.speed - 90 * dt);
+
+            const currentSpeed = THREE.MathUtils.lerp(p.speed, targetSpeed, isBoosting ? 4 * dt : 2 * dt);
+
+            // Intuitive Euler Flight Orientation (YXZ order prevents gimbal spin & keeps horizon intuitive)
+            const euler = new THREE.Euler().setFromQuaternion(p.quat, 'YXZ');
+
+            // 1. Coordinated Left/Right Turning: turns heading smoothly + banks wings up to ~48 degrees
+            const turnRate = 1.45; // Responsive world-horizontal turn rate (rad/s)
+            euler.y -= (turnInput * turnRate - yawInput * 0.85) * dt;
+
+            const maxBankAngle = 0.84; // ~48 degrees max comfortable bank
+            const targetRoll = -turnInput * maxBankAngle;
+            // Smoothly bank into turns and automatically roll wings-level (0) when stick is released
+            const rollLerpSpeed = Math.abs(turnInput) > 0.05 ? 6.5 : 4.5;
+            euler.z = THREE.MathUtils.lerp(euler.z, targetRoll, 1 - Math.exp(-rollLerpSpeed * dt));
+
+            // 2. Pitch Control & Automatic Horizon Leveling when pitch input is neutral
+            const maxPitchAngle = 1.15; // ~66 degrees climb/dive limit so aircraft never flips upside down
+            if (Math.abs(pitchInput) > 0.05) {
+                euler.x = THREE.MathUtils.clamp(euler.x + pitchInput * 1.35 * dt, -maxPitchAngle, maxPitchAngle);
+            } else {
+                // Smoothly auto-trim pitch back to level horizon flight (0) when stick/keys are released
+                euler.x = THREE.MathUtils.lerp(euler.x, 0, 1 - Math.exp(-2.8 * dt));
+            }
+
+            p.quat.setFromEuler(euler);
+
+            // Forward movement
+            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(p.quat);
+            p.pos.addScaledVector(forward, currentSpeed * dt);
+
+            // Soft World Boundary Turn-Back (Keep player within San Diego metro region)
+            if (p.pos.length() > 5200) {
+                const toCenter = p.pos.clone().negate().normalize();
+                const targetQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, -1), toCenter);
+                p.quat.slerp(targetQuat, 1.5 * dt);
+            }
+
+            // Ceiling limit
+            if (p.pos.y > 2200) {
+                p.pos.y = 2200;
+            }
+
+            // Water / Ground Collision Check
+            if (p.pos.y <= 14) {
+                triggerGameOver("CRASHED INTO SAN DIEGO BAY");
+                return;
+            }
+
+            // Sync 3D Jet Mesh
+            playerJet.position.copy(p.pos);
+            playerJet.quaternion.copy(p.quat);
+
+            // Afterburner Flame Scale
+            const flameScale = isBoosting ? 1.85 + Math.random() * 0.4 : 0.9 + Math.random() * 0.2;
+            playerJet.userData.flameL.scale.set(1, 1, flameScale);
+            playerJet.userData.flameR.scale.set(1, 1, flameScale);
+
+            // Engine Audio
+            sound.updateEngine((currentSpeed - p.minSpeed) / (p.maxSpeed - p.minSpeed), isBoosting);
+
+            // Vulcan Cannon Firing
+            p.gunCooldown -= dt;
+            const isFiring = k['KeyF'] || state.mouseFire || state.touchInput.firing;
+            if (isFiring && p.gunCooldown <= 0) {
+                p.gunCooldown = 0.085;
+                sound.playGun();
+                const leftGun = p.pos.clone().add(new THREE.Vector3(-2.4, -0.4, -9).applyQuaternion(p.quat));
+                const rightGun = p.pos.clone().add(new THREE.Vector3(2.4, -0.4, -9).applyQuaternion(p.quat));
+                spawnBullet(leftGun, p.quat, false);
+                spawnBullet(rightGun, p.quat, false);
+            }
+
+            // Missile Reload Timer
+            if (p.missiles < p.maxMissiles) {
+                p.missileReloadTimer += dt;
+                if (p.missileReloadTimer >= 4.0) {
+                    p.missiles++;
+                    p.missileReloadTimer = 0;
+                }
+            }
+
+            // Target Lock-On Acquisition (Best enemy inside forward cone)
+            let bestTarget = null;
+            let bestDot = 0.78; // ~38 degree lock cone
+            state.enemies.forEach(enemy => {
+                const toEnemy = enemy.mesh.position.clone().sub(p.pos);
+                const dist = toEnemy.length();
+                if (dist < 2800) {
+                    const dot = forward.dot(toEnemy.normalize());
+                    if (dot > bestDot) {
+                        bestDot = dot;
+                        bestTarget = enemy;
+                    }
+                }
+            });
+
+            if (bestTarget && bestTarget === p.lockedTarget) {
+                p.lockProgress = Math.min(1, p.lockProgress + dt * 0.95);
+            } else {
+                p.lockedTarget = bestTarget;
+                p.lockProgress = 0;
+            }
+
+            // Camera Follow Update
+            if (state.cameraMode === 'chase') {
+                const camOffset = new THREE.Vector3(0, 7.2, 26).applyQuaternion(p.quat);
+                const desiredCamPos = p.pos.clone().add(camOffset);
+                if (desiredCamPos.y < 18) desiredCamPos.y = 18;
+                camera.position.lerp(desiredCamPos, 1 - Math.exp(-12 * dt));
+
+                const lookAhead = p.pos.clone().add(forward.clone().multiplyScalar(80));
+                const upVec = new THREE.Vector3(0, 1, 0).applyQuaternion(p.quat);
+                camera.up.lerp(upVec, 1 - Math.exp(-8 * dt));
+                camera.lookAt(lookAhead);
+            } else {
+                // First-Person Cockpit View
+                const cockpitPos = p.pos.clone().add(new THREE.Vector3(0, 1.8, -3.2).applyQuaternion(p.quat));
+                camera.position.copy(cockpitPos);
+                const lookTarget = p.pos.clone().add(forward.clone().multiplyScalar(120));
+                const upVec = new THREE.Vector3(0, 1, 0).applyQuaternion(p.quat);
+                camera.up.copy(upVec);
+                camera.lookAt(lookTarget);
+            }
+        }
+
+        function updateEnemies(dt) {
+            const pPos = state.player.pos;
+
+            for (let i = state.enemies.length - 1; i >= 0; i--) {
+                const e = state.enemies[i];
+                e.aiPhase += dt * 0.8;
+
+                // Tactical AI: weave and pursue player while avoiding water
+                const desiredPoint = pPos.clone().add(new THREE.Vector3(
+                    Math.sin(e.aiPhase) * 220,
+                    Math.cos(e.aiPhase * 1.3) * 90 + 40,
+                    Math.cos(e.aiPhase) * 220
+                ));
+                if (desiredPoint.y < 140) desiredPoint.y = 180;
+
+                const toTarget = desiredPoint.sub(e.mesh.position).normalize();
+                const targetQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, -1), toTarget);
+                e.quat.slerp(targetQuat, 1.35 * dt);
+
+                const eForward = new THREE.Vector3(0, 0, -1).applyQuaternion(e.quat);
+                e.mesh.position.addScaledVector(eForward, e.speed * dt);
+                if (e.mesh.position.y < 60) e.mesh.position.y = 60;
+                e.mesh.quaternion.copy(e.quat);
+
+                // Enemy fires tracers if player is in front & within range
+                const toPlayer = pPos.clone().sub(e.mesh.position);
+                const distToPlayer = toPlayer.length();
+                e.fireCooldown -= dt;
+                if (distToPlayer < 1350 && eForward.dot(toPlayer.normalize()) > 0.88 && e.fireCooldown <= 0) {
+                    e.fireCooldown = 0.45 + Math.random() * 0.4;
+                    const muzzle = e.mesh.position.clone().add(eForward.clone().multiplyScalar(12));
+                    spawnBullet(muzzle, e.quat, true);
+                }
+
+                // Smoke trail when damaged
+                if (e.hp < 65) {
+                    e.smokeTimer -= dt;
+                    if (e.smokeTimer <= 0) {
+                        e.smokeTimer = 0.06;
+                        spawnParticle(e.mesh.position, 0x334155, 3.2, 0.75);
+                    }
+                }
+            }
+
+            // Spawn next wave when all bandits cleared
+            if (state.enemies.length === 0 && state.running) {
+                state.wave++;
+                state.player.hull = Math.min(state.player.maxHull, state.player.hull + 25);
+                spawnEnemyWave(state.wave);
+            }
+        }
+
+        function updateProjectilesAndParticles(dt) {
+            // Bullets
+            for (let i = state.bullets.length - 1; i >= 0; i--) {
+                const b = state.bullets[i];
+                b.life -= dt;
+                b.mesh.position.addScaledVector(b.vel, dt);
+
+                let hit = false;
+                if (b.isEnemy) {
+                    if (b.mesh.position.distanceTo(state.player.pos) < 16) {
+                        damagePlayer(6);
+                        hit = true;
+                    }
+                } else {
+                    for (let j = state.enemies.length - 1; j >= 0; j--) {
+                        const enemy = state.enemies[j];
+                        if (b.mesh.position.distanceTo(enemy.mesh.position) < 22) {
+                            enemy.hp -= 20;
+                            spawnParticle(b.mesh.position, 0xffaa00, 2.5, 0.25);
+                            hit = true;
+
+                            if (enemy.hp <= 0) {
+                                spawnExplosion(enemy.mesh.position, 26);
+                                scene.remove(enemy.mesh);
+                                state.enemies.splice(j, 1);
+                                state.score += 250 * state.wave;
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                if (hit || b.life <= 0 || b.mesh.position.y < 2) {
+                    scene.remove(b.mesh);
+                    state.bullets.splice(i, 1);
+                }
+            }
+
+            // Heat-Seeking Missiles
+            for (let i = state.missiles.length - 1; i >= 0; i--) {
+                const m = state.missiles[i];
+                m.life -= dt;
+
+                if (m.target && state.enemies.includes(m.target)) {
+                    const toTarget = m.target.mesh.position.clone().sub(m.mesh.position).normalize();
+                    const desiredQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, -1), toTarget);
+                    m.quat.slerp(desiredQuat, 4.2 * dt);
+                }
+
+                const mForward = new THREE.Vector3(0, 0, -1).applyQuaternion(m.quat);
+                m.mesh.position.addScaledVector(mForward, m.speed * dt);
+                m.mesh.quaternion.copy(m.quat);
+
+                m.smokeTimer -= dt;
+                if (m.smokeTimer <= 0) {
+                    m.smokeTimer = 0.025;
+                    spawnParticle(m.mesh.position, 0xe2e8f0, 2.2, 0.55);
+                }
+
+                let detonated = false;
+                for (let j = state.enemies.length - 1; j >= 0; j--) {
+                    const enemy = state.enemies[j];
+                    if (m.mesh.position.distanceTo(enemy.mesh.position) < 34) {
+                        spawnExplosion(enemy.mesh.position, 32);
+                        scene.remove(enemy.mesh);
+                        state.enemies.splice(j, 1);
+                        state.score += 400 * state.wave;
+                        detonated = true;
+                        break;
+                    }
+                }
+
+                if (detonated || m.life <= 0 || m.mesh.position.y < 2) {
+                    scene.remove(m.mesh);
+                    state.missiles.splice(i, 1);
+                }
+            }
+
+            // Particles
+            for (let i = state.particles.length - 1; i >= 0; i--) {
+                const pt = state.particles[i];
+                pt.life -= dt;
+                pt.mesh.position.addScaledVector(pt.vel, dt);
+                const ratio = Math.max(0, pt.life / pt.maxLife);
+                pt.mesh.scale.setScalar(ratio);
+                pt.mesh.material.opacity = ratio * 0.85;
+
+                if (pt.life <= 0) {
+                    scene.remove(pt.mesh);
+                    state.particles.splice(i, 1);
+                }
+            }
+        }
+
+        // ==========================================
+        // 11. GAME START / RESTART & ANIMATION LOOP
+        // ==========================================
+        function startGame() {
+            sound.init();
+
+            // Clear old entities
+            state.enemies.forEach(e => scene.remove(e.mesh));
+            state.bullets.forEach(b => scene.remove(b.mesh));
+            state.missiles.forEach(m => scene.remove(m.mesh));
+            state.particles.forEach(p => scene.remove(p.mesh));
+
+            state.enemies = [];
+            state.bullets = [];
+            state.missiles = [];
+            state.particles = [];
+
+            // Reset Player over San Diego Bay facing Coronado Bridge & Downtown
+            state.score = 0;
+            state.wave = 1;
+            state.gameOver = false;
+            state.running = true;
+            state.cameraMode = 'chase';
+            playerJet.visible = true;
+
+            state.player.pos.set(-380, 270, 1450);
+            state.player.quat.setFromEuler(new THREE.Euler(0, -0.32, 0));
+            state.player.speed = 230;
+            state.player.hull = 100;
+            state.player.missiles = 4;
+            state.player.missileReloadTimer = 0;
+            state.player.lockedTarget = null;
+            state.player.lockProgress = 0;
+
+            spawnEnemyWave(1);
+
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('gameover-screen').classList.add('hidden');
+            document.getElementById('hud-layer').classList.remove('hidden');
+            setTouchUI(state.touchVisible);
+        }
+
+        document.getElementById('btn-launch').addEventListener('click', startGame);
+        document.getElementById('btn-restart').addEventListener('click', startGame);
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        let demoAngle = 0;
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = Math.min(clock.getDelta(), 0.05);
+
+            // Subtle San Diego Bay water shimmer
+            if (state.waterMesh) {
+                state.waterMesh.position.y = Math.sin(clock.elapsedTime * 1.6) * 0.45;
+            }
+
+            if (state.running && !state.gameOver) {
+                updatePlayer(dt);
+                updateEnemies(dt);
+                updateProjectilesAndParticles(dt);
+                updateHUD();
+            } else if (!state.gameOver) {
+                // Scenic Orbit Camera over San Diego Bay & Coronado Bridge on Title Screen
+                demoAngle += dt * 0.14;
+                camera.position.set(
+                    Math.cos(demoAngle) * 1450,
+                    360 + Math.sin(demoAngle * 2) * 45,
+                    Math.sin(demoAngle) * 1450 + 250
+                );
+                camera.up.set(0, 1, 0);
+                camera.lookAt(220, 95, 220);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.onload = function () {
+            animate();
+        };
+    </script>
+</body>
+</html>

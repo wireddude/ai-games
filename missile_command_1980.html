@@ -1,0 +1,1406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MISSILE COMMAND 1980 — Arcade Clone</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Chakra+Petch:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #03050a;
+            font-family: 'Chakra Petch', sans-serif;
+            color: #e2e8f0;
+        }
+        #game-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+        }
+        .font-arcade {
+            font-family: 'Press Start 2P', monospace;
+        }
+        .phosphor-panel {
+            background: rgba(5, 12, 24, 0.78);
+            border: 1.5px solid rgba(56, 189, 248, 0.45);
+            box-shadow: 0 0 18px rgba(14, 165, 233, 0.16);
+            backdrop-filter: blur(6px);
+        }
+        .glow-cyan {
+            text-shadow: 0 0 8px rgba(34, 211, 238, 0.85);
+        }
+        .glow-amber {
+            text-shadow: 0 0 8px rgba(251, 191, 36, 0.85);
+        }
+        .glow-red {
+            text-shadow: 0 0 10px rgba(248, 113, 113, 0.9);
+        }
+        .glow-blue {
+            text-shadow: 0 0 8px rgba(96, 165, 250, 0.85);
+        }
+        .battery-btn {
+            transition: transform 0.06s ease, background-color 0.1s ease, border-color 0.1s ease;
+        }
+        .battery-btn:active, .battery-btn.pressed {
+            transform: scale(0.93);
+            background-color: rgba(56, 189, 248, 0.35);
+            border-color: #7dd3fc;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Full-Viewport Arcade Playfield Canvas -->
+    <canvas id="game-canvas"></canvas>
+
+    <!-- Active Top HUD -->
+    <div id="hud-layer" class="fixed top-0 inset-x-0 z-20 pointer-events-none hidden p-2.5 sm:p-4">
+        <div class="max-w-7xl mx-auto flex flex-wrap justify-between items-start gap-2">
+            <!-- Score & High Score -->
+            <div class="phosphor-panel rounded-xl px-3 py-2 sm:px-4 sm:py-2.5 flex items-center gap-4 sm:gap-6">
+                <div>
+                    <div class="font-arcade text-[9px] sm:text-[10px] text-cyan-400 mb-1">SCORE</div>
+                    <div id="hud-score" class="font-arcade text-sm sm:text-lg text-white glow-cyan">000000</div>
+                </div>
+                <div class="h-7 w-px bg-sky-500/30"></div>
+                <div>
+                    <div class="font-arcade text-[9px] sm:text-[10px] text-amber-300 mb-1">HI-SCORE</div>
+                    <div id="hud-hiscore" class="font-arcade text-sm sm:text-lg text-amber-300 glow-amber">000000</div>
+                </div>
+            </div>
+
+            <!-- Wave & Cities -->
+            <div class="phosphor-panel rounded-xl px-3 py-2 sm:px-4 sm:py-2.5 flex items-center gap-4 sm:gap-6">
+                <div class="text-center">
+                    <div class="font-arcade text-[9px] sm:text-[10px] text-fuchsia-400 mb-1">WAVE</div>
+                    <div id="hud-wave" class="font-arcade text-sm sm:text-lg text-fuchsia-300">01</div>
+                </div>
+                <div class="h-7 w-px bg-sky-500/30"></div>
+                <div class="text-center">
+                    <div class="font-arcade text-[9px] sm:text-[10px] text-sky-300 mb-1">CITIES</div>
+                    <div id="hud-cities" class="font-arcade text-sm sm:text-lg text-sky-300 glow-blue">6</div>
+                </div>
+            </div>
+
+            <!-- Audio & Pause Controls -->
+            <div class="flex items-center gap-1.5 sm:gap-2 pointer-events-auto">
+                <button id="btn-mute" class="phosphor-panel battery-btn hover:bg-sky-950/70 px-3 py-2 rounded-xl font-arcade text-[10px] text-cyan-300 cursor-pointer">
+                    SFX: ON
+                </button>
+                <button id="btn-pause" class="phosphor-panel battery-btn hover:bg-sky-950/70 px-3 py-2 rounded-xl font-arcade text-[10px] text-amber-300 cursor-pointer">
+                    PAUSE [P]
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Optional Quick Battery Fire Strip (Mobile / Touch & Quick Access) -->
+    <div id="battery-bar" class="fixed bottom-2 inset-x-0 z-20 pointer-events-none hidden px-3">
+        <div class="max-w-xl mx-auto flex justify-between items-center gap-2 pointer-events-auto">
+            <button id="btn-fire-left" class="battery-btn phosphor-panel flex-1 py-2 rounded-xl font-arcade text-[9px] sm:text-[10px] text-cyan-300 cursor-pointer">
+                L-BAT [1/A] <span id="ammo-left-lbl" class="text-amber-300">10</span>
+            </button>
+            <button id="btn-fire-center" class="battery-btn phosphor-panel flex-1 py-2 rounded-xl font-arcade text-[9px] sm:text-[10px] text-cyan-300 cursor-pointer">
+                C-BAT [2/S] <span id="ammo-center-lbl" class="text-amber-300">10</span>
+            </button>
+            <button id="btn-fire-right" class="battery-btn phosphor-panel flex-1 py-2 rounded-xl font-arcade text-[9px] sm:text-[10px] text-cyan-300 cursor-pointer">
+                R-BAT [3/D] <span id="ammo-right-lbl" class="text-amber-300">10</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Title / Start Overlay -->
+    <div id="start-screen" class="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/75 backdrop-blur-sm p-4">
+        <div class="max-w-xl w-full phosphor-panel rounded-2xl p-6 sm:p-8 text-center">
+            <div class="font-arcade text-[10px] sm:text-xs text-amber-300 tracking-widest mb-3 glow-amber">
+                1980 ARCADE VECTOR DEFENSE
+            </div>
+            <h1 class="font-arcade text-2xl sm:text-4xl text-sky-400 glow-cyan leading-snug mb-3">
+                MISSILE COMMAND
+            </h1>
+            <p class="text-slate-200 text-xs sm:text-sm max-w-md mx-auto mb-5 leading-relaxed">
+                Defend your six planetary cities from incoming ICBM warheads, MIRV splits, and smart bombs. Intercept threats with expanding counter-missile blast waves!
+            </p>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left bg-slate-950/75 rounded-xl p-4 border border-sky-500/25 mb-6 text-xs">
+                <div>
+                    <div class="font-arcade text-[10px] text-cyan-300 mb-2">AIM &amp; FIRE</div>
+                    <ul class="space-y-1.5 text-slate-200">
+                        <li><span class="text-amber-300 font-bold">Mouse / Touch Drag</span> : Move Reticle</li>
+                        <li><span class="text-amber-300 font-bold">Click / Tap</span> : Smart Battery Fire</li>
+                        <li><span class="text-amber-300 font-bold">1/A • 2/S • 3/D</span> : Left / Center / Right</li>
+                        <li><span class="text-amber-300 font-bold">Arrows + Space</span> : Keyboard Reticle &amp; Fire</li>
+                    </ul>
+                </div>
+                <div>
+                    <div class="font-arcade text-[10px] text-fuchsia-300 mb-2">SCORING &amp; BONUS</div>
+                    <ul class="space-y-1.5 text-slate-200">
+                        <li>• Warhead / Smart Bomb: <span class="text-amber-300 font-bold">100–250 PTS</span></li>
+                        <li>• Surviving City Bonus: <span class="text-sky-300 font-bold">+100× Wave</span></li>
+                        <li>• Remaining Ammo Bonus: <span class="text-emerald-300 font-bold">+25× Wave</span></li>
+                        <li>• Bonus City awarded every <span class="text-amber-300 font-bold">10,000 PTS</span></li>
+                    </ul>
+                </div>
+            </div>
+
+            <button id="btn-start" class="battery-btn px-9 py-4 rounded-xl bg-gradient-to-r from-cyan-400 to-sky-500 hover:from-cyan-300 hover:to-sky-400 text-slate-950 font-arcade text-xs sm:text-sm shadow-[0_0_24px_rgba(34,211,238,0.55)] cursor-pointer">
+                START MISSION
+            </button>
+        </div>
+    </div>
+
+    <!-- Pause Overlay -->
+    <div id="pause-screen" class="fixed inset-0 z-30 hidden items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4">
+        <div class="max-w-sm w-full phosphor-panel rounded-2xl p-6 text-center">
+            <h2 class="font-arcade text-xl text-amber-300 glow-amber mb-3">PAUSED</h2>
+            <p class="text-xs text-slate-300 mb-5">Defense grid on standby. Press <span class="text-cyan-300 font-bold">P</span> or resume below.</p>
+            <div class="flex flex-col gap-2.5">
+                <button id="btn-resume" class="battery-btn w-full py-3 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-arcade text-xs cursor-pointer">
+                    RESUME
+                </button>
+                <button id="btn-quit-menu" class="battery-btn w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-arcade text-[10px] cursor-pointer">
+                    TITLE SCREEN
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game Over Overlay -->
+    <div id="gameover-screen" class="fixed inset-0 z-30 hidden items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+        <div class="max-w-md w-full phosphor-panel rounded-2xl p-6 sm:p-7 border-red-500/60 text-center">
+            <div class="font-arcade text-[10px] text-red-400 glow-red mb-2">ALL CITIES LOST</div>
+            <h2 class="font-arcade text-2xl sm:text-3xl text-white glow-red mb-3">THE END</h2>
+            <p class="text-xs text-slate-300 mb-5">The planetary defense grid has fallen.</p>
+
+            <div class="bg-slate-950/80 rounded-xl p-4 border border-slate-800 mb-6 space-y-2.5 text-xs">
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-400">FINAL SCORE</span>
+                    <span id="go-score" class="font-arcade text-sm text-cyan-300">000000</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-400">HIGH SCORE</span>
+                    <span id="go-hiscore" class="font-arcade text-sm text-amber-300">000000</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-400">WAVE REACHED</span>
+                    <span id="go-wave" class="font-arcade text-sm text-fuchsia-300">01</span>
+                </div>
+            </div>
+
+            <button id="btn-restart" class="battery-btn w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 font-arcade text-xs sm:text-sm shadow-[0_0_22px_rgba(251,191,36,0.45)] cursor-pointer">
+                PLAY AGAIN
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * MISSILE COMMAND 1980
+         * Self-Contained HTML5 Canvas & Web Audio API Arcade Clone
+         */
+
+        // =====================================================================
+        // 1. PROCEDURAL WEB AUDIO SYNTHESIZER
+        // =====================================================================
+        class ArcadeSound {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+                this.humOsc = null;
+                this.humGain = null;
+            }
+
+            init() {
+                if (this.ctx) {
+                    if (this.ctx.state === 'suspended') {
+                        this.ctx.resume().catch(() => {});
+                    }
+                    return;
+                }
+                try {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+
+                    // Subtle low tension warhead descent drone when enemy missiles fall
+                    this.humOsc = this.ctx.createOscillator();
+                    this.humOsc.type = 'sawtooth';
+                    this.humOsc.frequency.value = 92;
+
+                    const filter = this.ctx.createBiquadFilter();
+                    filter.type = 'lowpass';
+                    filter.frequency.value = 220;
+
+                    this.humGain = this.ctx.createGain();
+                    this.humGain.gain.value = 0;
+
+                    this.humOsc.connect(filter);
+                    filter.connect(this.humGain);
+                    this.humGain.connect(this.ctx.destination);
+                    this.humOsc.start();
+                } catch (e) {
+                    console.warn("Web Audio unavailable:", e);
+                }
+            }
+
+            toggleMute() {
+                this.muted = !this.muted;
+                if (this.muted && this.humGain && this.ctx) {
+                    this.humGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.03);
+                }
+                return this.muted;
+            }
+
+            updateDescentTone(threatCount, activePlay) {
+                if (!this.ctx || !this.humOsc || !this.humGain) return;
+                const now = this.ctx.currentTime;
+                if (this.muted || !activePlay || threatCount <= 0) {
+                    this.humGain.gain.setTargetAtTime(0, now, 0.08);
+                    return;
+                }
+                const intensity = Math.min(1, threatCount / 10);
+                this.humOsc.frequency.setTargetAtTime(84 + intensity * 48, now, 0.12);
+                this.humGain.gain.setTargetAtTime(0.015 + intensity * 0.025, now, 0.12);
+            }
+
+            playLaunch() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(520, now);
+                osc.frequency.exponentialRampToValueAtTime(165, now + 0.11);
+
+                gain.gain.setValueAtTime(0.14, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.115);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.12);
+            }
+
+            playEmptyClick() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(150, now);
+                gain.gain.setValueAtTime(0.08, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.05);
+            }
+
+            playExplosion(large = false) {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const dur = large ? 0.65 : 0.36;
+                const len = Math.floor(this.ctx.sampleRate * dur);
+                const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+                const data = buf.getChannelData(0);
+                for (let i = 0; i < len; i++) {
+                    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * (large ? 0.22 : 0.11)));
+                }
+
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buf;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(large ? 380 : 620, now);
+                filter.frequency.exponentialRampToValueAtTime(55, now + dur);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(large ? 0.28 : 0.16, now);
+                gain.gain.exponentialRampToValueAtTime(0.002, now + dur);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                noise.start(now);
+            }
+
+            playBonusTick(pitchIndex = 0) {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(660 + (pitchIndex % 8) * 95, now);
+                gain.gain.setValueAtTime(0.11, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.065);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.07);
+            }
+
+            playExtraCity() {
+                if (this.muted || !this.ctx) return;
+                const notes = [523.25, 659.25, 783.99, 1046.5];
+                const now = this.ctx.currentTime;
+                notes.forEach((freq, i) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now + i * 0.08);
+                    gain.gain.setValueAtTime(0.13, now + i * 0.08);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.14);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + i * 0.08);
+                    osc.stop(now + i * 0.08 + 0.15);
+                });
+            }
+        }
+
+        const sound = new ArcadeSound();
+
+        // =====================================================================
+        // 2. LOGICAL PLAYFIELD COORDINATES & GAME STATE
+        // =====================================================================
+        // Logical world dimensions: 1000 x 700 (scales crisply to any viewport)
+        const WORLD_W = 1000;
+        const WORLD_H = 700;
+        const GROUND_Y = 626;
+        const BONUS_CITY_STEP = 10000;
+
+        const state = {
+            phase: 'title', // 'title', 'playing', 'paused', 'wave_bonus', 'gameover'
+            score: 0,
+            highScore: parseInt(localStorage.getItem('missile_command_1980_hi') || '0', 10),
+            nextBonusCityScore: BONUS_CITY_STEP,
+            wave: 1,
+            reticle: { x: 500, y: 260 },
+            keys: {},
+            pointerActive: false,
+            cities: [],      // 6 cities (3 left, 3 right)
+            batteries: [],   // 3 batteries (Left, Center, Right)
+            enemyMissiles: [],
+            counterMissiles: [],
+            blasts: [],
+            sparks: [],
+            popups: [],
+            waveSpawnQueue: [],
+            waveSpawnTimer: 0,
+            bonusState: null
+        };
+
+        // Starfield points in logical space
+        const stars = Array.from({ length: 85 }, () => ({
+            x: Math.random() * WORLD_W,
+            y: Math.random() * (GROUND_Y - 40),
+            r: Math.random() < 0.25 ? 1.8 : 1.1,
+            alpha: 0.25 + Math.random() * 0.65,
+            twinkleSpeed: 1.5 + Math.random() * 3.5,
+            phase: Math.random() * Math.PI * 2
+        }));
+
+        function initCitiesAndBatteries() {
+            // Three batteries on Left, Center, Right; six cities interspersed (3 left, 3 right)
+            state.batteries = [
+                { id: 0, name: 'LEFT', x: 110, y: GROUND_Y, ammo: 10, maxAmmo: 10, destroyed: false },
+                { id: 1, name: 'CENTER', x: 500, y: GROUND_Y, ammo: 10, maxAmmo: 10, destroyed: false },
+                { id: 2, name: 'RIGHT', x: 890, y: GROUND_Y, ammo: 10, maxAmmo: 10, destroyed: false }
+            ];
+
+            const cityXs = [215, 305, 395, 605, 695, 785];
+            state.cities = cityXs.map((cx, idx) => ({
+                id: idx,
+                x: cx,
+                y: GROUND_Y,
+                alive: true
+            }));
+        }
+
+        initCitiesAndBatteries();
+
+        // =====================================================================
+        // 3. SCORING, BONUS CITIES & WAVE ESCALATION
+        // =====================================================================
+        function awardPoints(pts, x = null, y = null, label = null) {
+            if (state.phase !== 'playing' && state.phase !== 'wave_bonus') return;
+            state.score += pts;
+            if (state.score > state.highScore) {
+                state.highScore = state.score;
+                localStorage.setItem('missile_command_1980_hi', String(state.highScore));
+            }
+
+            // Award a bonus city every 10,000 points
+            while (state.score >= state.nextBonusCityScore) {
+                state.nextBonusCityScore += BONUS_CITY_STEP;
+                const deadCity = state.cities.find(c => !c.alive);
+                if (deadCity) {
+                    deadCity.alive = true;
+                    sound.playExtraCity();
+                    state.popups.push({
+                        x: deadCity.x,
+                        y: GROUND_Y - 42,
+                        text: 'BONUS CITY!',
+                        color: '#38bdf8',
+                        life: 1.6
+                    });
+                }
+            }
+
+            if (x !== null && y !== null) {
+                state.popups.push({
+                    x,
+                    y,
+                    text: label || `+${pts}`,
+                    color: '#fde047',
+                    life: 0.95
+                });
+            }
+        }
+
+        function pickRandomTargetPoint() {
+            const aliveCities = state.cities.filter(c => c.alive);
+            const intactBatteries = state.batteries.filter(b => !b.destroyed);
+            const candidates = [];
+
+            aliveCities.forEach(c => candidates.push({ x: c.x, y: GROUND_Y }));
+            intactBatteries.forEach(b => candidates.push({ x: b.x, y: GROUND_Y }));
+
+            if (candidates.length > 0 && Math.random() < 0.85) {
+                return candidates[Math.floor(Math.random() * candidates.length)];
+            }
+            return {
+                x: 80 + Math.random() * (WORLD_W - 160),
+                y: GROUND_Y
+            };
+        }
+
+        function buildWaveQueue(waveNum) {
+            const totalWarheads = Math.min(34, 8 + waveNum * 3);
+            const baseSpeed = 52 + waveNum * 8.5;
+            const queue = [];
+
+            for (let i = 0; i < totalWarheads; i++) {
+                const startX = 60 + Math.random() * (WORLD_W - 120);
+                const target = pickRandomTargetPoint();
+                const roll = Math.random();
+
+                // Escalate MIRV split warheads and weaving smart bombs in later waves
+                let kind = 'warhead';
+                if (waveNum >= 2 && roll < Math.min(0.32, 0.08 + waveNum * 0.035)) {
+                    kind = 'mirv';
+                } else if (waveNum >= 3 && roll < Math.min(0.52, 0.16 + waveNum * 0.04)) {
+                    kind = 'smart';
+                }
+
+                const delay = i === 0 ? 0.5 : (0.55 + Math.random() * Math.max(0.22, 0.95 - waveNum * 0.06));
+                queue.push({
+                    delay,
+                    kind,
+                    startX,
+                    startY: -12,
+                    targetX: target.x,
+                    targetY: target.y,
+                    speed: baseSpeed * (kind === 'smart' ? 1.12 : 0.92 + Math.random() * 0.25),
+                    color: kind === 'smart' ? '#e879f9' : (kind === 'mirv' ? '#fb923c' : '#f87171')
+                });
+            }
+
+            return queue;
+        }
+
+        function startWave(waveNum) {
+            state.wave = waveNum;
+            state.phase = 'playing';
+            state.enemyMissiles = [];
+            state.counterMissiles = [];
+            state.blasts = [];
+            state.waveSpawnQueue = buildWaveQueue(waveNum);
+            state.waveSpawnTimer = 0.4;
+
+            // Replenish surviving batteries for the new wave
+            state.batteries.forEach(bat => {
+                if (!bat.destroyed) {
+                    bat.ammo = bat.maxAmmo;
+                }
+            });
+        }
+
+        function beginWaveBonusSummary() {
+            const survivingCities = state.cities.filter(c => c.alive).length;
+            const remainingAmmo = state.batteries.reduce((sum, b) => sum + (b.destroyed ? 0 : b.ammo), 0);
+            const cityPtsPerUnit = 100 * state.wave;
+            const ammoPtsPerUnit = 25 * state.wave;
+
+            state.phase = 'wave_bonus';
+            state.bonusState = {
+                survivingCities,
+                citiesTallied: 0,
+                cityPtsPerUnit,
+                remainingAmmo,
+                ammoTallied: 0,
+                ammoPtsPerUnit,
+                tickTimer: 0.28,
+                doneTimer: 1.35
+            };
+        }
+
+        function updateWaveBonus(dt) {
+            const bs = state.bonusState;
+            if (!bs) return;
+
+            bs.tickTimer -= dt;
+            if (bs.tickTimer <= 0) {
+                if (bs.citiesTallied < bs.survivingCities) {
+                    bs.citiesTallied++;
+                    bs.tickTimer = 0.22;
+                    sound.playBonusTick(bs.citiesTallied);
+                    awardPoints(bs.cityPtsPerUnit);
+                } else if (bs.ammoTallied < bs.remainingAmmo) {
+                    bs.ammoTallied++;
+                    bs.tickTimer = 0.065;
+                    sound.playBonusTick(bs.ammoTallied + 4);
+                    awardPoints(bs.ammoPtsPerUnit);
+                } else {
+                    bs.doneTimer -= dt;
+                    if (bs.doneTimer <= 0) {
+                        state.bonusState = null;
+                        startWave(state.wave + 1);
+                    }
+                }
+            }
+        }
+
+        // =====================================================================
+        // 4. COUNTER-MISSILES, BLAST WAVES & COLLISIONS
+        // =====================================================================
+        function fireFromBattery(bat, targetX, targetY) {
+            if (!bat || bat.destroyed || bat.ammo <= 0) {
+                sound.playEmptyClick();
+                return false;
+            }
+
+            // Clamp target slightly above ground line
+            const clampedY = Math.min(targetY, GROUND_Y - 12);
+            const clampedX = THREE_CLAMP(targetX, 20, WORLD_W - 20);
+
+            bat.ammo--;
+            sound.playLaunch();
+
+            const startX = bat.x;
+            const startY = bat.y - 16;
+            const dx = clampedX - startX;
+            const dy = clampedY - startY;
+            const dist = Math.max(1, Math.hypot(dx, dy));
+            const speed = 780;
+
+            state.counterMissiles.push({
+                startX,
+                startY,
+                x: startX,
+                y: startY,
+                targetX: clampedX,
+                targetY: clampedY,
+                vx: (dx / dist) * speed,
+                vy: (dy / dist) * speed,
+                batteryId: bat.id
+            });
+
+            return true;
+        }
+
+        function fireSmartBattery(targetX, targetY) {
+            if (state.phase !== 'playing') return;
+
+            // Choose closest battery that still has ammo; prefer Center for balanced coverage
+            const available = state.batteries
+                .filter(b => !b.destroyed && b.ammo > 0)
+                .sort((a, b) => {
+                    const da = Math.abs(a.x - targetX) + (a.id === 1 ? -12 : 0);
+                    const db = Math.abs(b.x - targetX) + (b.id === 1 ? -12 : 0);
+                    return da - db;
+                });
+
+            if (available.length > 0) {
+                fireFromBattery(available[0], targetX, targetY);
+            } else {
+                sound.playEmptyClick();
+            }
+        }
+
+        function fireSpecificBatteryIndex(idx) {
+            if (state.phase !== 'playing') return;
+            const bat = state.batteries[idx];
+            if (bat) {
+                fireFromBattery(bat, state.reticle.x, state.reticle.y);
+            }
+        }
+
+        function spawnBlastWave(x, y, maxRadius, isEnemyImpact = false) {
+            sound.playExplosion(isEnemyImpact);
+            state.blasts.push({
+                x,
+                y,
+                radius: 4,
+                maxRadius,
+                expandSpeed: isEnemyImpact ? 95 : 138,
+                holdTimer: isEnemyImpact ? 0.12 : 0.22,
+                collapseSpeed: 92,
+                shrinking: false,
+                isEnemyImpact
+            });
+
+            // Spark burst
+            const sparkColor = isEnemyImpact ? '#fb923c' : '#67e8f9';
+            for (let i = 0; i < (isEnemyImpact ? 22 : 14); i++) {
+                const ang = Math.random() * Math.PI * 2;
+                const spd = 45 + Math.random() * 145;
+                state.sparks.push({
+                    x,
+                    y,
+                    vx: Math.cos(ang) * spd,
+                    vy: Math.sin(ang) * spd,
+                    color: sparkColor,
+                    life: 0.35 + Math.random() * 0.25,
+                    maxLife: 0.6
+                });
+            }
+        }
+
+        function THREE_CLAMP(val, min, max) {
+            return Math.max(min, Math.min(max, val));
+        }
+
+        function checkGameOver() {
+            const aliveCities = state.cities.filter(c => c.alive).length;
+            if (aliveCities === 0) {
+                state.phase = 'gameover';
+                sound.updateDescentTone(0, false);
+                document.getElementById('hud-layer').classList.add('hidden');
+                document.getElementById('battery-bar').classList.add('hidden');
+                document.getElementById('go-score').textContent = String(state.score).padStart(6, '0');
+                document.getElementById('go-hiscore').textContent = String(state.highScore).padStart(6, '0');
+                document.getElementById('go-wave').textContent = String(state.wave).padStart(2, '0');
+                document.getElementById('gameover-screen').classList.remove('hidden');
+                document.getElementById('gameover-screen').classList.add('flex');
+            }
+        }
+
+        // =====================================================================
+        // 5. SIMULATION STEP
+        // =====================================================================
+        function updateSimulation(dt) {
+            // Keyboard reticle movement
+            const retSpeed = 540;
+            if (state.keys['ArrowLeft']) state.reticle.x -= retSpeed * dt;
+            if (state.keys['ArrowRight']) state.reticle.x += retSpeed * dt;
+            if (state.keys['ArrowUp']) state.reticle.y -= retSpeed * dt;
+            if (state.keys['ArrowDown']) state.reticle.y += retSpeed * dt;
+            state.reticle.x = THREE_CLAMP(state.reticle.x, 20, WORLD_W - 20);
+            state.reticle.y = THREE_CLAMP(state.reticle.y, 35, GROUND_Y - 14);
+
+            if (state.phase === 'wave_bonus') {
+                updateWaveBonus(dt);
+            }
+
+            if (state.phase === 'playing') {
+                // Spawn queued enemy warheads
+                if (state.waveSpawnQueue.length > 0) {
+                    state.waveSpawnTimer -= dt;
+                    if (state.waveSpawnTimer <= 0) {
+                        const item = state.waveSpawnQueue.shift();
+                        state.enemyMissiles.push({
+                            startX: item.startX,
+                            startY: item.startY,
+                            x: item.startX,
+                            y: item.startY,
+                            targetX: item.targetX,
+                            targetY: item.targetY,
+                            speed: item.speed,
+                            kind: item.kind,
+                            color: item.color,
+                            splitDone: false,
+                            weavePhase: Math.random() * Math.PI * 2
+                        });
+                        if (state.waveSpawnQueue.length > 0) {
+                            state.waveSpawnTimer = state.waveSpawnQueue[0].delay;
+                        }
+                    }
+                }
+            }
+
+            // Update Counter-Missiles
+            for (let i = state.counterMissiles.length - 1; i >= 0; i--) {
+                const cm = state.counterMissiles[i];
+                cm.x += cm.vx * dt;
+                cm.y += cm.vy * dt;
+
+                const distToTarget = Math.hypot(cm.targetX - cm.x, cm.targetY - cm.y);
+                const stepDist = Math.hypot(cm.vx * dt, cm.vy * dt);
+                if (distToTarget <= stepDist + 4) {
+                    spawnBlastWave(cm.targetX, cm.targetY, 66, false);
+                    state.counterMissiles.splice(i, 1);
+                }
+            }
+
+            // Update Expanding / Collapsing Blast Waves
+            for (let i = state.blasts.length - 1; i >= 0; i--) {
+                const bl = state.blasts[i];
+                if (!bl.shrinking) {
+                    bl.radius += bl.expandSpeed * dt;
+                    if (bl.radius >= bl.maxRadius) {
+                        bl.radius = bl.maxRadius;
+                        bl.holdTimer -= dt;
+                        if (bl.holdTimer <= 0) {
+                            bl.shrinking = true;
+                        }
+                    }
+                } else {
+                    bl.radius -= bl.collapseSpeed * dt;
+                    if (bl.radius <= 0) {
+                        state.blasts.splice(i, 1);
+                    }
+                }
+            }
+
+            // Update Incoming Enemy Warheads, MIRVs & Smart Bombs
+            for (let i = state.enemyMissiles.length - 1; i >= 0; i--) {
+                const em = state.enemyMissiles[i];
+                const dx = em.targetX - em.x;
+                const dy = em.targetY - em.y;
+                const dist = Math.max(1, Math.hypot(dx, dy));
+
+                let vx = (dx / dist) * em.speed;
+                let vy = (dy / dist) * em.speed;
+
+                // Smart bombs weave laterally to evade incoming blasts
+                if (em.kind === 'smart') {
+                    em.weavePhase += dt * 4.5;
+                    vx += Math.cos(em.weavePhase) * 36;
+                }
+
+                em.x += vx * dt;
+                em.y += vy * dt;
+
+                // MIRV split around mid-altitude
+                if (em.kind === 'mirv' && !em.splitDone && em.y > 230 && em.y < 360 && Math.random() < dt * 2.2) {
+                    em.splitDone = true;
+                    em.kind = 'warhead';
+                    em.color = '#f87171';
+                    for (let s = 0; s < 2; s++) {
+                        const splitTarget = pickRandomTargetPoint();
+                        state.enemyMissiles.push({
+                            startX: em.x,
+                            startY: em.y,
+                            x: em.x,
+                            y: em.y,
+                            targetX: splitTarget.x,
+                            targetY: splitTarget.y,
+                            speed: em.speed * 1.08,
+                            kind: 'warhead',
+                            color: '#fb7185',
+                            splitDone: true,
+                            weavePhase: 0
+                        });
+                    }
+                }
+
+                // Check intersection against active player counter-missile blasts
+                let destroyedByBlast = false;
+                for (let b = 0; b < state.blasts.length; b++) {
+                    const bl = state.blasts[b];
+                    if (bl.isEnemyImpact) continue;
+                    if (Math.hypot(em.x - bl.x, em.y - bl.y) <= bl.radius + 5) {
+                        destroyedByBlast = true;
+                        const pts = em.kind === 'smart' ? 250 : (em.kind === 'mirv' ? 150 : 100);
+                        awardPoints(pts, em.x, em.y);
+                        break;
+                    }
+                }
+
+                if (destroyedByBlast) {
+                    spawnBlastWave(em.x, em.y, 26, false);
+                    state.enemyMissiles.splice(i, 1);
+                    continue;
+                }
+
+                // Check ground / city / battery impact
+                if (em.y >= GROUND_Y) {
+                    spawnBlastWave(em.x, GROUND_Y, 44, true);
+
+                    // Destroy any city within impact radius
+                    state.cities.forEach(c => {
+                        if (c.alive && Math.abs(c.x - em.x) < 34) {
+                            c.alive = false;
+                        }
+                    });
+
+                    // Destroy any battery within impact radius
+                    state.batteries.forEach(bat => {
+                        if (!bat.destroyed && Math.abs(bat.x - em.x) < 34) {
+                            bat.destroyed = true;
+                            bat.ammo = 0;
+                        }
+                    });
+
+                    state.enemyMissiles.splice(i, 1);
+                    checkGameOver();
+                }
+            }
+
+            // Update Sparks & Popups
+            for (let i = state.sparks.length - 1; i >= 0; i--) {
+                const sp = state.sparks[i];
+                sp.life -= dt;
+                sp.x += sp.vx * dt;
+                sp.y += sp.vy * dt;
+                sp.vy += 120 * dt;
+                if (sp.life <= 0) state.sparks.splice(i, 1);
+            }
+
+            for (let i = state.popups.length - 1; i >= 0; i--) {
+                const pop = state.popups[i];
+                pop.life -= dt;
+                pop.y -= 26 * dt;
+                if (pop.life <= 0) state.popups.splice(i, 1);
+            }
+
+            // Advance to next wave bonus once all warheads and blasts clear
+            if (
+                state.phase === 'playing' &&
+                state.waveSpawnQueue.length === 0 &&
+                state.enemyMissiles.length === 0 &&
+                state.blasts.length === 0
+            ) {
+                beginWaveBonusSummary();
+            }
+
+            sound.updateDescentTone(state.enemyMissiles.length, state.phase === 'playing');
+        }
+
+        // =====================================================================
+        // 6. 80s VECTOR & PIXEL CANVAS RENDERER
+        // =====================================================================
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        let viewScale = 1;
+        let viewOffsetX = 0;
+        let viewOffsetY = 0;
+
+        function resizeCanvas() {
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+            canvas.width = Math.floor(window.innerWidth * dpr);
+            canvas.height = Math.floor(window.innerHeight * dpr);
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+            const sx = window.innerWidth / WORLD_W;
+            const sy = window.innerHeight / WORLD_H;
+            viewScale = Math.min(sx, sy);
+            viewOffsetX = (window.innerWidth - WORLD_W * viewScale) * 0.5;
+            viewOffsetY = (window.innerHeight - WORLD_H * viewScale) * 0.5;
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function screenToWorld(clientX, clientY) {
+            const wx = (clientX - viewOffsetX) / viewScale;
+            const wy = (clientY - viewOffsetY) / viewScale;
+            return {
+                x: THREE_CLAMP(wx, 15, WORLD_W - 15),
+                y: THREE_CLAMP(wy, 20, GROUND_Y - 10)
+            };
+        }
+
+        function drawCity(city, timeSec) {
+            if (!city.alive) return;
+            const x = city.x;
+            const y = city.y;
+
+            ctx.save();
+            ctx.shadowColor = '#38bdf8';
+            ctx.shadowBlur = 8;
+
+            // Classic retro city towers & domes
+            const towers = [
+                { dx: -22, w: 9, h: 15, color: '#38bdf8' },
+                { dx: -11, w: 10, h: 23, color: '#60a5fa' },
+                { dx: 0, w: 12, h: 28, color: '#22d3ee' },
+                { dx: 12, w: 10, h: 20, color: '#60a5fa' },
+                { dx: 22, w: 8, h: 13, color: '#38bdf8' }
+            ];
+
+            towers.forEach((t, i) => {
+                ctx.fillStyle = t.color;
+                ctx.fillRect(x + t.dx - t.w * 0.5, y - t.h, t.w, t.h);
+
+                // Lit pixel windows
+                ctx.fillStyle = (Math.floor(timeSec * 3 + i) % 2 === 0) ? '#fef08a' : '#0f172a';
+                for (let wy = y - t.h + 4; wy < y - 4; wy += 6) {
+                    ctx.fillRect(x + t.dx - 2, wy, 2, 2);
+                    if (t.w >= 10) ctx.fillRect(x + t.dx + 1, wy, 2, 2);
+                }
+            });
+
+            ctx.restore();
+        }
+
+        function drawBattery(bat) {
+            const x = bat.x;
+            const y = bat.y;
+
+            ctx.save();
+            if (bat.destroyed) {
+                // Scorched crater & broken launcher remnants
+                ctx.strokeStyle = '#ef4444';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(x - 24, y);
+                ctx.lineTo(x - 10, y - 7);
+                ctx.lineTo(x, y - 2);
+                ctx.lineTo(x + 12, y - 8);
+                ctx.lineTo(x + 24, y);
+                ctx.stroke();
+                ctx.restore();
+                return;
+            }
+
+            ctx.shadowColor = '#fbbf24';
+            ctx.shadowBlur = 10;
+
+            // Armored Bunker Mound
+            ctx.fillStyle = '#eab308';
+            ctx.beginPath();
+            ctx.moveTo(x - 34, y);
+            ctx.lineTo(x - 20, y - 15);
+            ctx.lineTo(x + 20, y - 15);
+            ctx.lineTo(x + 34, y);
+            ctx.closePath();
+            ctx.fill();
+
+            // Turret Barrel pointing toward reticle
+            const ang = Math.atan2(state.reticle.y - (y - 14), state.reticle.x - x);
+            ctx.strokeStyle = '#fef08a';
+            ctx.lineWidth = 3.5;
+            ctx.beginPath();
+            ctx.moveTo(x, y - 14);
+            ctx.lineTo(x + Math.cos(ang) * 16, y - 14 + Math.sin(ang) * 16);
+            ctx.stroke();
+
+            // Visible Ammo Stockpile Pips inside Bunker
+            const cols = 5;
+            for (let a = 0; a < bat.ammo; a++) {
+                const col = a % cols;
+                const row = Math.floor(a / cols);
+                const px = x - 14 + col * 7;
+                const py = y - 5 - row * 5;
+                ctx.fillStyle = a < 2 ? '#f87171' : '#38bdf8';
+                ctx.fillRect(px - 1.5, py - 2.5, 3, 4.5);
+            }
+
+            ctx.restore();
+        }
+
+        function drawScene(timeSec) {
+            // Deep Space Background
+            ctx.fillStyle = '#03050a';
+            ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+
+            ctx.save();
+            ctx.translate(viewOffsetX, viewOffsetY);
+            ctx.scale(viewScale, viewScale);
+
+            // Subtle Tactical Radar Grid in Sky
+            ctx.strokeStyle = 'rgba(34, 211, 238, 0.05)';
+            ctx.lineWidth = 1;
+            for (let gx = 100; gx < WORLD_W; gx += 100) {
+                ctx.beginPath();
+                ctx.moveTo(gx, 0);
+                ctx.lineTo(gx, GROUND_Y);
+                ctx.stroke();
+            }
+            for (let gy = 100; gy < GROUND_Y; gy += 100) {
+                ctx.beginPath();
+                ctx.moveTo(0, gy);
+                ctx.lineTo(WORLD_W, gy);
+                ctx.stroke();
+            }
+
+            // Twinkling Starfield
+            stars.forEach(st => {
+                const twinkle = 0.65 + 0.35 * Math.sin(timeSec * st.twinkleSpeed + st.phase);
+                ctx.fillStyle = `rgba(226, 248, 255, ${(st.alpha * twinkle).toFixed(3)})`;
+                ctx.beginPath();
+                ctx.arc(st.x, st.y, st.r, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Planetary Horizon Ground Line & Sub-Surface Fill
+            const groundGrad = ctx.createLinearGradient(0, GROUND_Y, 0, WORLD_H);
+            groundGrad.addColorStop(0, '#1e1b4b');
+            groundGrad.addColorStop(1, '#070514');
+            ctx.fillStyle = groundGrad;
+            ctx.fillRect(0, GROUND_Y, WORLD_W, WORLD_H - GROUND_Y);
+
+            ctx.save();
+            ctx.strokeStyle = '#fbbf24';
+            ctx.shadowColor = '#fbbf24';
+            ctx.shadowBlur = 10;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(0, GROUND_Y);
+            ctx.lineTo(WORLD_W, GROUND_Y);
+            ctx.stroke();
+            ctx.restore();
+
+            // Draw Cities & Batteries
+            state.cities.forEach(c => drawCity(c, timeSec));
+            state.batteries.forEach(b => drawBattery(b));
+
+            // Draw Incoming Enemy Warheads & Trails
+            state.enemyMissiles.forEach(em => {
+                ctx.save();
+                ctx.strokeStyle = em.color;
+                ctx.shadowColor = em.color;
+                ctx.shadowBlur = 7;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(em.startX, em.startY);
+                ctx.lineTo(em.x, em.y);
+                ctx.stroke();
+
+                // Warhead nose marker
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(em.x - 2.5, em.y - 2.5, 5, 5);
+                ctx.restore();
+            });
+
+            // Draw Player Counter-Missiles, Vector Trails & Target X Markers
+            state.counterMissiles.forEach(cm => {
+                ctx.save();
+                ctx.strokeStyle = '#38bdf8';
+                ctx.shadowColor = '#38bdf8';
+                ctx.shadowBlur = 8;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(cm.startX, cm.startY);
+                ctx.lineTo(cm.x, cm.y);
+                ctx.stroke();
+
+                // Target destination X marker
+                ctx.strokeStyle = '#fde047';
+                ctx.lineWidth = 1.6;
+                const r = 5;
+                ctx.beginPath();
+                ctx.moveTo(cm.targetX - r, cm.targetY - r);
+                ctx.lineTo(cm.targetX + r, cm.targetY + r);
+                ctx.moveTo(cm.targetX + r, cm.targetY - r);
+                ctx.lineTo(cm.targetX - r, cm.targetY + r);
+                ctx.stroke();
+
+                // Counter-missile head
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(cm.x - 2.5, cm.y - 2.5, 5, 5);
+                ctx.restore();
+            });
+
+            // Draw Expanding / Pulsing Shockwave Blast Rings
+            state.blasts.forEach(bl => {
+                ctx.save();
+                const pulse = 0.88 + 0.12 * Math.sin(timeSec * 36);
+                const rad = Math.max(1, bl.radius * pulse);
+
+                if (bl.isEnemyImpact) {
+                    ctx.strokeStyle = '#fb923c';
+                    ctx.fillStyle = 'rgba(239, 68, 68, 0.24)';
+                    ctx.shadowColor = '#ef4444';
+                } else {
+                    ctx.strokeStyle = '#67e8f9';
+                    ctx.fillStyle = 'rgba(56, 189, 248, 0.22)';
+                    ctx.shadowColor = '#22d3ee';
+                }
+                ctx.shadowBlur = 16;
+                ctx.lineWidth = 3;
+
+                ctx.beginPath();
+                ctx.arc(bl.x, bl.y, rad, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                // Inner bright ring
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.arc(bl.x, bl.y, rad * 0.55, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+            });
+
+            // Draw Sparks
+            state.sparks.forEach(sp => {
+                const alpha = Math.max(0, sp.life / sp.maxLife);
+                ctx.fillStyle = sp.color;
+                ctx.globalAlpha = alpha;
+                ctx.fillRect(sp.x - 2, sp.y - 2, 4, 4);
+                ctx.globalAlpha = 1;
+            });
+
+            // Draw Floating Score Popups
+            state.popups.forEach(pop => {
+                ctx.save();
+                ctx.font = 'bold 12px "Press Start 2P", monospace';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = pop.color;
+                ctx.globalAlpha = Math.min(1, pop.life);
+                ctx.fillText(pop.text, pop.x, pop.y);
+                ctx.restore();
+            });
+
+            // Draw Wave Bonus Tally Overlay inside Playfield
+            if (state.phase === 'wave_bonus' && state.bonusState) {
+                const bs = state.bonusState;
+                ctx.save();
+                ctx.fillStyle = 'rgba(5, 12, 24, 0.84)';
+                ctx.strokeStyle = '#38bdf8';
+                ctx.lineWidth = 2;
+                ctx.fillRect(250, 155, 500, 210);
+                ctx.strokeRect(250, 155, 500, 210);
+
+                ctx.font = '16px "Press Start 2P", monospace';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#fbbf24';
+                ctx.fillText(`WAVE ${String(state.wave).padStart(2, '0')} BONUS`, 500, 196);
+
+                ctx.font = '12px "Press Start 2P", monospace';
+                ctx.fillStyle = '#38bdf8';
+                ctx.fillText(
+                    `CITIES: ${bs.citiesTallied}/${bs.survivingCities} × ${bs.cityPtsPerUnit}`,
+                    500,
+                    244
+                );
+
+                ctx.fillStyle = '#34d399';
+                ctx.fillText(
+                    `MISSILES: ${bs.ammoTallied}/${bs.remainingAmmo} × ${bs.ammoPtsPerUnit}`,
+                    500,
+                    290
+                );
+
+                ctx.fillStyle = '#f472b6';
+                ctx.font = '10px "Press Start 2P", monospace';
+                ctx.fillText(`BONUS CITY EVERY ${BONUS_CITY_STEP.toLocaleString()} PTS`, 500, 336);
+                ctx.restore();
+            }
+
+            // Draw Targeting Crosshair Reticle
+            if (state.phase === 'playing' || state.phase === 'wave_bonus') {
+                const rx = state.reticle.x;
+                const ry = state.reticle.y;
+                ctx.save();
+                ctx.strokeStyle = '#22d3ee';
+                ctx.shadowColor = '#22d3ee';
+                ctx.shadowBlur = 8;
+                ctx.lineWidth = 1.8;
+
+                const arm = 12;
+                ctx.beginPath();
+                ctx.moveTo(rx - arm, ry);
+                ctx.lineTo(rx - 4, ry);
+                ctx.moveTo(rx + 4, ry);
+                ctx.lineTo(rx + arm, ry);
+                ctx.moveTo(rx, ry - arm);
+                ctx.lineTo(rx, ry - 4);
+                ctx.moveTo(rx, ry + 4);
+                ctx.lineTo(rx, ry + arm);
+                ctx.stroke();
+
+                ctx.fillStyle = '#fde047';
+                ctx.beginPath();
+                ctx.arc(rx, ry, 2.2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            ctx.restore();
+        }
+
+        // =====================================================================
+        // 7. HUD SYNC, CONTROLS & MAIN LOOP
+        // =====================================================================
+        function updateHUD() {
+            document.getElementById('hud-score').textContent = String(state.score).padStart(6, '0');
+            document.getElementById('hud-hiscore').textContent = String(state.highScore).padStart(6, '0');
+            document.getElementById('hud-wave').textContent = String(state.wave).padStart(2, '0');
+
+            const aliveCities = state.cities.filter(c => c.alive).length;
+            document.getElementById('hud-cities').textContent = String(aliveCities);
+
+            const bLeft = state.batteries[0];
+            const bCenter = state.batteries[1];
+            const bRight = state.batteries[2];
+
+            document.getElementById('ammo-left-lbl').textContent = bLeft.destroyed ? 'OUT' : bLeft.ammo;
+            document.getElementById('ammo-center-lbl').textContent = bCenter.destroyed ? 'OUT' : bCenter.ammo;
+            document.getElementById('ammo-right-lbl').textContent = bRight.destroyed ? 'OUT' : bRight.ammo;
+        }
+
+        function startGame() {
+            sound.init();
+            state.score = 0;
+            state.nextBonusCityScore = BONUS_CITY_STEP;
+            state.enemyMissiles = [];
+            state.counterMissiles = [];
+            state.blasts = [];
+            state.sparks = [];
+            state.popups = [];
+            initCitiesAndBatteries();
+            startWave(1);
+
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('gameover-screen').classList.remove('flex');
+            document.getElementById('gameover-screen').classList.add('hidden');
+            document.getElementById('pause-screen').classList.remove('flex');
+            document.getElementById('pause-screen').classList.add('hidden');
+            document.getElementById('hud-layer').classList.remove('hidden');
+            document.getElementById('battery-bar').classList.remove('hidden');
+        }
+
+        function setPaused(paused) {
+            if (paused && state.phase === 'playing') {
+                state.phase = 'paused';
+                sound.updateDescentTone(0, false);
+                document.getElementById('pause-screen').classList.remove('hidden');
+                document.getElementById('pause-screen').classList.add('flex');
+            } else if (!paused && state.phase === 'paused') {
+                state.phase = 'playing';
+                document.getElementById('pause-screen').classList.remove('flex');
+                document.getElementById('pause-screen').classList.add('hidden');
+            }
+        }
+
+        // Pointer & Touch Aiming / Firing
+        canvas.addEventListener('pointermove', (e) => {
+            const pt = screenToWorld(e.clientX, e.clientY);
+            state.reticle.x = pt.x;
+            state.reticle.y = pt.y;
+        });
+
+        canvas.addEventListener('pointerdown', (e) => {
+            sound.init();
+            const pt = screenToWorld(e.clientX, e.clientY);
+            state.reticle.x = pt.x;
+            state.reticle.y = pt.y;
+            if (state.phase === 'playing') {
+                fireSmartBattery(pt.x, pt.y);
+            }
+        });
+
+        // Keyboard Aim & Battery Firing
+        window.addEventListener('keydown', (e) => {
+            sound.init();
+            const repeat = !!state.keys[e.code];
+            state.keys[e.code] = true;
+
+            if (e.code === 'KeyP' || e.code === 'Escape') {
+                if (!repeat) {
+                    if (state.phase === 'playing') setPaused(true);
+                    else if (state.phase === 'paused') setPaused(false);
+                }
+                return;
+            }
+
+            if (state.phase !== 'playing' || repeat) return;
+
+            if (e.code === 'Space') {
+                fireSmartBattery(state.reticle.x, state.reticle.y);
+            } else if (e.code === 'Digit1' || e.code === 'KeyA') {
+                fireSpecificBatteryIndex(0);
+            } else if (e.code === 'Digit2' || e.code === 'KeyS') {
+                fireSpecificBatteryIndex(1);
+            } else if (e.code === 'Digit3' || e.code === 'KeyD') {
+                fireSpecificBatteryIndex(2);
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            state.keys[e.code] = false;
+        });
+
+        // UI Button Listeners
+        document.getElementById('btn-start').addEventListener('click', startGame);
+        document.getElementById('btn-restart').addEventListener('click', startGame);
+        document.getElementById('btn-pause').addEventListener('click', () => {
+            if (state.phase === 'playing') setPaused(true);
+        });
+        document.getElementById('btn-resume').addEventListener('click', () => setPaused(false));
+        document.getElementById('btn-quit-menu').addEventListener('click', () => {
+            state.phase = 'title';
+            sound.updateDescentTone(0, false);
+            document.getElementById('pause-screen').classList.remove('flex');
+            document.getElementById('pause-screen').classList.add('hidden');
+            document.getElementById('hud-layer').classList.add('hidden');
+            document.getElementById('battery-bar').classList.add('hidden');
+            document.getElementById('start-screen').classList.remove('hidden');
+        });
+
+        document.getElementById('btn-mute').addEventListener('click', (e) => {
+            sound.init();
+            const isMuted = sound.toggleMute();
+            e.target.textContent = isMuted ? 'SFX: OFF' : 'SFX: ON';
+        });
+
+        document.getElementById('btn-fire-left').addEventListener('pointerdown', (e) => {
+            e.stopPropagation();
+            sound.init();
+            fireSpecificBatteryIndex(0);
+        });
+        document.getElementById('btn-fire-center').addEventListener('pointerdown', (e) => {
+            e.stopPropagation();
+            sound.init();
+            fireSpecificBatteryIndex(1);
+        });
+        document.getElementById('btn-fire-right').addEventListener('pointerdown', (e) => {
+            e.stopPropagation();
+            sound.init();
+            fireSpecificBatteryIndex(2);
+        });
+
+        // Main Animation Loop
+        let lastTime = performance.now();
+        function frame(now) {
+            requestAnimationFrame(frame);
+            const dt = Math.min((now - lastTime) / 1000, 0.05);
+            lastTime = now;
+            const timeSec = now / 1000;
+
+            if (state.phase === 'playing' || state.phase === 'wave_bonus') {
+                updateSimulation(dt);
+                updateHUD();
+            } else if (state.phase === 'title') {
+                // Gentle attract-mode starfield & reticle drift
+                state.reticle.x = 500 + Math.sin(timeSec * 0.8) * 220;
+                state.reticle.y = 260 + Math.cos(timeSec * 1.1) * 75;
+            }
+
+            drawScene(timeSec);
+        }
+
+        window.onload = function () {
+            resizeCanvas();
+            requestAnimationFrame(frame);
+        };
+    </script>
+</body>
+</html>

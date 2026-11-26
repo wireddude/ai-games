@@ -1,0 +1,1697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Apollo Horizon — Lunar Lander 3D</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #02040a;
+            font-family: 'JetBrains Mono', monospace;
+            color: #e2e8f0;
+        }
+        #game-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        .font-display {
+            font-family: 'Orbitron', sans-serif;
+        }
+        .glass-panel {
+            background: rgba(8, 14, 26, 0.72);
+            border: 1px solid rgba(56, 189, 248, 0.28);
+            backdrop-filter: blur(8px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+        }
+        .glow-cyan {
+            text-shadow: 0 0 10px rgba(56, 189, 248, 0.75);
+        }
+        .glow-amber {
+            text-shadow: 0 0 10px rgba(251, 191, 36, 0.8);
+        }
+        .glow-red {
+            text-shadow: 0 0 12px rgba(248, 113, 113, 0.9);
+        }
+        .touch-pad {
+            background: rgba(10, 18, 34, 0.78);
+            border: 2px solid rgba(56, 189, 248, 0.45);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+            transition: transform 0.06s ease, background-color 0.1s ease, border-color 0.1s ease;
+        }
+        .touch-pad:active, .touch-pad.active {
+            transform: scale(0.94);
+            background: rgba(56, 189, 248, 0.28);
+            border-color: #7dd3fc;
+        }
+        .thrust-pad {
+            border-color: rgba(251, 191, 36, 0.6);
+            box-shadow: 0 0 24px rgba(245, 158, 11, 0.2);
+        }
+        .thrust-pad:active, .thrust-pad.active {
+            background: rgba(245, 158, 11, 0.35);
+            border-color: #fde68a;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Main 3D WebGL Canvas -->
+    <canvas id="game-canvas"></canvas>
+
+    <!-- Active Telemetry HUD -->
+    <div id="hud-layer" class="fixed inset-0 pointer-events-none z-20 hidden">
+        
+        <!-- Top Telemetry Strip -->
+        <div class="flex flex-wrap justify-between items-start gap-2 p-3 sm:p-5">
+            
+            <!-- Left: Mission Sector & Score -->
+            <div class="glass-panel rounded-xl px-3.5 py-2.5 flex flex-col gap-1">
+                <div class="flex items-center gap-2.5">
+                    <span id="hud-sector" class="font-display text-xs sm:text-sm font-bold tracking-wider text-sky-400 glow-cyan">SECTOR 01</span>
+                    <span class="text-slate-600">|</span>
+                    <span class="text-xs text-slate-300">HIGH: <span id="hud-highscore" class="text-amber-300 font-bold">00000</span></span>
+                </div>
+                <div class="text-xs sm:text-sm text-slate-200">
+                    SCORE: <span id="hud-score" class="font-display text-base sm:text-lg font-bold text-white">00000</span>
+                </div>
+            </div>
+
+            <!-- Center: Primary Flight Kinematics (AGL, V/S, H/S, PITCH) -->
+            <div class="glass-panel rounded-xl px-3.5 py-2 sm:px-5 sm:py-2.5 flex items-center gap-3 sm:gap-6">
+                <div class="text-center">
+                    <div class="text-[10px] tracking-widest text-slate-400">ALT (AGL)</div>
+                    <div id="hud-alt" class="font-display text-sm sm:text-lg font-bold text-sky-300">420m</div>
+                </div>
+                <div class="h-7 w-px bg-slate-700/80"></div>
+                <div class="text-center">
+                    <div class="text-[10px] tracking-widest text-slate-400">VERT SPD</div>
+                    <div id="hud-vs" class="font-display text-sm sm:text-lg font-bold text-emerald-400">-2.4 m/s</div>
+                </div>
+                <div class="h-7 w-px bg-slate-700/80"></div>
+                <div class="text-center">
+                    <div class="text-[10px] tracking-widest text-slate-400">HORIZ SPD</div>
+                    <div id="hud-hs" class="font-display text-sm sm:text-lg font-bold text-emerald-400">1.2 m/s</div>
+                </div>
+                <div class="hidden md:block h-7 w-px bg-slate-700/80"></div>
+                <div class="hidden md:block text-center">
+                    <div class="text-[10px] tracking-widest text-slate-400">PITCH</div>
+                    <div id="hud-pitch" class="font-display text-sm sm:text-lg font-bold text-sky-300">0.0°</div>
+                </div>
+            </div>
+
+            <!-- Right: Fuel, Throttle & SAS Assist Toggle -->
+            <div class="flex flex-col items-end gap-2 pointer-events-auto">
+                <div class="glass-panel rounded-xl px-3.5 py-2.5 min-w-[165px] sm:min-w-[205px]">
+                    <div class="flex justify-between items-center text-[11px] mb-1">
+                        <span class="text-slate-300 font-semibold">PROPELLANT</span>
+                        <span id="hud-fuel-text" class="font-display font-bold text-amber-300">100%</span>
+                    </div>
+                    <div class="w-full h-2.5 bg-slate-900 rounded-full overflow-hidden border border-slate-700 mb-2">
+                        <div id="hud-fuel-bar" class="h-full bg-gradient-to-r from-amber-500 to-yellow-300 transition-all duration-100" style="width: 100%"></div>
+                    </div>
+                    <div class="flex justify-between items-center text-[10px] text-slate-400">
+                        <span>THRUST: <strong id="hud-throttle-text" class="text-sky-300">0%</strong></span>
+                        <span>MASS: <strong id="hud-mass-text" class="text-slate-200">15.1t</strong></span>
+                    </div>
+                </div>
+
+                <div class="flex gap-1.5">
+                    <button id="btn-sas-toggle" class="glass-panel hover:bg-sky-950/80 px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-bold text-emerald-400 border-emerald-500/40 cursor-pointer">
+                        SAS AUTO-LEVEL: ON [R]
+                    </button>
+                    <button id="btn-touch-toggle" class="glass-panel hover:bg-sky-950/80 px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-bold text-sky-300 cursor-pointer">
+                        TOUCH UI
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Offscreen Landing Zone Guide Indicator -->
+        <div id="pad-guide" class="fixed top-28 left-1/2 -translate-x-1/2 hidden glass-panel rounded-full px-4 py-1 text-xs font-bold text-amber-300 border-amber-400/50 glow-amber">
+            ◀ LANDING ZONE 320m
+        </div>
+
+        <!-- Landing Envelope Warning Banner -->
+        <div id="hud-warning" class="fixed top-36 left-1/2 -translate-x-1/2 hidden rounded-lg px-4 py-1.5 bg-red-950/85 border border-red-500 text-red-300 font-display text-xs sm:text-sm font-bold tracking-widest glow-red">
+            HIGH DESCENT RATE — FIRE ENGINE
+        </div>
+
+        <!-- Safe Landing Envelope Checklist (Appears below 85m AGL) -->
+        <div id="landing-envelope" class="fixed bottom-28 sm:bottom-8 left-1/2 -translate-x-1/2 hidden glass-panel rounded-xl px-4 py-2 flex items-center gap-4 text-[11px]">
+            <div class="flex items-center gap-1.5">
+                <span id="chk-vs" class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                <span>V/S &lt; 6.5 m/s</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+                <span id="chk-hs" class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                <span>H/S &lt; 4.5 m/s</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+                <span id="chk-ang" class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                <span>TILT &lt; 10°</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- On-Screen Touch / Mobile Controls -->
+    <div id="touch-controls" class="fixed inset-0 pointer-events-none z-30 hidden">
+        <!-- Left & Right Attitude Thrusters (Bottom Left) -->
+        <div class="fixed bottom-6 left-5 flex gap-3 pointer-events-auto">
+            <button id="touch-left" class="touch-pad w-20 h-20 rounded-2xl flex flex-col items-center justify-center text-sky-300 font-display font-bold">
+                <span class="text-xl">↺</span>
+                <span class="text-[10px] tracking-wider mt-0.5">ROT L</span>
+            </button>
+            <button id="touch-right" class="touch-pad w-20 h-20 rounded-2xl flex flex-col items-center justify-center text-sky-300 font-display font-bold">
+                <span class="text-xl">↻</span>
+                <span class="text-[10px] tracking-wider mt-0.5">ROT R</span>
+            </button>
+        </div>
+
+        <!-- Main Descent Engine Thrust (Bottom Right) -->
+        <div class="fixed bottom-6 right-5 flex items-center gap-3 pointer-events-auto">
+            <button id="touch-half" class="touch-pad w-16 h-20 rounded-2xl flex flex-col items-center justify-center text-amber-200 font-display text-xs font-bold">
+                <span>50%</span>
+                <span class="text-[9px] text-amber-400 mt-0.5">HOVER</span>
+            </button>
+            <button id="touch-thrust" class="touch-pad thrust-pad w-24 h-24 rounded-2xl flex flex-col items-center justify-center text-amber-300 font-display text-sm font-extrabold tracking-wider">
+                <span class="text-xl">▲</span>
+                <span>THRUST</span>
+                <span class="text-[9px] text-amber-400/90">100%</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Title / Launch Briefing Screen -->
+    <div id="start-screen" class="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
+        <div class="max-w-xl w-full glass-panel rounded-2xl p-6 sm:p-8 border border-sky-400/40 text-center">
+            <div class="inline-block px-3 py-1 rounded-full bg-sky-500/15 border border-sky-400/40 text-sky-300 text-xs tracking-widest mb-3">
+                TRANQUILITY BASE • NEWTONIAN DESCENT SIMULATOR
+            </div>
+            <h1 class="font-display text-3xl sm:text-4xl font-extrabold text-white tracking-wider glow-cyan mb-2">
+                APOLLO HORIZON<br><span class="text-amber-400 glow-amber">LUNAR LANDER 3D</span>
+            </h1>
+            <p class="text-slate-300 text-xs sm:text-sm mb-6 max-w-md mx-auto leading-relaxed">
+                Pilot the Eagle Lunar Module across jagged lunar craters. Manage propellant mass, fire the descent engine, and touch down softly on illuminated landing pads for score multipliers.
+            </p>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left bg-slate-950/75 rounded-xl p-4 border border-slate-800 mb-6 text-xs">
+                <div>
+                    <div class="font-display text-sky-400 text-[11px] mb-1.5">FLIGHT & RCS CONTROLS</div>
+                    <ul class="space-y-1.5 text-slate-300">
+                        <li><span class="text-amber-300 font-bold">↑ / W / SPACE</span> : Fire Descent Engine</li>
+                        <li><span class="text-amber-300 font-bold">← / → or A / D</span> : RCS Attitude Pitch</li>
+                        <li><span class="text-amber-300 font-bold">SHIFT</span> : Precision 45% Hover Thrust</li>
+                        <li><span class="text-amber-300 font-bold">R</span> : Toggle SAS Auto-Level Assist</li>
+                    </ul>
+                </div>
+                <div>
+                    <div class="font-display text-amber-400 text-[11px] mb-1.5">SAFE TOUCHDOWN LIMITS</div>
+                    <ul class="space-y-1.5 text-slate-300">
+                        <li>• Vertical Speed: <span class="text-emerald-400 font-bold">&lt; 6.5 m/s</span></li>
+                        <li>• Horizontal Speed: <span class="text-emerald-400 font-bold">&lt; 4.5 m/s</span></li>
+                        <li>• Lander Pitch Tilt: <span class="text-emerald-400 font-bold">&lt; 10.0°</span></li>
+                        <li>• Target <span class="text-amber-300 font-bold">2X–5X</span> Pads for Bonus Points</li>
+                    </ul>
+                </div>
+            </div>
+
+            <button id="btn-start" class="w-full sm:w-auto px-10 py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-display font-extrabold text-base tracking-widest shadow-[0_0_25px_rgba(245,158,11,0.5)] transition transform hover:scale-105 cursor-pointer">
+                INITIATE DESCENT
+            </button>
+        </div>
+    </div>
+
+    <!-- Stage Complete / Crash Modal -->
+    <div id="result-screen" class="fixed inset-0 z-40 hidden flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
+        <div id="result-card" class="max-w-md w-full glass-panel rounded-2xl p-6 sm:p-8 border border-emerald-400/50 text-center">
+            <div id="result-badge" class="font-display text-xs tracking-widest text-emerald-400 mb-1">TRANQUILITY BASE HERE</div>
+            <h2 id="result-title" class="font-display text-2xl sm:text-3xl font-extrabold text-white mb-2">
+                THE EAGLE HAS LANDED
+            </h2>
+            <p id="result-subtitle" class="text-xs sm:text-sm text-slate-300 mb-5">
+                Nominal touchdown on 3X Landing Pad.
+            </p>
+
+            <div class="bg-slate-950/80 rounded-xl p-4 border border-slate-800 mb-6 space-y-2 text-xs">
+                <div class="flex justify-between">
+                    <span class="text-slate-400">TOUCHDOWN V/S:</span>
+                    <span id="stat-vs" class="font-bold text-emerald-400">-2.1 m/s</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-400">TOUCHDOWN H/S:</span>
+                    <span id="stat-hs" class="font-bold text-emerald-400">0.8 m/s</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-400">FUEL REMAINING BONUS:</span>
+                    <span id="stat-fuel" class="font-bold text-amber-300">+450 PTS</span>
+                </div>
+                <div class="h-px bg-slate-800 my-1"></div>
+                <div class="flex justify-between text-sm">
+                    <span class="font-display text-slate-200">TOTAL SCORE:</span>
+                    <span id="stat-total" class="font-display font-bold text-sky-300">01450</span>
+                </div>
+            </div>
+
+            <button id="btn-next" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-sky-400 to-cyan-300 hover:from-sky-300 hover:to-cyan-200 text-slate-950 font-display font-extrabold text-sm sm:text-base tracking-widest shadow-[0_0_20px_rgba(56,189,248,0.45)] cursor-pointer">
+                NEXT SECTOR DESCENT
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * APOLLO HORIZON — LUNAR LANDER 3D
+         * Single-File Three.js PBR-Style 2.5D/3D Newtonian Physics Simulator
+         */
+
+        // ==========================================
+        // 1. PROCEDURAL WEB AUDIO SYNTHESIZER
+        // ==========================================
+        class LunarAudio {
+            constructor() {
+                this.ctx = null;
+                this.thrusterGain = null;
+                this.thrusterFilter = null;
+                this.rcsGain = null;
+                this.ready = false;
+                this.beepTimer = 0;
+            }
+
+            init() {
+                if (this.ready) return;
+                try {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+
+                    // Generate white/pink noise buffer for rocket exhaust & RCS jets
+                    const bufferSize = this.ctx.sampleRate * 2;
+                    const noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                    const output = noiseBuffer.getChannelData(0);
+                    let b0 = 0, b1 = 0, b2 = 0;
+                    for (let i = 0; i < bufferSize; i++) {
+                        const white = Math.random() * 2 - 1;
+                        b0 = 0.997 * b0 + white * 0.029;
+                        b1 = 0.985 * b1 + white * 0.032;
+                        b2 = 0.950 * b2 + white * 0.048;
+                        output[i] = (b0 + b1 + b2 + white * 0.18) * 1.8;
+                    }
+
+                    // Main Descent Engine Rumble Loop
+                    const mainNoise = this.ctx.createBufferSource();
+                    mainNoise.buffer = noiseBuffer;
+                    mainNoise.loop = true;
+
+                    this.thrusterFilter = this.ctx.createBiquadFilter();
+                    this.thrusterFilter.type = 'lowpass';
+                    this.thrusterFilter.frequency.value = 140;
+
+                    this.thrusterGain = this.ctx.createGain();
+                    this.thrusterGain.gain.value = 0;
+
+                    mainNoise.connect(this.thrusterFilter);
+                    this.thrusterFilter.connect(this.thrusterGain);
+                    this.thrusterGain.connect(this.ctx.destination);
+                    mainNoise.start();
+
+                    // RCS Cold-Gas Thruster Hiss Loop
+                    const rcsNoise = this.ctx.createBufferSource();
+                    rcsNoise.buffer = noiseBuffer;
+                    rcsNoise.loop = true;
+
+                    const rcsFilter = this.ctx.createBiquadFilter();
+                    rcsFilter.type = 'bandpass';
+                    rcsFilter.frequency.value = 1900;
+                    rcsFilter.Q.value = 2.0;
+
+                    this.rcsGain = this.ctx.createGain();
+                    this.rcsGain.gain.value = 0;
+
+                    rcsNoise.connect(rcsFilter);
+                    rcsFilter.connect(this.rcsGain);
+                    this.rcsGain.connect(this.ctx.destination);
+                    rcsNoise.start();
+
+                    this.ready = true;
+                } catch (e) {
+                    console.warn("Web Audio initialization skipped:", e);
+                }
+            }
+
+            updateThrusters(throttle, rcsActive, dt, lowFuel, highSink) {
+                if (!this.ready || !this.ctx) return;
+                const now = this.ctx.currentTime;
+
+                this.thrusterGain.gain.setTargetAtTime(throttle * 0.34, now, 0.04);
+                this.thrusterFilter.frequency.setTargetAtTime(110 + throttle * 260, now, 0.05);
+                this.rcsGain.gain.setTargetAtTime(rcsActive ? 0.065 : 0, now, 0.02);
+
+                // Master Alarm / Altitude Warning Tone
+                if (lowFuel || highSink) {
+                    this.beepTimer -= dt;
+                    if (this.beepTimer <= 0) {
+                        this.beepTimer = highSink ? 0.32 : 0.65;
+                        this.playQuindarOrAlarm(highSink ? 880 : 620, 0.09, 0.07);
+                    }
+                }
+            }
+
+            playQuindarOrAlarm(freq = 2525, duration = 0.14, volume = 0.1) {
+                if (!this.ready || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, now);
+                gain.gain.setValueAtTime(volume, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + duration + 0.01);
+            }
+
+            playTouchdown() {
+                if (!this.ready || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                // Mechanical strut thud + Apollo Quindar beep
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(115, now);
+                osc.frequency.exponentialRampToValueAtTime(34, now + 0.25);
+                gain.gain.setValueAtTime(0.32, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.28);
+
+                setTimeout(() => this.playQuindarOrAlarm(2525, 0.18, 0.11), 280);
+            }
+
+            playExplosion() {
+                if (!this.ready || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const len = this.ctx.sampleRate * 1.1;
+                const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+                const data = buf.getChannelData(0);
+                for (let i = 0; i < len; i++) {
+                    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * 0.35));
+                }
+                const src = this.ctx.createBufferSource();
+                src.buffer = buf;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(280, now);
+                filter.frequency.linearRampToValueAtTime(45, now + 1.0);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.45, now);
+                gain.gain.exponentialRampToValueAtTime(0.002, now + 1.1);
+
+                src.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                src.start(now);
+            }
+        }
+
+        const audio = new LunarAudio();
+
+        // ==========================================
+        // 2. SIMULATION STATE & CONSTANTS
+        // ==========================================
+        const state = {
+            mode: 'menu', // 'menu', 'playing', 'landed', 'crashed'
+            sector: 1,
+            score: 0,
+            highScore: parseInt(localStorage.getItem('apollo_horizon_hs') || '0', 10),
+            sasEnabled: true,
+            touchVisible: false,
+            keys: {},
+            touch: {
+                left: false,
+                right: false,
+                thrust: false,
+                half: false
+            },
+            ship: {
+                x: 0,
+                y: 260,
+                vx: 14,
+                vy: -4,
+                angle: 0, // Radians, 0 = upright
+                omega: 0, // Angular velocity (rad/s)
+                throttle: 0, // 0..1
+                fuel: 1000,
+                maxFuel: 1000,
+                dryMass: 6800, // kg
+                fuelMassPerUnit: 8.2, // kg per fuel unit (ship gets lighter as fuel burns!)
+                maxThrust: 138000, // Newtons
+                legCompression: 0 // 0..1 visual suspension compression
+            },
+            terrain: {
+                points: [],
+                pads: [],
+                group: null
+            },
+            particles: [],
+            stars: null,
+            earth: null
+        };
+
+        // Lunar Gravity tuned for dramatic, authentic Newtonian feel
+        const LUNAR_GRAVITY = 4.6; // m/s^2 scaled for responsive 2.5D game scale
+        const SAFE_VS = 6.5;
+        const SAFE_HS = 4.5;
+        const SAFE_ANGLE = 10.0 * (Math.PI / 180);
+
+        // ==========================================
+        // 3. THREE.JS SCENE & PBR-STYLE LIGHTING
+        // ==========================================
+        const canvas = document.getElementById('game-canvas');
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.15;
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x020409);
+        scene.fog = new THREE.FogExp2(0x03060f, 0.00055);
+
+        const camera = new THREE.PerspectiveCamera(48, window.innerWidth / window.innerHeight, 0.5, 4500);
+        camera.position.set(0, 140, 260);
+
+        // Harsh, realistic lunar sunlight + subtle Earthshine fill
+        const sunLight = new THREE.DirectionalLight(0xfffcf2, 2.2);
+        sunLight.position.set(-450, 620, 320);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 2048;
+        sunLight.shadow.mapSize.height = 2048;
+        sunLight.shadow.camera.near = 50;
+        sunLight.shadow.camera.far = 2200;
+        const sDim = 480;
+        sunLight.shadow.camera.left = -sDim;
+        sunLight.shadow.camera.right = sDim;
+        sunLight.shadow.camera.top = sDim;
+        sunLight.shadow.camera.bottom = -sDim;
+        scene.add(sunLight);
+
+        // Cool blue Earthshine bounce light
+        const earthShine = new THREE.HemisphereLight(0x38bdf8, 0x1e293b, 0.38);
+        scene.add(earthShine);
+
+        // Dynamic Plume Light attached under the Lunar Module
+        const engineLight = new THREE.PointLight(0xffaa33, 0, 130, 1.6);
+        scene.add(engineLight);
+
+        // ==========================================
+        // 4. PROCEDURAL PBR TEXTURE GENERATOR
+        // ==========================================
+        function createRegolithTexture() {
+            const c = document.createElement('canvas');
+            c.width = 512;
+            c.height = 512;
+            const ctx = c.getContext('2d');
+
+            ctx.fillStyle = '#646b75';
+            ctx.fillRect(0, 0, 512, 512);
+
+            // Micro-grain lunar dust & basalt speckles
+            for (let i = 0; i < 16000; i++) {
+                const x = Math.random() * 512;
+                const y = Math.random() * 512;
+                const shade = 70 + Math.floor(Math.random() * 75);
+                ctx.fillStyle = `rgb(${shade},${shade + 2},${shade + 6})`;
+                ctx.fillRect(x, y, 2, 2);
+            }
+
+            // Subtle micro-craters
+            for (let i = 0; i < 42; i++) {
+                const cx = Math.random() * 512;
+                const cy = Math.random() * 512;
+                const r = 6 + Math.random() * 24;
+                const grad = ctx.createRadialGradient(cx, cy, r * 0.1, cx, cy, r);
+                grad.addColorStop(0, 'rgba(30, 34, 40, 0.45)');
+                grad.addColorStop(0.75, 'rgba(130, 138, 150, 0.25)');
+                grad.addColorStop(1, 'rgba(100, 107, 117, 0)');
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.arc(cx, cy, r, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            const tex = new THREE.CanvasTexture(c);
+            tex.wrapS = THREE.RepeatWrapping;
+            tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(16, 4);
+            return tex;
+        }
+
+        function createGoldFoilTexture() {
+            const c = document.createElement('canvas');
+            c.width = 256;
+            c.height = 256;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#d97706';
+            ctx.fillRect(0, 0, 256, 256);
+
+            // Crinkled Kapton gold foil facets
+            for (let i = 0; i < 450; i++) {
+                const x = Math.random() * 256;
+                const y = Math.random() * 256;
+                const w = 6 + Math.random() * 18;
+                const h = 6 + Math.random() * 18;
+                ctx.fillStyle = Math.random() > 0.45 ? 'rgba(253, 224, 71, 0.35)' : 'rgba(146, 64, 14, 0.38)';
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(x + w, y + (Math.random() - 0.5) * 10);
+                ctx.lineTo(x + w * 0.5, y + h);
+                ctx.closePath();
+                ctx.fill();
+            }
+            const tex = new THREE.CanvasTexture(c);
+            return tex;
+        }
+
+        function createEarthTexture() {
+            const c = document.createElement('canvas');
+            c.width = 512;
+            c.height = 256;
+            const ctx = c.getContext('2d');
+
+            // Deep ocean blue
+            ctx.fillStyle = '#0c4a6e';
+            ctx.fillRect(0, 0, 512, 256);
+
+            // Continents
+            ctx.fillStyle = '#15803d';
+            const blobs = [
+                [120, 90, 55, 35], [160, 140, 35, 50], [290, 80, 65, 40],
+                [310, 135, 42, 45], [410, 150, 38, 28], [210, 35, 45, 20]
+            ];
+            blobs.forEach(([bx, by, rx, ry]) => {
+                ctx.beginPath();
+                ctx.ellipse(bx, by, rx, ry, 0.2, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Swirling atmospheric cloud bands
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+            for (let i = 0; i < 38; i++) {
+                ctx.beginPath();
+                ctx.ellipse(
+                    Math.random() * 512,
+                    25 + Math.random() * 206,
+                    20 + Math.random() * 55,
+                    4 + Math.random() * 8,
+                    (Math.random() - 0.5) * 0.2,
+                    0, Math.PI * 2
+                );
+                ctx.fill();
+            }
+
+            return new THREE.CanvasTexture(c);
+        }
+
+        const regolithTex = createRegolithTexture();
+        const goldFoilTex = createGoldFoilTexture();
+        const earthTex = createEarthTexture();
+
+        // ==========================================
+        // 5. STARFIELD & DISTANT EARTH SKYBOX
+        // ==========================================
+        function buildSpaceBackdrop() {
+            // Crisp multi-magnitude Starfield
+            const starCount = 2400;
+            const starGeo = new THREE.BufferGeometry();
+            const positions = new Float32Array(starCount * 3);
+            const colors = new Float32Array(starCount * 3);
+
+            for (let i = 0; i < starCount; i++) {
+                positions[i * 3] = (Math.random() - 0.5) * 3200;
+                positions[i * 3 + 1] = -100 + Math.random() * 1800;
+                positions[i * 3 + 2] = -350 - Math.random() * 1400;
+
+                const tint = 0.75 + Math.random() * 0.25;
+                colors[i * 3] = tint;
+                colors[i * 3 + 1] = tint;
+                colors[i * 3 + 2] = Math.min(1, tint + (Math.random() > 0.7 ? 0.18 : 0));
+            }
+
+            starGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            starGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            const starMat = new THREE.PointsMaterial({ size: 2.2, vertexColors: true, sizeAttenuation: true });
+            state.stars = new THREE.Points(starGeo, starMat);
+            scene.add(state.stars);
+
+            // Glowing Earth suspended in the black lunar sky
+            const earthGroup = new THREE.Group();
+            const earthMesh = new THREE.Mesh(
+                new THREE.SphereGeometry(58, 32, 32),
+                new THREE.MeshStandardMaterial({
+                    map: earthTex,
+                    roughness: 0.55,
+                    metalness: 0.05
+                })
+            );
+            earthGroup.add(earthMesh);
+
+            // Subtle atmospheric rim halo
+            const haloMesh = new THREE.Mesh(
+                new THREE.SphereGeometry(60.5, 32, 32),
+                new THREE.MeshBasicMaterial({
+                    color: 0x38bdf8,
+                    transparent: true,
+                    opacity: 0.16,
+                    side: THREE.BackSide
+                })
+            );
+            earthGroup.add(haloMesh);
+
+            earthGroup.position.set(-280, 420, -680);
+            state.earth = earthGroup;
+            scene.add(earthGroup);
+        }
+
+        buildSpaceBackdrop();
+
+        // ==========================================
+        // 6. DETAILED APOLLO LUNAR MODULE BUILDER
+        // ==========================================
+        function buildLunarModule() {
+            const lander = new THREE.Group();
+
+            const goldMat = new THREE.MeshStandardMaterial({
+                map: goldFoilTex,
+                bumpMap: goldFoilTex,
+                bumpScale: 0.15,
+                color: 0xffc837,
+                metalness: 0.88,
+                roughness: 0.28
+            });
+
+            const titaniumMat = new THREE.MeshStandardMaterial({
+                color: 0xcbd5e1,
+                metalness: 0.78,
+                roughness: 0.32
+            });
+
+            const darkCarbonMat = new THREE.MeshStandardMaterial({
+                color: 0x1e293b,
+                metalness: 0.5,
+                roughness: 0.6
+            });
+
+            // --- A. Octagonal Gold Mylar Descent Stage ---
+            const descentBody = new THREE.Mesh(
+                new THREE.CylinderGeometry(4.4, 4.6, 3.4, 8),
+                goldMat
+            );
+            descentBody.position.y = 3.6;
+            descentBody.castShadow = true;
+            descentBody.receiveShadow = true;
+            lander.add(descentBody);
+
+            // Descent Engine Bell Nozzle
+            const nozzle = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.95, 1.85, 2.2, 16, 1, true),
+                darkCarbonMat
+            );
+            nozzle.position.y = 1.4;
+            lander.add(nozzle);
+
+            // --- B. Ascent Crew Cabin Stage ---
+            const ascentMain = new THREE.Mesh(
+                new THREE.CylinderGeometry(3.2, 3.5, 3.2, 8),
+                titaniumMat
+            );
+            ascentMain.position.y = 6.9;
+            ascentMain.rotation.y = Math.PI / 8;
+            ascentMain.castShadow = true;
+            lander.add(ascentMain);
+
+            // Forward Docking Tunnel & Gold Thermal Blanket Collar
+            const topCap = new THREE.Mesh(
+                new THREE.CylinderGeometry(1.6, 2.8, 1.1, 8),
+                goldMat
+            );
+            topCap.position.y = 8.9;
+            lander.add(topCap);
+
+            // Triangular Cockpit Windows (Glowing warm cabin interior)
+            const winMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+            const winL = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.75, 0.3), winMat);
+            winL.position.set(-1.15, 7.2, 3.15);
+            winL.rotation.set(-0.2, -0.25, 0.15);
+            lander.add(winL);
+
+            const winR = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.75, 0.3), winMat);
+            winR.position.set(1.15, 7.2, 3.15);
+            winR.rotation.set(-0.2, 0.25, -0.15);
+            lander.add(winR);
+
+            // S-Band Dish Antenna & Radar Mast
+            const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 2.2, 6), titaniumMat);
+            mast.position.set(1.6, 9.6, 0.5);
+            lander.add(mast);
+
+            const dish = new THREE.Mesh(
+                new THREE.SphereGeometry(0.9, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.45),
+                titaniumMat
+            );
+            dish.position.set(1.6, 10.6, 0.5);
+            dish.rotation.x = 0.6;
+            lander.add(dish);
+
+            // --- C. 4 Articulated Landing Legs + Footpads ---
+            const legGroups = [];
+            const legAngles = [Math.PI * 0.25, Math.PI * 0.75, -Math.PI * 0.25, -Math.PI * 0.75];
+
+            legAngles.forEach(ang => {
+                const legPivot = new THREE.Group();
+                legPivot.rotation.y = ang;
+
+                // Primary Strut
+                const primaryStrut = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.18, 0.15, 5.4, 8),
+                    goldMat
+                );
+                primaryStrut.position.set(5.2, 2.4, 0);
+                primaryStrut.rotation.z = 0.46;
+                primaryStrut.castShadow = true;
+                legPivot.add(primaryStrut);
+
+                // Secondary Diagonal Support Struts
+                const subStrut = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.11, 0.11, 3.6, 6),
+                    titaniumMat
+                );
+                subStrut.position.set(4.4, 3.3, 0);
+                subStrut.rotation.z = 1.05;
+                legPivot.add(subStrut);
+
+                // Circular Gold Lunar Footpad (Bottom rests at y = 0!)
+                const pad = new THREE.Mesh(
+                    new THREE.CylinderGeometry(1.15, 1.35, 0.25, 14),
+                    goldMat
+                );
+                pad.position.set(6.35, 0.12, 0);
+                pad.castShadow = true;
+                pad.receiveShadow = true;
+                legPivot.add(pad);
+
+                lander.add(legPivot);
+                legGroups.push(legPivot);
+            });
+
+            // --- D. RCS Attitude Thruster Quads & Visible Cold-Gas Jets ---
+            const rcsLeftFlame = new THREE.Mesh(
+                new THREE.ConeGeometry(0.32, 2.2, 8),
+                new THREE.MeshBasicMaterial({ color: 0xbae6fd, transparent: true, opacity: 0.85 })
+            );
+            rcsLeftFlame.rotation.z = -Math.PI / 2;
+            rcsLeftFlame.position.set(4.8, 7.1, 0);
+            rcsLeftFlame.visible = false;
+            lander.add(rcsLeftFlame);
+
+            const rcsRightFlame = new THREE.Mesh(
+                new THREE.ConeGeometry(0.32, 2.2, 8),
+                new THREE.MeshBasicMaterial({ color: 0xbae6fd, transparent: true, opacity: 0.85 })
+            );
+            rcsRightFlame.rotation.z = Math.PI / 2;
+            rcsRightFlame.position.set(-4.8, 7.1, 0);
+            rcsRightFlame.visible = false;
+            lander.add(rcsRightFlame);
+
+            // --- E. Main Descent Engine Exhaust Flame Plume ---
+            const flameGroup = new THREE.Group();
+            flameGroup.position.set(0, 0.4, 0);
+
+            const outerFlame = new THREE.Mesh(
+                new THREE.ConeGeometry(2.3, 13, 16, 1, true),
+                new THREE.MeshBasicMaterial({
+                    color: 0xf59e0b,
+                    transparent: true,
+                    opacity: 0.65,
+                    side: THREE.DoubleSide
+                })
+            );
+            outerFlame.rotation.x = Math.PI;
+            outerFlame.position.y = -6.5;
+            flameGroup.add(outerFlame);
+
+            const innerCore = new THREE.Mesh(
+                new THREE.ConeGeometry(1.15, 7.5, 12),
+                new THREE.MeshBasicMaterial({
+                    color: 0xfef9c3,
+                    transparent: true,
+                    opacity: 0.92
+                })
+            );
+            innerCore.rotation.x = Math.PI;
+            innerCore.position.y = -3.75;
+            flameGroup.add(innerCore);
+
+            flameGroup.visible = false;
+            lander.add(flameGroup);
+
+            lander.userData = {
+                legGroups,
+                flameGroup,
+                rcsLeftFlame,
+                rcsRightFlame
+            };
+
+            return lander;
+        }
+
+        const landerMesh = buildLunarModule();
+        scene.add(landerMesh);
+
+        // ==========================================
+        // 7. PROCEDURAL 3D LUNAR TERRAIN & LANDING PADS
+        // ==========================================
+        const terrainMat = new THREE.MeshStandardMaterial({
+            map: regolithTex,
+            bumpMap: regolithTex,
+            bumpScale: 1.2,
+            color: 0x94a3b8,
+            roughness: 0.92,
+            metalness: 0.05
+        });
+
+        function generateLunarSector(sectorNum) {
+            if (state.terrain.group) {
+                scene.remove(state.terrain.group);
+            }
+
+            const group = new THREE.Group();
+            const points = [];
+            const pads = [];
+
+            const spanX = 1100; // -550 to +550
+            const segments = 120;
+            const stepX = (spanX * 2) / segments;
+
+            // Choose 3 or 4 flat landing pad indices across the valley
+            const numPads = sectorNum === 1 ? 4 : 3;
+            const padSlots = [];
+            for (let p = 0; p < numPads; p++) {
+                const slotCenter = Math.floor(((p + 0.5) / numPads) * (segments - 24)) + 12;
+                const halfWidthSegs = Math.max(2, 5 - Math.floor(sectorNum * 0.6) - (p % 2));
+                const multiplier = halfWidthSegs <= 2 ? 5 : (halfWidthSegs === 3 ? 3 : (p === 0 ? 1 : 2));
+                padSlots.push({
+                    startIdx: slotCenter - halfWidthSegs,
+                    endIdx: slotCenter + halfWidthSegs,
+                    multiplier,
+                    height: 18 + Math.random() * (45 + sectorNum * 12)
+                });
+            }
+
+            // Generate 2D elevation profile with rugged crater rims & peaks
+            const roughnessScale = Math.min(2.1, 0.9 + sectorNum * 0.22);
+            for (let i = 0; i <= segments; i++) {
+                const x = -spanX + i * stepX;
+                let y = 25;
+
+                // Check if inside a flat landing pad zone
+                const activePad = padSlots.find(ps => i >= ps.startIdx && i <= ps.endIdx);
+                if (activePad) {
+                    y = activePad.height;
+                } else {
+                    // Multi-octave trigonometric + ridged mountain synthesis
+                    const n1 = Math.sin(x * 0.0085 + sectorNum * 1.7) * 52 * roughnessScale;
+                    const n2 = Math.cos(x * 0.021 - sectorNum * 0.9) * 28 * roughnessScale;
+                    const n3 = Math.abs(Math.sin(x * 0.048 + sectorNum * 3.1)) * 22 * roughnessScale;
+                    y = Math.max(8, 55 + n1 + n2 + n3);
+
+                    // Blend smoothly near pad edges
+                    padSlots.forEach(ps => {
+                        const distSeg = Math.min(Math.abs(i - ps.startIdx), Math.abs(i - ps.endIdx));
+                        if (distSeg <= 4) {
+                            const blend = distSeg / 4;
+                            y = THREE.MathUtils.lerp(ps.height, y, blend);
+                        }
+                    });
+                }
+
+                points.push({ x, y });
+            }
+
+            // Build 3D Extruded Foreground Ridge + Deep Lunar Crust
+            const shape = new THREE.Shape();
+            shape.moveTo(points[0].x, -120);
+            points.forEach(pt => shape.lineTo(pt.x, pt.y));
+            shape.lineTo(points[points.length - 1].x, -120);
+            shape.closePath();
+
+            const extrudeGeo = new THREE.ExtrudeGeometry(shape, {
+                depth: 65,
+                bevelEnabled: true,
+                bevelSegments: 2,
+                steps: 1,
+                bevelSize: 3,
+                bevelThickness: 4
+            });
+            extrudeGeo.translate(0, 0, -32.5);
+
+            const ridgeMesh = new THREE.Mesh(extrudeGeo, terrainMat);
+            ridgeMesh.receiveShadow = true;
+            ridgeMesh.castShadow = true;
+            group.add(ridgeMesh);
+
+            // Background Silhouette Mountain Range for 3D parallax depth
+            const bgShape = new THREE.Shape();
+            bgShape.moveTo(-1600, -150);
+            for (let bx = -1600; bx <= 1600; bx += 45) {
+                const by = 130 + Math.sin(bx * 0.004 + sectorNum) * 95 + Math.abs(Math.cos(bx * 0.011)) * 75;
+                bgShape.lineTo(bx, by);
+            }
+            bgShape.lineTo(1600, -150);
+            bgShape.closePath();
+
+            const bgMesh = new THREE.Mesh(
+                new THREE.ShapeGeometry(bgShape),
+                new THREE.MeshStandardMaterial({ color: 0x1e2530, roughness: 1.0 })
+            );
+            bgMesh.position.z = -180;
+            group.add(bgMesh);
+
+            // Scatter 3D Boulders along non-pad slopes
+            const boulderGeo = new THREE.DodecahedronGeometry(1, 0);
+            for (let i = 3; i < points.length - 3; i += 2) {
+                const inPad = padSlots.some(ps => i >= ps.startIdx - 1 && i <= ps.endIdx + 1);
+                if (inPad || Math.random() < 0.45) continue;
+
+                const rock = new THREE.Mesh(boulderGeo, terrainMat);
+                const scale = 2.2 + Math.random() * 4.5;
+                rock.scale.set(scale * 1.3, scale * 0.85, scale);
+                rock.position.set(points[i].x, points[i].y + scale * 0.3, (Math.random() - 0.5) * 34);
+                rock.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
+                rock.castShadow = true;
+                rock.receiveShadow = true;
+                group.add(rock);
+            }
+
+            // Construct Glowing Landing Pads & Beacon Stanchions
+            padSlots.forEach(ps => {
+                const x1 = points[ps.startIdx].x;
+                const x2 = points[ps.endIdx].x;
+                const centerX = (x1 + x2) / 2;
+                const width = x2 - x1;
+                const y = ps.height;
+
+                const padColor = ps.multiplier >= 5 ? 0xf59e0b : (ps.multiplier >= 3 ? 0x38bdf8 : 0x10b981);
+
+                // Metallic Landing Deck
+                const deck = new THREE.Mesh(
+                    new THREE.BoxGeometry(width, 1.4, 24),
+                    new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.7, roughness: 0.3 })
+                );
+                deck.position.set(centerX, y + 0.5, 0);
+                deck.receiveShadow = true;
+                group.add(deck);
+
+                // Emissive Perimeter Strip
+                const glowStrip = new THREE.Mesh(
+                    new THREE.BoxGeometry(width - 1.5, 1.65, 21),
+                    new THREE.MeshBasicMaterial({ color: padColor })
+                );
+                glowStrip.position.set(centerX, y + 0.55, 0);
+                group.add(glowStrip);
+
+                // Left & Right Approach Beacon Pylons
+                [-width / 2 + 1, width / 2 - 1].forEach(offsetX => {
+                    const beacon = new THREE.Mesh(
+                        new THREE.SphereGeometry(0.95, 8, 8),
+                        new THREE.MeshBasicMaterial({ color: padColor })
+                    );
+                    beacon.position.set(centerX + offsetX, y + 2.4, 9);
+                    group.add(beacon);
+                });
+
+                // Floating Holographic Multiplier Sprite above Pad
+                const sprite = createMultiplierSprite(`${ps.multiplier}X PAD`, padColor);
+                sprite.position.set(centerX, y + 18, 0);
+                group.add(sprite);
+
+                pads.push({
+                    x1,
+                    x2,
+                    centerX,
+                    y: y + 1.2,
+                    multiplier: ps.multiplier,
+                    color: padColor
+                });
+            });
+
+            scene.add(group);
+            state.terrain.points = points;
+            state.terrain.pads = pads;
+            state.terrain.group = group;
+        }
+
+        function createMultiplierSprite(label, hexColor) {
+            const c = document.createElement('canvas');
+            c.width = 256;
+            c.height = 64;
+            const ctx = c.getContext('2d');
+
+            const cssColor = '#' + hexColor.toString(16).padStart(6, '0');
+            ctx.fillStyle = 'rgba(2, 6, 23, 0.72)';
+            ctx.strokeStyle = cssColor;
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.roundRect(16, 10, 224, 44, 12);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = cssColor;
+            ctx.font = 'bold 24px Orbitron, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(label, 128, 33);
+
+            const tex = new THREE.CanvasTexture(c);
+            const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+            const sprite = new THREE.Sprite(mat);
+            sprite.scale.set(28, 7, 1);
+            return sprite;
+        }
+
+        function getTerrainHeightAt(x) {
+            const pts = state.terrain.points;
+            if (!pts.length) return 0;
+            if (x <= pts[0].x) return pts[0].y;
+            if (x >= pts[pts.length - 1].x) return pts[pts.length - 1].y;
+
+            const step = pts[1].x - pts[0].x;
+            const idx = Math.floor((x - pts[0].x) / step);
+            const p1 = pts[idx];
+            const p2 = pts[Math.min(pts.length - 1, idx + 1)];
+            const t = (x - p1.x) / (p2.x - p1.x);
+            return THREE.MathUtils.lerp(p1.y, p2.y, t);
+        }
+
+        // ==========================================
+        // 8. PARTICLE SYSTEM (PLUME, LUNAR DUST & EXPLOSIONS)
+        // ==========================================
+        const particleGeo = new THREE.DodecahedronGeometry(1, 0);
+
+        function spawnParticle(x, y, z, vx, vy, vz, color, size, life) {
+            const mat = new THREE.MeshBasicMaterial({
+                color,
+                transparent: true,
+                opacity: 0.85
+            });
+            const mesh = new THREE.Mesh(particleGeo, mat);
+            mesh.position.set(x, y, z);
+            mesh.scale.setScalar(size);
+            scene.add(mesh);
+
+            state.particles.push({
+                mesh,
+                vx,
+                vy,
+                vz,
+                life,
+                maxLife: life,
+                initialSize: size
+            });
+        }
+
+        function spawnExplosion(x, y) {
+            audio.playExplosion();
+            const palette = [0xf59e0b, 0xfef08a, 0xef4444, 0x94a3b8];
+            for (let i = 0; i < 42; i++) {
+                const ang = Math.random() * Math.PI * 2;
+                const spd = 12 + Math.random() * 55;
+                spawnParticle(
+                    x, y + 4, (Math.random() - 0.5) * 8,
+                    Math.cos(ang) * spd,
+                    Math.abs(Math.sin(ang)) * spd + 8,
+                    (Math.random() - 0.5) * 35,
+                    palette[i % palette.length],
+                    1.2 + Math.random() * 2.5,
+                    0.8 + Math.random() * 0.7
+                );
+            }
+        }
+
+        function updateParticles(dt) {
+            for (let i = state.particles.length - 1; i >= 0; i--) {
+                const p = state.particles[i];
+                p.life -= dt;
+                p.vy -= LUNAR_GRAVITY * 0.35 * dt;
+                p.mesh.position.x += p.vx * dt;
+                p.mesh.position.y += p.vy * dt;
+                p.mesh.position.z += p.vz * dt;
+
+                const ratio = Math.max(0, p.life / p.maxLife);
+                p.mesh.scale.setScalar(p.initialSize * (0.4 + (1 - ratio) * 1.3));
+                p.mesh.material.opacity = ratio * 0.85;
+
+                if (p.life <= 0) {
+                    scene.remove(p.mesh);
+                    state.particles.splice(i, 1);
+                }
+            }
+        }
+
+        // ==========================================
+        // 9. INPUT & UI CONTROLS
+        // ==========================================
+        window.addEventListener('keydown', (e) => {
+            state.keys[e.code] = true;
+            if (e.code === 'KeyR' && state.mode === 'playing') {
+                toggleSAS();
+            }
+        });
+        window.addEventListener('keyup', (e) => {
+            state.keys[e.code] = false;
+        });
+
+        function toggleSAS() {
+            state.sasEnabled = !state.sasEnabled;
+            const btn = document.getElementById('btn-sas-toggle');
+            if (state.sasEnabled) {
+                btn.textContent = 'SAS AUTO-LEVEL: ON [R]';
+                btn.className = 'glass-panel hover:bg-sky-950/80 px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-bold text-emerald-400 border-emerald-500/40 cursor-pointer';
+            } else {
+                btn.textContent = 'SAS AUTO-LEVEL: OFF [R]';
+                btn.className = 'glass-panel hover:bg-sky-950/80 px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-bold text-amber-300 border-amber-500/40 cursor-pointer';
+            }
+        }
+        document.getElementById('btn-sas-toggle').addEventListener('click', toggleSAS);
+
+        const touchLayer = document.getElementById('touch-controls');
+        function setTouchUI(show) {
+            state.touchVisible = show;
+            if (show && state.mode === 'playing') {
+                touchLayer.classList.remove('hidden');
+            } else {
+                touchLayer.classList.add('hidden');
+            }
+        }
+        document.getElementById('btn-touch-toggle').addEventListener('click', () => setTouchUI(!state.touchVisible));
+
+        if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+            state.touchVisible = true;
+        }
+
+        function bindHoldButton(id, prop) {
+            const el = document.getElementById(id);
+            const activate = (e) => { e.preventDefault(); state.touch[prop] = true; el.classList.add('active'); };
+            const deactivate = (e) => { e.preventDefault(); state.touch[prop] = false; el.classList.remove('active'); };
+            el.addEventListener('touchstart', activate, { passive: false });
+            el.addEventListener('touchend', deactivate);
+            el.addEventListener('touchcancel', deactivate);
+            el.addEventListener('mousedown', activate);
+            el.addEventListener('mouseup', deactivate);
+            el.addEventListener('mouseleave', deactivate);
+        }
+
+        bindHoldButton('touch-left', 'left');
+        bindHoldButton('touch-right', 'right');
+        bindHoldButton('touch-thrust', 'thrust');
+        bindHoldButton('touch-half', 'half');
+
+        // ==========================================
+        // 10. NEWTONIAN PHYSICS & MISSION FLOW
+        // ==========================================
+        function startSector(sectorNum, keepScore = false) {
+            audio.init();
+            audio.playQuindarOrAlarm(2525, 0.16, 0.12);
+
+            if (!keepScore) {
+                state.score = 0;
+            }
+            state.sector = sectorNum;
+            state.mode = 'playing';
+
+            // Clear old particles
+            state.particles.forEach(p => scene.remove(p.mesh));
+            state.particles = [];
+
+            generateLunarSector(sectorNum);
+
+            const s = state.ship;
+            s.maxFuel = Math.max(550, 1050 - (sectorNum - 1) * 90);
+            s.fuel = s.maxFuel;
+            s.x = -340 + (Math.random() - 0.5) * 80;
+            s.y = 265;
+            s.vx = 18 + sectorNum * 2.5;
+            s.vy = -2.0;
+            s.angle = -0.12;
+            s.omega = 0;
+            s.throttle = 0;
+            s.legCompression = 0;
+
+            landerMesh.visible = true;
+            landerMesh.position.set(s.x, s.y, 0);
+            landerMesh.rotation.set(0, 0, s.angle);
+
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('result-screen').classList.add('hidden');
+            document.getElementById('hud-layer').classList.remove('hidden');
+            setTouchUI(state.touchVisible);
+        }
+
+        document.getElementById('btn-start').addEventListener('click', () => startSector(1, false));
+        document.getElementById('btn-next').addEventListener('click', () => {
+            if (state.mode === 'landed') {
+                startSector(state.sector + 1, true);
+            } else {
+                startSector(1, false);
+            }
+        });
+
+        function handleTouchdownOrCrash(agl) {
+            const s = state.ship;
+            const speedV = Math.abs(s.vy);
+            const speedH = Math.abs(s.vx);
+            const tiltAbs = Math.abs(s.angle);
+
+            // Check if aligned with a landing pad
+            const pad = state.terrain.pads.find(p => s.x >= p.x1 + 1.5 && s.x <= p.x2 - 1.5);
+
+            const safeSpeed = speedV <= SAFE_VS && speedH <= SAFE_HS;
+            const safeTilt = tiltAbs <= SAFE_ANGLE;
+
+            audio.updateThrusters(0, false, 0.016, false, false);
+            landerMesh.userData.flameGroup.visible = false;
+            landerMesh.userData.rcsLeftFlame.visible = false;
+            landerMesh.userData.rcsRightFlame.visible = false;
+            engineLight.intensity = 0;
+
+            const resultCard = document.getElementById('result-card');
+            const badge = document.getElementById('result-badge');
+            const title = document.getElementById('result-title');
+            const sub = document.getElementById('result-subtitle');
+            const btnNext = document.getElementById('btn-next');
+
+            if (pad && safeSpeed && safeTilt) {
+                // Successful Soft Touchdown!
+                state.mode = 'landed';
+                s.y = pad.y;
+                s.vx = 0;
+                s.vy = 0;
+                s.omega = 0;
+                s.angle = 0;
+                s.legCompression = 1;
+                audio.playTouchdown();
+
+                const baseScore = 500 * pad.multiplier;
+                const fuelBonus = Math.round(s.fuel * 0.5) * pad.multiplier;
+                const precisionBonus = Math.round((SAFE_VS - speedV) * 60);
+                const stagePoints = baseScore + fuelBonus + precisionBonus;
+                state.score += stagePoints;
+
+                if (state.score > state.highScore) {
+                    state.highScore = state.score;
+                    localStorage.setItem('apollo_horizon_hs', String(state.highScore));
+                }
+
+                resultCard.className = 'max-w-md w-full glass-panel rounded-2xl p-6 sm:p-8 border border-emerald-400/60 text-center';
+                badge.textContent = 'TRANQUILITY BASE HERE';
+                badge.className = 'font-display text-xs tracking-widest text-emerald-400 mb-1';
+                title.textContent = 'THE EAGLE HAS LANDED';
+                sub.textContent = `Nominal touchdown on ${pad.multiplier}X Landing Zone (+${stagePoints} PTS)`;
+                btnNext.textContent = `PROCEED TO SECTOR 0${state.sector + 1}`;
+                btnNext.className = 'w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-300 hover:from-emerald-300 hover:to-teal-200 text-slate-950 font-display font-extrabold text-sm sm:text-base tracking-widest shadow-[0_0_20px_rgba(16,185,129,0.5)] cursor-pointer';
+
+                document.getElementById('stat-vs').textContent = `-${speedV.toFixed(2)} m/s`;
+                document.getElementById('stat-vs').className = 'font-bold text-emerald-400';
+                document.getElementById('stat-hs').textContent = `${speedH.toFixed(2)} m/s`;
+                document.getElementById('stat-hs').className = 'font-bold text-emerald-400';
+                document.getElementById('stat-fuel').textContent = `+${fuelBonus} PTS`;
+                document.getElementById('stat-total').textContent = String(state.score).padStart(5, '0');
+            } else {
+                // Crash Landing!
+                state.mode = 'crashed';
+                landerMesh.visible = false;
+                spawnExplosion(s.x, s.y);
+
+                let reason = 'IMPACT OUTSIDE LANDING PAD';
+                if (pad && !safeTilt) reason = `EXCESSIVE PITCH ANGLE (${(tiltAbs * 180 / Math.PI).toFixed(1)}°)`;
+                else if (pad && speedV > SAFE_VS) reason = `HARD DESCENT IMPACT (${speedV.toFixed(1)} m/s)`;
+                else if (pad && speedH > SAFE_HS) reason = `EXCESSIVE LATERAL DRIFT (${speedH.toFixed(1)} m/s)`;
+
+                resultCard.className = 'max-w-md w-full glass-panel rounded-2xl p-6 sm:p-8 border border-red-500/60 text-center';
+                badge.textContent = 'TELEMETRY LOST';
+                badge.className = 'font-display text-xs tracking-widest text-red-400 mb-1';
+                title.textContent = 'LUNAR MODULE LOST';
+                sub.textContent = reason;
+                btnNext.textContent = 'RELAUNCH MISSION';
+                btnNext.className = 'w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-display font-extrabold text-sm sm:text-base tracking-widest shadow-[0_0_20px_rgba(245,158,11,0.5)] cursor-pointer';
+
+                document.getElementById('stat-vs').textContent = `-${speedV.toFixed(2)} m/s`;
+                document.getElementById('stat-vs').className = speedV <= SAFE_VS ? 'font-bold text-emerald-400' : 'font-bold text-red-400';
+                document.getElementById('stat-hs').textContent = `${speedH.toFixed(2)} m/s`;
+                document.getElementById('stat-hs').className = speedH <= SAFE_HS ? 'font-bold text-emerald-400' : 'font-bold text-red-400';
+                document.getElementById('stat-fuel').textContent = '0 PTS';
+                document.getElementById('stat-total').textContent = String(state.score).padStart(5, '0');
+            }
+
+            setTouchUI(false);
+            setTimeout(() => {
+                document.getElementById('result-screen').classList.remove('hidden');
+            }, state.mode === 'crashed' ? 750 : 450);
+        }
+
+        function updateSimulation(dt) {
+            const s = state.ship;
+            const k = state.keys;
+
+            // 1. Gather Control Inputs
+            const rotLeft = k['ArrowLeft'] || k['KeyA'] || state.touch.left;
+            const rotRight = k['ArrowRight'] || k['KeyD'] || state.touch.right;
+            const fullThrust = k['ArrowUp'] || k['KeyW'] || k['Space'] || state.touch.thrust;
+            const halfThrust = k['ShiftLeft'] || k['ShiftRight'] || state.touch.half;
+
+            let targetThrottle = 0;
+            if (s.fuel > 0) {
+                if (fullThrust) targetThrottle = 1.0;
+                else if (halfThrust) targetThrottle = 0.45;
+            }
+            // Smooth responsive main engine spool-up
+            s.throttle = THREE.MathUtils.lerp(s.throttle, targetThrottle, 1 - Math.exp(-18 * dt));
+            if (s.fuel <= 0) s.throttle = 0;
+
+            // 2. RCS Rotational Control & Optional SAS Auto-Leveling
+            const angularAccel = 2.65;
+            let rcsFiring = false;
+            landerMesh.userData.rcsLeftFlame.visible = false;
+            landerMesh.userData.rcsRightFlame.visible = false;
+
+            if (rotLeft && !rotRight) {
+                s.omega += angularAccel * dt;
+                rcsFiring = true;
+                landerMesh.userData.rcsLeftFlame.visible = true;
+            } else if (rotRight && !rotLeft) {
+                s.omega -= angularAccel * dt;
+                rcsFiring = true;
+                landerMesh.userData.rcsRightFlame.visible = true;
+            } else if (state.sasEnabled) {
+                // SAS Attitude Hold: gently damp rotation and return upright when controls released
+                const targetOmega = -s.angle * 3.4;
+                s.omega = THREE.MathUtils.lerp(s.omega, targetOmega, 1 - Math.exp(-7.5 * dt));
+                if (Math.abs(s.angle) > 0.035) {
+                    rcsFiring = true;
+                    if (s.angle > 0) landerMesh.userData.rcsRightFlame.visible = true;
+                    else landerMesh.userData.rcsLeftFlame.visible = true;
+                }
+            } else {
+                // Pure Newtonian angular damping (very slight reaction wheel friction)
+                s.omega *= Math.pow(0.85, dt);
+            }
+
+            s.omega = THREE.MathUtils.clamp(s.omega, -2.8, 2.8);
+            s.angle += s.omega * dt;
+            // Wrap angle to [-PI, PI]
+            while (s.angle > Math.PI) s.angle -= Math.PI * 2;
+            while (s.angle < -Math.PI) s.angle += Math.PI * 2;
+
+            // 3. Variable-Mass Newtonian Translational Physics (F = m * a)
+            const currentMass = s.dryMass + s.fuel * s.fuelMassPerUnit;
+            const thrustNewtons = s.throttle * s.maxThrust;
+            const accelThrust = thrustNewtons / currentMass;
+
+            // Thrust vector points along Lander's local +Y axis (-sin(angle), cos(angle))
+            const ax = -Math.sin(s.angle) * accelThrust;
+            const ay = Math.cos(s.angle) * accelThrust - LUNAR_GRAVITY;
+
+            s.vx += ax * dt;
+            s.vy += ay * dt;
+            s.x += s.vx * dt;
+            s.y += s.vy * dt;
+
+            // Soft horizontal arena wrap/bounce guard
+            if (s.x < -540) { s.x = -540; s.vx = Math.abs(s.vx) * 0.4; }
+            if (s.x > 540) { s.x = 540; s.vx = -Math.abs(s.vx) * 0.4; }
+
+            // Propellant consumption
+            if (s.throttle > 0.01) {
+                s.fuel = Math.max(0, s.fuel - s.throttle * 42 * dt);
+            }
+
+            // 4. Visual Plume, Exhaust Particles & Lunar Dust Kick-up
+            const groundY = getTerrainHeightAt(s.x);
+            const agl = Math.max(0, s.y - groundY);
+
+            const flameGroup = landerMesh.userData.flameGroup;
+            if (s.throttle > 0.03) {
+                flameGroup.visible = true;
+                const flicker = 0.85 + Math.random() * 0.35;
+                flameGroup.scale.set(0.7 + s.throttle * 0.4, s.throttle * flicker, 0.7 + s.throttle * 0.4);
+                engineLight.intensity = s.throttle * (3.2 + Math.random() * 0.8);
+                engineLight.position.set(s.x, s.y - 2, 4);
+
+                // Spawn glowing exhaust stream
+                if (Math.random() < 0.75) {
+                    const exhaustDirX = Math.sin(s.angle);
+                    const exhaustDirY = -Math.cos(s.angle);
+                    spawnParticle(
+                        s.x + exhaustDirX * 2,
+                        s.y + exhaustDirY * 2,
+                        (Math.random() - 0.5) * 2,
+                        s.vx + exhaustDirX * 42 + (Math.random() - 0.5) * 8,
+                        s.vy + exhaustDirY * 42,
+                        (Math.random() - 0.5) * 8,
+                        0xfbbf24,
+                        0.65 * s.throttle,
+                        0.22
+                    );
+                }
+
+                // Lunar Surface Regolith Dust Plume when thrusting close to ground (< 42m AGL)
+                if (agl < 42 && Math.random() < 0.85) {
+                    const side = Math.random() > 0.5 ? 1 : -1;
+                    const blastSpeed = (1 - agl / 42) * s.throttle * 48;
+                    spawnParticle(
+                        s.x + (Math.random() - 0.5) * 6,
+                        groundY + 0.6,
+                        (Math.random() - 0.5) * 10,
+                        side * (10 + blastSpeed + Math.random() * 14),
+                        2 + Math.random() * 6,
+                        (Math.random() - 0.5) * 18,
+                        0x94a3b8,
+                        1.1 + Math.random() * 1.4,
+                        0.55
+                    );
+                }
+            } else {
+                flameGroup.visible = false;
+                engineLight.intensity = 0;
+            }
+
+            // Update Audio
+            const lowFuel = s.fuel / s.maxFuel < 0.18 && s.fuel > 0;
+            const highSink = agl < 75 && s.vy < -SAFE_VS * 1.25;
+            audio.updateThrusters(s.throttle, rcsFiring, dt, lowFuel, highSink);
+
+            // Sync 3D Lander Mesh
+            landerMesh.position.set(s.x, s.y, 0);
+            landerMesh.rotation.set(0, 0, s.angle);
+
+            // 5. Ground / Pad Touchdown Check
+            if (s.y <= groundY) {
+                handleTouchdownOrCrash(agl);
+            }
+        }
+
+        // ==========================================
+        // 11. DYNAMIC CAMERA & HUD UPDATER
+        // ==========================================
+        function updateCamera(dt) {
+            const s = state.ship;
+            const groundY = getTerrainHeightAt(s.x);
+            const agl = Math.max(0, s.y - groundY);
+
+            // Zoom in closer as the Lunar Module nears the surface for precision landing!
+            const zoomFactor = THREE.MathUtils.clamp(agl / 190, 0.32, 1.0);
+            const targetZ = 95 + zoomFactor * 165;
+            const targetY = Math.max(groundY + 26, s.y - 8);
+            const targetX = s.x + s.vx * 0.45;
+
+            camera.position.x = THREE.MathUtils.lerp(camera.position.x, targetX, 1 - Math.exp(-5.5 * dt));
+            camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 1 - Math.exp(-5.5 * dt));
+            camera.position.z = THREE.MathUtils.lerp(camera.position.z, targetZ, 1 - Math.exp(-4.5 * dt));
+            camera.lookAt(camera.position.x, camera.position.y - 6, 0);
+
+            // Parallax Starfield & Earth follow
+            if (state.stars) {
+                state.stars.position.x = camera.position.x * 0.85;
+            }
+            if (state.earth) {
+                state.earth.position.x = -240 + camera.position.x * 0.72;
+                state.earth.children[0].rotation.y += dt * 0.025;
+            }
+        }
+
+        function updateHUD() {
+            const s = state.ship;
+            const groundY = getTerrainHeightAt(s.x);
+            const agl = Math.max(0, s.y - groundY);
+
+            document.getElementById('hud-sector').textContent = `SECTOR 0${state.sector}`;
+            document.getElementById('hud-highscore').textContent = String(state.highScore).padStart(5, '0');
+            document.getElementById('hud-score').textContent = String(state.score).padStart(5, '0');
+
+            document.getElementById('hud-alt').textContent = `${Math.round(agl)}m`;
+
+            // Vertical Speed Color Coding
+            const vsEl = document.getElementById('hud-vs');
+            vsEl.textContent = `${s.vy >= 0 ? '+' : ''}${s.vy.toFixed(1)} m/s`;
+            vsEl.className = Math.abs(s.vy) <= SAFE_VS
+                ? 'font-display text-sm sm:text-lg font-bold text-emerald-400'
+                : 'font-display text-sm sm:text-lg font-bold text-red-400';
+
+            // Horizontal Speed Color Coding
+            const hsEl = document.getElementById('hud-hs');
+            hsEl.textContent = `${s.vx.toFixed(1)} m/s`;
+            hsEl.className = Math.abs(s.vx) <= SAFE_HS
+                ? 'font-display text-sm sm:text-lg font-bold text-emerald-400'
+                : 'font-display text-sm sm:text-lg font-bold text-amber-300';
+
+            // Pitch Angle
+            const deg = (-s.angle * 180) / Math.PI;
+            const pitchEl = document.getElementById('hud-pitch');
+            pitchEl.textContent = `${deg.toFixed(1)}°`;
+            pitchEl.className = Math.abs(s.angle) <= SAFE_ANGLE
+                ? 'font-display text-sm sm:text-lg font-bold text-sky-300'
+                : 'font-display text-sm sm:text-lg font-bold text-red-400';
+
+            // Fuel & Mass Telemetry
+            const fuelPct = Math.round((s.fuel / s.maxFuel) * 100);
+            document.getElementById('hud-fuel-text').textContent = `${fuelPct}%`;
+            const fuelBar = document.getElementById('hud-fuel-bar');
+            fuelBar.style.width = `${fuelPct}%`;
+            fuelBar.className = fuelPct < 20
+                ? 'h-full bg-red-500 transition-all duration-100'
+                : 'h-full bg-gradient-to-r from-amber-500 to-yellow-300 transition-all duration-100';
+
+            document.getElementById('hud-throttle-text').textContent = `${Math.round(s.throttle * 100)}%`;
+            const totalTons = ((s.dryMass + s.fuel * s.fuelMassPerUnit) / 1000).toFixed(1);
+            document.getElementById('hud-mass-text').textContent = `${totalTons}t`;
+
+            // Nearest Landing Pad Directional Guide
+            const guideEl = document.getElementById('pad-guide');
+            if (state.terrain.pads.length > 0) {
+                let nearest = state.terrain.pads[0];
+                let minDist = Math.abs(nearest.centerX - s.x);
+                state.terrain.pads.forEach(p => {
+                    const d = Math.abs(p.centerX - s.x);
+                    if (d < minDist) { minDist = d; nearest = p; }
+                });
+
+                const dx = nearest.centerX - s.x;
+                if (Math.abs(dx) > 45) {
+                    guideEl.classList.remove('hidden');
+                    guideEl.textContent = dx < 0
+                        ? `◀ ${nearest.multiplier}X PAD (${Math.round(Math.abs(dx))}m)`
+                        : `${nearest.multiplier}X PAD (${Math.round(Math.abs(dx))}m) ▶`;
+                } else {
+                    guideEl.classList.add('hidden');
+                }
+            }
+
+            // High Descent Warning Banner
+            const warnEl = document.getElementById('hud-warning');
+            if (agl < 95 && s.vy < -SAFE_VS * 1.15) {
+                warnEl.classList.remove('hidden');
+            } else {
+                warnEl.classList.add('hidden');
+            }
+
+            // Final Approach Checklist below 85m AGL
+            const envEl = document.getElementById('landing-envelope');
+            if (agl < 85) {
+                envEl.classList.remove('hidden');
+                document.getElementById('chk-vs').className = `w-2.5 h-2.5 rounded-full ${Math.abs(s.vy) <= SAFE_VS ? 'bg-emerald-400' : 'bg-red-500'}`;
+                document.getElementById('chk-hs').className = `w-2.5 h-2.5 rounded-full ${Math.abs(s.vx) <= SAFE_HS ? 'bg-emerald-400' : 'bg-red-500'}`;
+                document.getElementById('chk-ang').className = `w-2.5 h-2.5 rounded-full ${Math.abs(s.angle) <= SAFE_ANGLE ? 'bg-emerald-400' : 'bg-red-500'}`;
+            } else {
+                envEl.classList.add('hidden');
+            }
+        }
+
+        // ==========================================
+        // 12. RESIZE & MAIN ANIMATION LOOP
+        // ==========================================
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Build initial terrain for title screen preview
+        generateLunarSector(1);
+        landerMesh.position.set(0, 125, 0);
+
+        const clock = new THREE.Clock();
+        let demoTime = 0;
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = Math.min(clock.getDelta(), 0.05);
+
+            // Subtle landing leg suspension compression on touchdown
+            if (state.mode === 'landed') {
+                landerMesh.userData.legGroups.forEach(leg => {
+                    leg.position.y = THREE.MathUtils.lerp(leg.position.y, 0.55, 10 * dt);
+                });
+            } else {
+                landerMesh.userData.legGroups.forEach(leg => {
+                    leg.position.y = 0;
+                });
+            }
+
+            if (state.mode === 'playing') {
+                updateSimulation(dt);
+                updateCamera(dt);
+                updateHUD();
+            } else if (state.mode === 'menu') {
+                // Cinematic hovering showcase above lunar craters on Start Screen
+                demoTime += dt;
+                landerMesh.position.set(Math.sin(demoTime * 0.45) * 65, 118 + Math.cos(demoTime * 0.9) * 8, 0);
+                landerMesh.rotation.z = Math.cos(demoTime * 0.45) * 0.08;
+                landerMesh.userData.flameGroup.visible = true;
+                landerMesh.userData.flameGroup.scale.set(0.8, 0.55 + Math.random() * 0.2, 0.8);
+                engineLight.intensity = 2.2;
+                engineLight.position.set(landerMesh.position.x, landerMesh.position.y - 3, 5);
+
+                camera.position.set(landerMesh.position.x * 0.6, 130, 175);
+                camera.lookAt(landerMesh.position.x, 95, 0);
+            }
+
+            updateParticles(dt);
+            renderer.render(scene, camera);
+        }
+
+        window.onload = function () {
+            animate();
+        };
+    </script>
+</body>
+</html>

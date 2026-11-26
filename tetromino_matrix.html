@@ -1,0 +1,1618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TETROMINO MATRIX</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: radial-gradient(circle at 50% 15%, #131c36 0%, #070b14 68%, #04060c 100%);
+            font-family: 'Chakra Petch', sans-serif;
+            color: #f8fafc;
+        }
+        .font-mono-num {
+            font-family: 'JetBrains Mono', monospace;
+            font-variant-numeric: tabular-nums;
+        }
+        canvas {
+            display: block;
+            image-rendering: crisp-edges;
+        }
+        .matrix-panel {
+            background: linear-gradient(165deg, rgba(17, 26, 48, 0.92) 0%, rgba(9, 14, 28, 0.96) 100%);
+            border: 1px solid rgba(99, 179, 237, 0.22);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        }
+        .deck-btn {
+            background: linear-gradient(180deg, rgba(30, 44, 76, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%);
+            border: 1px solid rgba(125, 211, 252, 0.32);
+            box-shadow: 0 4px 0 rgba(8, 13, 26, 0.9), 0 0 12px rgba(56, 189, 248, 0.12);
+            transition: transform 0.05s ease, background-color 0.08s ease, border-color 0.08s ease;
+        }
+        .deck-btn:active, .deck-btn.active {
+            transform: translateY(3px);
+            box-shadow: 0 1px 0 rgba(8, 13, 26, 0.9);
+            background: rgba(37, 99, 235, 0.55);
+            border-color: #7dd3fc;
+        }
+        .drop-btn {
+            background: linear-gradient(180deg, #06b6d4 0%, #0284c7 100%);
+            border: 1px solid #a5f3fc;
+            box-shadow: 0 4px 0 #075985, 0 0 16px rgba(6, 182, 212, 0.3);
+            transition: transform 0.05s ease, background-color 0.08s ease;
+        }
+        .drop-btn:active, .drop-btn.active {
+            transform: translateY(3px);
+            box-shadow: 0 1px 0 #075985;
+            background: #22d3ee;
+        }
+        .top-btn {
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            transition: border-color 0.12s ease, color 0.12s ease, transform 0.06s ease;
+        }
+        .top-btn:hover {
+            border-color: #38bdf8;
+            color: #e0f2fe;
+        }
+        .top-btn:active {
+            transform: scale(0.96);
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-between p-1.5 sm:p-2.5">
+
+    <!-- Top Utility Bar -->
+    <header class="w-full max-w-4xl flex items-center justify-between gap-2 px-1 py-0.5 z-20">
+        <div class="flex items-center gap-2.5">
+            <span class="inline-block w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_8px_#22d3ee]"></span>
+            <h1 class="text-xs sm:text-base font-bold tracking-[0.22em] text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-sky-200 to-indigo-300">
+                TETROMINO MATRIX
+            </h1>
+        </div>
+        <div class="flex items-center gap-1.5 sm:gap-2">
+            <button id="btn-music" class="top-btn px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-semibold text-indigo-300 cursor-pointer">
+                SYNTH: ON
+            </button>
+            <button id="btn-mute" class="top-btn px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-semibold text-amber-300 cursor-pointer">
+                AUDIO: ON [M]
+            </button>
+            <button id="btn-pause" class="top-btn px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-semibold text-cyan-300 cursor-pointer">
+                PAUSE [P]
+            </button>
+            <button id="btn-restart" class="top-btn px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-semibold text-rose-300 cursor-pointer">
+                RESET
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Matrix Playfield -->
+    <main class="relative flex-1 w-full flex items-center justify-center min-h-0 my-1">
+        <div class="matrix-panel rounded-2xl p-1.5 sm:p-2 flex items-center justify-center">
+            <canvas id="matrix-canvas"></canvas>
+        </div>
+    </main>
+
+    <!-- Touch / On-Screen Control Deck (Mobile, Tablet & Pointer Friendly) -->
+    <footer class="w-full max-w-3xl flex items-center justify-between gap-2 px-2 pb-1 z-20">
+        <!-- Left Movement & Soft Drop Cluster -->
+        <div class="flex items-center gap-1.5 sm:gap-2">
+            <button id="pad-left" aria-label="Move Left" class="deck-btn w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-sm text-sky-100 font-bold cursor-pointer">◀</button>
+            <button id="pad-down" aria-label="Soft Drop" class="deck-btn w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-sm text-cyan-200 font-bold cursor-pointer">▼</button>
+            <button id="pad-right" aria-label="Move Right" class="deck-btn w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-sm text-sky-100 font-bold cursor-pointer">▶</button>
+        </div>
+
+        <!-- Center Hold & Rotate Cluster -->
+        <div class="flex items-center gap-1.5 sm:gap-2">
+            <button id="pad-hold" aria-label="Hold Piece" class="deck-btn px-2.5 sm:px-3 h-11 sm:h-12 rounded-xl flex items-center justify-center text-[10px] sm:text-xs font-bold text-amber-300 tracking-wider cursor-pointer">
+                HOLD
+            </button>
+            <button id="pad-ccw" aria-label="Rotate Counter-Clockwise" class="deck-btn w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-xs sm:text-sm font-bold text-fuchsia-200 cursor-pointer">
+                ↺
+            </button>
+            <button id="pad-cw" aria-label="Rotate Clockwise" class="deck-btn w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-xs sm:text-sm font-bold text-cyan-200 cursor-pointer">
+                ↻
+            </button>
+        </div>
+
+        <!-- Right Hard Drop Action -->
+        <button id="pad-drop" aria-label="Hard Drop" class="drop-btn px-3.5 sm:px-4 h-11 sm:h-12 rounded-xl flex items-center justify-center text-[10px] sm:text-xs font-extrabold text-slate-950 tracking-wider cursor-pointer">
+            DROP
+        </button>
+    </footer>
+
+    <script>
+        /**
+         * TETROMINO MATRIX
+         * Sleek Single-File HTML5 Canvas + Web Audio API Puzzle Engine
+         */
+
+        // =====================================================================
+        // 1. WEB AUDIO SYNTHESIZER (SFX + TOGGLEABLE SYNTH/CHIPTUNE GROOVE)
+        // =====================================================================
+        class MatrixSynthAudio {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+                this.musicEnabled = true;
+                this.stepIdx = 0;
+                this.stepTimer = 0;
+
+                // Arpeggio / synth bass groove frequencies (D Dorian / Synthwave minor feel)
+                this.notes = {
+                    D2: 73.42, F2: 87.31, G2: 98.00, A2: 110.00, Bb2: 116.54, C3: 130.81, D3: 146.83,
+                    A3: 220.00, C4: 261.63, D4: 293.66, E4: 329.63, F4: 349.23, G4: 392.00, A4: 440.00,
+                    C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46, A5: 880.00
+                };
+
+                // 32-step pattern: [arpFreq, bassFreq]
+                this.groovePattern = [
+                    ['D4', 'D2'], ['F4', 'R'],  ['A4', 'D2'], ['D5', 'R'],
+                    ['A4', 'D2'], ['F4', 'R'],  ['C5', 'C3'], ['E5', 'R'],
+                    ['Bb4','Bb2'], ['D5', 'R'], ['G4', 'G2'], ['Bb4','R'],
+                    ['A4', 'A2'], ['E5', 'R'],  ['C5', 'A2'], ['A4', 'R'],
+
+                    ['D4', 'D2'], ['F4', 'R'],  ['A4', 'D2'], ['F5', 'R'],
+                    ['E5', 'C3'], ['C5', 'R'],  ['A4', 'C3'], ['G4', 'R'],
+                    ['F4', 'F2'], ['A4', 'R'],  ['C5', 'F2'], ['A4', 'R'],
+                    ['G4', 'G2'], ['A4', 'R'],  ['E4', 'A2'], ['C4', 'R']
+                ];
+            }
+
+            init() {
+                if (this.ctx) {
+                    if (this.ctx.state === 'suspended') {
+                        this.ctx.resume().catch(() => {});
+                    }
+                    return;
+                }
+                try {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                } catch (err) {
+                    console.warn('Web Audio API unavailable:', err);
+                }
+            }
+
+            toggleMute() {
+                this.muted = !this.muted;
+                return this.muted;
+            }
+
+            toggleMusic() {
+                this.musicEnabled = !this.musicEnabled;
+                return this.musicEnabled;
+            }
+
+            playNote(freq, type, startTime, duration, volume = 0.075, slideTo = null) {
+                if (this.muted || !this.ctx || !freq || freq <= 0) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, startTime);
+                if (slideTo) {
+                    osc.frequency.exponentialRampToValueAtTime(Math.max(30, slideTo), startTime + duration);
+                }
+
+                gain.gain.setValueAtTime(0.001, startTime);
+                gain.gain.linearRampToValueAtTime(volume, startTime + 0.008);
+                gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(startTime);
+                osc.stop(startTime + duration + 0.015);
+            }
+
+            sfxMove() {
+                if (this.muted || !this.ctx) return;
+                this.playNote(240, 'triangle', this.ctx.currentTime, 0.035, 0.06, 310);
+            }
+
+            sfxRotate() {
+                if (this.muted || !this.ctx) return;
+                this.playNote(380, 'square', this.ctx.currentTime, 0.055, 0.065, 590);
+            }
+
+            sfxHold() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.playNote(440, 'triangle', now, 0.06, 0.08, 660);
+                this.playNote(660, 'triangle', now + 0.05, 0.07, 0.08, 880);
+            }
+
+            sfxSoftDrop() {
+                if (this.muted || !this.ctx) return;
+                this.playNote(155, 'triangle', this.ctx.currentTime, 0.025, 0.045, 110);
+            }
+
+            sfxHardDrop() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.playNote(420, 'sawtooth', now, 0.08, 0.09, 95);
+                this.playNote(130, 'triangle', now + 0.02, 0.09, 0.1, 55);
+            }
+
+            sfxLock() {
+                if (this.muted || !this.ctx) return;
+                this.playNote(180, 'square', this.ctx.currentTime, 0.06, 0.06, 115);
+            }
+
+            sfxLineClear(lines, isSpecial) {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const baseSeq = isSpecial
+                    ? [523.25, 659.25, 783.99, 1046.5, 1318.51]
+                    : [440, 554.37, 659.25, 880].slice(0, Math.max(2, lines + 1));
+                baseSeq.forEach((f, idx) => {
+                    this.playNote(f, 'square', now + idx * 0.055, 0.11, 0.085);
+                });
+            }
+
+            sfxGameOver() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const notes = [392.0, 349.23, 311.13, 261.63, 196.0];
+                notes.forEach((f, idx) => {
+                    this.playNote(f, 'sawtooth', now + idx * 0.13, 0.18, 0.085);
+                });
+            }
+
+            updateGroove(dt, active, level) {
+                if (!this.ctx || this.muted || !this.musicEnabled || !active) return;
+                this.stepTimer -= dt;
+                if (this.stepTimer <= 0) {
+                    const pair = this.groovePattern[this.stepIdx % this.groovePattern.length];
+                    this.stepIdx++;
+                    const tempoScale = Math.max(0.68, 1 - (level - 1) * 0.025);
+                    const stepDur = 0.145 * tempoScale;
+                    const now = this.ctx.currentTime;
+
+                    const arpF = this.notes[pair[0]] || 0;
+                    const bassF = this.notes[pair[1]] || 0;
+                    if (arpF > 0) this.playNote(arpF, 'square', now, stepDur * 0.72, 0.032);
+                    if (bassF > 0) this.playNote(bassF, 'triangle', now, stepDur * 1.15, 0.065);
+
+                    this.stepTimer = stepDur;
+                }
+            }
+        }
+
+        const audio = new MatrixSynthAudio();
+
+        // =====================================================================
+        // 2. TETROMINO DEFINITIONS, SRS WALL KICKS & 7-BAG GENERATOR
+        // =====================================================================
+        // 4x4 matrices for states 0 (spawn), 1 (R), 2 (2), 3 (L)
+        const TETROMINOES = {
+            I: {
+                color: '#22d3ee',
+                glow: 'rgba(34, 211, 238, 0.45)',
+                shapes: [
+                    [
+                        [0,0,0,0],
+                        [1,1,1,1],
+                        [0,0,0,0],
+                        [0,0,0,0]
+                    ],
+                    [
+                        [0,0,1,0],
+                        [0,0,1,0],
+                        [0,0,1,0],
+                        [0,0,1,0]
+                    ],
+                    [
+                        [0,0,0,0],
+                        [0,0,0,0],
+                        [1,1,1,1],
+                        [0,0,0,0]
+                    ],
+                    [
+                        [0,1,0,0],
+                        [0,1,0,0],
+                        [0,1,0,0],
+                        [0,1,0,0]
+                    ]
+                ]
+            },
+            J: {
+                color: '#3b82f6',
+                glow: 'rgba(59, 130, 246, 0.45)',
+                shapes: [
+                    [
+                        [1,0,0],
+                        [1,1,1],
+                        [0,0,0]
+                    ],
+                    [
+                        [0,1,1],
+                        [0,1,0],
+                        [0,1,0]
+                    ],
+                    [
+                        [0,0,0],
+                        [1,1,1],
+                        [0,0,1]
+                    ],
+                    [
+                        [0,1,0],
+                        [0,1,0],
+                        [1,1,0]
+                    ]
+                ]
+            },
+            L: {
+                color: '#f97316',
+                glow: 'rgba(249, 115, 22, 0.45)',
+                shapes: [
+                    [
+                        [0,0,1],
+                        [1,1,1],
+                        [0,0,0]
+                    ],
+                    [
+                        [0,1,0],
+                        [0,1,0],
+                        [0,1,1]
+                    ],
+                    [
+                        [0,0,0],
+                        [1,1,1],
+                        [1,0,0]
+                    ],
+                    [
+                        [1,1,0],
+                        [0,1,0],
+                        [0,1,0]
+                    ]
+                ]
+            },
+            O: {
+                color: '#facc15',
+                glow: 'rgba(250, 204, 21, 0.45)',
+                shapes: [
+                    [
+                        [0,1,1,0],
+                        [0,1,1,0],
+                        [0,0,0,0]
+                    ],
+                    [
+                        [0,1,1,0],
+                        [0,1,1,0],
+                        [0,0,0,0]
+                    ],
+                    [
+                        [0,1,1,0],
+                        [0,1,1,0],
+                        [0,0,0,0]
+                    ],
+                    [
+                        [0,1,1,0],
+                        [0,1,1,0],
+                        [0,0,0,0]
+                    ]
+                ]
+            },
+            S: {
+                color: '#22c55e',
+                glow: 'rgba(34, 197, 94, 0.45)',
+                shapes: [
+                    [
+                        [0,1,1],
+                        [1,1,0],
+                        [0,0,0]
+                    ],
+                    [
+                        [0,1,0],
+                        [0,1,1],
+                        [0,0,1]
+                    ],
+                    [
+                        [0,0,0],
+                        [0,1,1],
+                        [1,1,0]
+                    ],
+                    [
+                        [1,0,0],
+                        [1,1,0],
+                        [0,1,0]
+                    ]
+                ]
+            },
+            T: {
+                color: '#c084fc',
+                glow: 'rgba(192, 132, 252, 0.48)',
+                shapes: [
+                    [
+                        [0,1,0],
+                        [1,1,1],
+                        [0,0,0]
+                    ],
+                    [
+                        [0,1,0],
+                        [0,1,1],
+                        [0,1,0]
+                    ],
+                    [
+                        [0,0,0],
+                        [1,1,1],
+                        [0,1,0]
+                    ],
+                    [
+                        [0,1,0],
+                        [1,1,0],
+                        [0,1,0]
+                    ]
+                ]
+            },
+            Z: {
+                color: '#ef4444',
+                glow: 'rgba(239, 68, 68, 0.45)',
+                shapes: [
+                    [
+                        [1,1,0],
+                        [0,1,1],
+                        [0,0,0]
+                    ],
+                    [
+                        [0,0,1],
+                        [0,1,1],
+                        [0,1,0]
+                    ],
+                    [
+                        [0,0,0],
+                        [1,1,0],
+                        [0,1,1]
+                    ],
+                    [
+                        [0,1,0],
+                        [1,1,0],
+                        [1,0,0]
+                    ]
+                ]
+            }
+        };
+
+        const PIECE_TYPES = ['I', 'J', 'L', 'O', 'S', 'T', 'Z'];
+
+        // SRS Kick Tables [dx, dy] in board grid coordinates (positive y = downward)
+        const SRS_JLSTZ_KICKS = {
+            '0->1': [[0,0], [-1,0], [-1,-1], [0,2], [-1,2]],
+            '1->0': [[0,0], [1,0],  [1,1],   [0,-2],[1,-2]],
+            '1->2': [[0,0], [1,0],  [1,1],   [0,-2],[1,-2]],
+            '2->1': [[0,0], [-1,0], [-1,-1], [0,2], [-1,2]],
+            '2->3': [[0,0], [1,0],  [1,-1],  [0,2], [1,2]],
+            '3->2': [[0,0], [-1,0], [-1,1],  [0,-2],[-1,-2]],
+            '3->0': [[0,0], [-1,0], [-1,1],  [0,-2],[-1,-2]],
+            '0->3': [[0,0], [1,0],  [1,-1],  [0,2], [1,2]]
+        };
+
+        const SRS_I_KICKS = {
+            '0->1': [[0,0], [-2,0], [1,0],  [-2,1], [1,-2]],
+            '1->0': [[0,0], [2,0],  [-1,0], [2,-1], [-1,2]],
+            '1->2': [[0,0], [-1,0], [2,0],  [-1,-2],[2,1]],
+            '2->1': [[0,0], [1,0],  [-2,0], [1,2],  [-2,-1]],
+            '2->3': [[0,0], [2,0],  [-1,0], [2,-1], [-1,2]],
+            '3->2': [[0,0], [-2,0], [1,0],  [-2,1], [1,-2]],
+            '3->0': [[0,0], [1,0],  [-2,0], [1,2],  [-2,-1]],
+            '0->3': [[0,0], [-1,0], [2,0],  [-1,-2],[2,1]]
+        };
+
+        // =====================================================================
+        // 3. MATRIX BOARD STATE (10x20 VISIBLE + 2 TOP BUFFER ROWS = 10x22)
+        // =====================================================================
+        const BOARD_COLS = 10;
+        const VISIBLE_ROWS = 20;
+        const BUFFER_ROWS = 2;
+        const TOTAL_ROWS = VISIBLE_ROWS + BUFFER_ROWS;
+
+        const state = {
+            phase: 'title', // 'title', 'playing', 'paused', 'gameover'
+            score: 0,
+            bestScore: parseInt(localStorage.getItem('tetromino_matrix_best') || '0', 10),
+            level: 1,
+            lines: 0,
+            combo: -1,
+            backToBack: false,
+            dropTimer: 0,
+
+            // Lock Delay & Reset Mechanics
+            lockDelayMax: 0.52,
+            lockTimer: 0,
+            lockResets: 0,
+            maxLockResets: 15,
+            isGrounded: false,
+
+            // 7-Bag Queue & Hold Slot
+            bag: [],
+            nextQueue: [],
+            holdType: null,
+            holdUsedThisTurn: false,
+
+            // Playfield Grid: null or { type, color }
+            grid: [],
+            active: null, // { type, rot, x, y, lastMoveWasRotate, lastKickIdx }
+
+            // Line Clear Flash, Particles & Callout Banner
+            clearingRows: [], // { row, timer, maxTimer }
+            particles: [],    // { x, y, vx, vy, color, size, life, maxLife }
+            callout: null,    // { text, subtext, color, timer }
+            shakeTimer: 0,
+            worldTime: 0,
+
+            // DAS / ARR Auto-Repeat Timers
+            dasDir: 0,
+            dasTimer: 0,
+            arrTimer: 0,
+            dasDelay: 0.145,
+            arrInterval: 0.038,
+
+            keys: {},
+            touch: { left: false, right: false, down: false }
+        };
+
+        function createEmptyGrid() {
+            return Array.from({ length: TOTAL_ROWS }, () => Array(BOARD_COLS).fill(null));
+        }
+
+        function refillBag() {
+            const copy = [...PIECE_TYPES];
+            for (let i = copy.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [copy[i], copy[j]] = [copy[j], copy[i]];
+            }
+            state.bag.push(...copy);
+        }
+
+        function drawFromBag() {
+            while (state.bag.length < 7) {
+                refillBag();
+            }
+            return state.bag.shift();
+        }
+
+        function ensureNextQueue() {
+            while (state.nextQueue.length < 3) {
+                state.nextQueue.push(drawFromBag());
+            }
+        }
+
+        function getShapeMatrix(type, rot) {
+            return TETROMINOES[type].shapes[((rot % 4) + 4) % 4];
+        }
+
+        function collidesBoard(type, rot, px, py) {
+            const mat = getShapeMatrix(type, rot);
+            for (let r = 0; r < mat.length; r++) {
+                for (let c = 0; c < mat[r].length; c++) {
+                    if (!mat[r][c]) continue;
+                    const bx = px + c;
+                    const by = py + r;
+                    if (bx < 0 || bx >= BOARD_COLS || by >= TOTAL_ROWS) {
+                        return true;
+                    }
+                    if (by >= 0 && state.grid[by][bx] !== null) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function computeGhostY() {
+            const p = state.active;
+            if (!p) return 0;
+            let gy = p.y;
+            while (!collidesBoard(p.type, p.rot, p.x, gy + 1)) {
+                gy++;
+            }
+            return gy;
+        }
+
+        function spawnNextPiece(fromHoldType = null) {
+            ensureNextQueue();
+            const type = fromHoldType || state.nextQueue.shift();
+            ensureNextQueue();
+
+            const spawnX = type === 'I' ? 3 : (type === 'O' ? 3 : 3);
+            const spawnY = type === 'I' ? 0 : 1;
+
+            state.active = {
+                type,
+                rot: 0,
+                x: spawnX,
+                y: spawnY,
+                lastMoveWasRotate: false,
+                lastKickIdx: 0
+            };
+            state.dropTimer = 0;
+            state.lockTimer = 0;
+            state.lockResets = 0;
+            state.isGrounded = !collidesBoard(type, 0, spawnX, spawnY + 1) ? false : true;
+
+            if (collidesBoard(type, 0, spawnX, spawnY)) {
+                state.phase = 'gameover';
+                audio.sfxGameOver();
+            }
+        }
+
+        function startNewMatrix() {
+            audio.init();
+            state.score = 0;
+            state.level = 1;
+            state.lines = 0;
+            state.combo = -1;
+            state.backToBack = false;
+            state.holdType = null;
+            state.holdUsedThisTurn = false;
+            state.bag = [];
+            state.nextQueue = [];
+            state.grid = createEmptyGrid();
+            state.clearingRows = [];
+            state.particles = [];
+            state.callout = null;
+            state.shakeTimer = 0;
+            state.dasDir = 0;
+
+            spawnNextPiece();
+            if (state.phase !== 'gameover') {
+                state.phase = 'playing';
+            }
+        }
+
+        // =====================================================================
+        // 4. MOVEMENT, SRS ROTATION, HOLD, LOCK DELAY & LINE CLEAR SCORING
+        // =====================================================================
+        function triggerLockResetIfGrounded() {
+            if (!state.active) return;
+            const groundedNow = collidesBoard(state.active.type, state.active.rot, state.active.x, state.active.y + 1);
+            state.isGrounded = groundedNow;
+            if (groundedNow && state.lockResets < state.maxLockResets) {
+                state.lockTimer = 0;
+                state.lockResets++;
+            }
+        }
+
+        function moveHorizontal(deltaX) {
+            const p = state.active;
+            if (!p || state.phase !== 'playing' || state.clearingRows.length > 0) return false;
+            if (!collidesBoard(p.type, p.rot, p.x + deltaX, p.y)) {
+                p.x += deltaX;
+                p.lastMoveWasRotate = false;
+                audio.sfxMove();
+                triggerLockResetIfGrounded();
+                return true;
+            }
+            return false;
+        }
+
+        function rotatePiece(dir) {
+            // dir: +1 for clockwise (CW), -1 for counter-clockwise (CCW)
+            const p = state.active;
+            if (!p || state.phase !== 'playing' || state.clearingRows.length > 0) return;
+            if (p.type === 'O') {
+                audio.sfxRotate();
+                return;
+            }
+
+            const oldRot = p.rot;
+            const newRot = (((oldRot + dir) % 4) + 4) % 4;
+            const key = `${oldRot}->${newRot}`;
+            const kicks = p.type === 'I'
+                ? (SRS_I_KICKS[key] || [[0, 0]])
+                : (SRS_JLSTZ_KICKS[key] || [[0, 0]]);
+
+            for (let i = 0; i < kicks.length; i++) {
+                const [kx, ky] = kicks[i];
+                if (!collidesBoard(p.type, newRot, p.x + kx, p.y + ky)) {
+                    p.x += kx;
+                    p.y += ky;
+                    p.rot = newRot;
+                    p.lastMoveWasRotate = true;
+                    p.lastKickIdx = i;
+                    audio.sfxRotate();
+                    triggerLockResetIfGrounded();
+                    return;
+                }
+            }
+        }
+
+        function holdCurrentPiece() {
+            const p = state.active;
+            if (!p || state.phase !== 'playing' || state.holdUsedThisTurn || state.clearingRows.length > 0) return;
+
+            audio.sfxHold();
+            state.holdUsedThisTurn = true;
+
+            if (state.holdType === null) {
+                state.holdType = p.type;
+                spawnNextPiece();
+            } else {
+                const swapType = state.holdType;
+                state.holdType = p.type;
+                spawnNextPiece(swapType);
+            }
+        }
+
+        function stepSoftDrop() {
+            const p = state.active;
+            if (!p || state.phase !== 'playing' || state.clearingRows.length > 0) return false;
+            if (!collidesBoard(p.type, p.rot, p.x, p.y + 1)) {
+                p.y++;
+                p.lastMoveWasRotate = false;
+                state.dropTimer = 0;
+                state.score += 1;
+                if (state.score > state.bestScore) {
+                    state.bestScore = state.score;
+                    localStorage.setItem('tetromino_matrix_best', String(state.bestScore));
+                }
+                audio.sfxSoftDrop();
+                return true;
+            }
+            return false;
+        }
+
+        function hardDropPiece() {
+            const p = state.active;
+            if (!p || state.phase !== 'playing' || state.clearingRows.length > 0) return;
+
+            let dropped = 0;
+            while (!collidesBoard(p.type, p.rot, p.x, p.y + 1)) {
+                p.y++;
+                dropped++;
+            }
+            if (dropped > 0) {
+                p.lastMoveWasRotate = false;
+                state.score += dropped * 2;
+                if (state.score > state.bestScore) {
+                    state.bestScore = state.score;
+                    localStorage.setItem('tetromino_matrix_best', String(state.bestScore));
+                }
+            }
+            audio.sfxHardDrop();
+            lockActivePiece();
+        }
+
+        function isTSpinMiniOrFull(p) {
+            if (p.type !== 'T' || !p.lastMoveWasRotate) return false;
+            // T center is at (p.x + 1, p.y + 1) in 3x3 T-matrix
+            const cx = p.x + 1;
+            const cy = p.y + 1;
+            const corners = [
+                [cx - 1, cy - 1],
+                [cx + 1, cy - 1],
+                [cx - 1, cy + 1],
+                [cx + 1, cy + 1]
+            ];
+            let occupied = 0;
+            corners.forEach(([x, y]) => {
+                if (x < 0 || x >= BOARD_COLS || y >= TOTAL_ROWS) occupied++;
+                else if (y >= 0 && state.grid[y][x] !== null) occupied++;
+            });
+            return occupied >= 3 || p.lastKickIdx === 4;
+        }
+
+        function spawnLineParticles(rowIdx) {
+            const yPx = (rowIdx - BUFFER_ROWS + 0.5);
+            for (let c = 0; c < BOARD_COLS; c++) {
+                const cell = state.grid[rowIdx][c];
+                const col = cell ? cell.color : '#38bdf8';
+                for (let k = 0; k < 3; k++) {
+                    state.particles.push({
+                        x: c + 0.5 + (Math.random() - 0.5) * 0.4,
+                        y: yPx + (Math.random() - 0.5) * 0.4,
+                        vx: (Math.random() - 0.5) * 8.5,
+                        vy: -2.2 - Math.random() * 5.2,
+                        color: col,
+                        size: 3 + Math.random() * 3.5,
+                        life: 0.42 + Math.random() * 0.25,
+                        maxLife: 0.67
+                    });
+                }
+            }
+        }
+
+        function lockActivePiece() {
+            const p = state.active;
+            if (!p) return;
+
+            const tSpin = isTSpinMiniOrFull(p);
+            const mat = getShapeMatrix(p.type, p.rot);
+            const def = TETROMINOES[p.type];
+
+            for (let r = 0; r < mat.length; r++) {
+                for (let c = 0; c < mat[r].length; c++) {
+                    if (!mat[r][c]) continue;
+                    const bx = p.x + c;
+                    const by = p.y + r;
+                    if (by >= 0 && by < TOTAL_ROWS && bx >= 0 && bx < BOARD_COLS) {
+                        state.grid[by][bx] = { type: p.type, color: def.color };
+                    }
+                }
+            }
+
+            state.active = null;
+            state.holdUsedThisTurn = false;
+            state.lockTimer = 0;
+            state.lockResets = 0;
+
+            // Detect completed rows
+            const fullRows = [];
+            for (let r = 0; r < TOTAL_ROWS; r++) {
+                if (state.grid[r].every(cell => cell !== null)) {
+                    fullRows.push(r);
+                }
+            }
+
+            if (fullRows.length > 0) {
+                const count = fullRows.length;
+                state.combo++;
+                const isDifficult = tSpin || count === 4;
+                const b2bMult = (isDifficult && state.backToBack) ? 1.5 : 1.0;
+
+                let basePts = 0;
+                let titleLabel = '';
+                if (tSpin) {
+                    const tTable = [400, 800, 1200, 1600];
+                    basePts = (tTable[count] || 800) * state.level;
+                    titleLabel = count === 0 ? 'T-SPIN' : `T-SPIN ${count === 1 ? 'SINGLE' : count === 2 ? 'DOUBLE' : 'TRIPLE'}`;
+                } else {
+                    const lineTable = [0, 100, 300, 500, 800];
+                    basePts = lineTable[count] * state.level;
+                    titleLabel = count === 4 ? 'TETRIS!' : count === 3 ? 'TRIPLE' : count === 2 ? 'DOUBLE' : 'SINGLE';
+                }
+
+                const comboBonus = state.combo > 0 ? state.combo * 50 * state.level : 0;
+                const totalAward = Math.round(basePts * b2bMult) + comboBonus;
+
+                state.score += totalAward;
+                if (state.score > state.bestScore) {
+                    state.bestScore = state.score;
+                    localStorage.setItem('tetromino_matrix_best', String(state.bestScore));
+                }
+
+                if (isDifficult) {
+                    state.backToBack = true;
+                } else if (count > 0) {
+                    state.backToBack = false;
+                }
+
+                const subParts = [`+${totalAward}`];
+                if (b2bMult > 1) subParts.push('B2B 1.5X');
+                if (state.combo > 0) subParts.push(`${state.combo} COMBO`);
+
+                state.callout = {
+                    text: titleLabel,
+                    subtext: subParts.join(' • '),
+                    color: count === 4 || tSpin ? '#22d3ee' : '#facc15',
+                    timer: 1.15
+                };
+
+                if (count === 4 || tSpin) {
+                    state.shakeTimer = 0.14;
+                }
+
+                audio.sfxLineClear(count, isDifficult);
+                fullRows.forEach(r => spawnLineParticles(r));
+
+                state.clearingRows = fullRows.map(r => ({
+                    row: r,
+                    timer: 0.24,
+                    maxTimer: 0.24
+                }));
+            } else {
+                state.combo = -1;
+                if (tSpin) {
+                    const tPts = 400 * state.level;
+                    state.score += tPts;
+                    state.callout = {
+                        text: 'T-SPIN',
+                        subtext: `+${tPts}`,
+                        color: '#c084fc',
+                        timer: 0.95
+                    };
+                }
+                audio.sfxLock();
+                spawnNextPiece();
+            }
+        }
+
+        function finishLineClear() {
+            const rowsToRemove = state.clearingRows.map(item => item.row).sort((a, b) => a - b);
+            rowsToRemove.forEach(r => {
+                state.grid.splice(r, 1);
+                state.grid.unshift(Array(BOARD_COLS).fill(null));
+            });
+
+            state.lines += rowsToRemove.length;
+            state.level = Math.floor(state.lines / 10) + 1;
+            state.clearingRows = [];
+            spawnNextPiece();
+        }
+
+        function getGravityInterval() {
+            // Smooth arcade curve accelerating with level
+            return Math.max(0.055, Math.pow(0.8 - (state.level - 1) * 0.007, state.level - 1));
+        }
+
+        function updateMatrix(dt) {
+            state.worldTime += dt;
+            if (state.shakeTimer > 0) state.shakeTimer = Math.max(0, state.shakeTimer - dt);
+            if (state.callout) {
+                state.callout.timer -= dt;
+                if (state.callout.timer <= 0) state.callout = null;
+            }
+
+            // Update particles (in board grid units)
+            for (let i = state.particles.length - 1; i >= 0; i--) {
+                const pt = state.particles[i];
+                pt.life -= dt;
+                pt.x += pt.vx * dt;
+                pt.y += pt.vy * dt;
+                pt.vy += 15.5 * dt;
+                if (pt.life <= 0) state.particles.splice(i, 1);
+            }
+
+            audio.updateGroove(dt, state.phase === 'playing', state.level);
+
+            if (state.phase !== 'playing') return;
+
+            // Line clear flash timer
+            if (state.clearingRows.length > 0) {
+                let done = true;
+                state.clearingRows.forEach(cr => {
+                    cr.timer -= dt;
+                    if (cr.timer > 0) done = false;
+                });
+                if (done) finishLineClear();
+                return;
+            }
+
+            const p = state.active;
+            if (!p) return;
+
+            // DAS / ARR horizontal movement
+            const leftHeld = state.keys['ArrowLeft'] || state.keys['KeyA'] || state.touch.left;
+            const rightHeld = state.keys['ArrowRight'] || state.keys['KeyD'] || state.touch.right;
+            const downHeld = state.keys['ArrowDown'] || state.keys['KeyS'] || state.touch.down;
+
+            const desiredDir = (leftHeld && !rightHeld) ? -1 : ((rightHeld && !leftHeld) ? 1 : 0);
+            if (desiredDir !== 0) {
+                if (state.dasDir !== desiredDir) {
+                    state.dasDir = desiredDir;
+                    state.dasTimer = 0;
+                    state.arrTimer = 0;
+                    moveHorizontal(desiredDir);
+                } else {
+                    state.dasTimer += dt;
+                    if (state.dasTimer >= state.dasDelay) {
+                        state.arrTimer += dt;
+                        while (state.arrTimer >= state.arrInterval) {
+                            state.arrTimer -= state.arrInterval;
+                            moveHorizontal(desiredDir);
+                        }
+                    }
+                }
+            } else {
+                state.dasDir = 0;
+                state.dasTimer = 0;
+                state.arrTimer = 0;
+            }
+
+            // Soft Drop
+            if (downHeld) {
+                state.dropTimer += dt * 16;
+                while (state.dropTimer >= 1) {
+                    state.dropTimer -= 1;
+                    if (!stepSoftDrop()) break;
+                }
+            } else {
+                const gravInt = getGravityInterval();
+                state.dropTimer += dt;
+                while (state.dropTimer >= gravInt) {
+                    state.dropTimer -= gravInt;
+                    if (!collidesBoard(p.type, p.rot, p.x, p.y + 1)) {
+                        p.y++;
+                        p.lastMoveWasRotate = false;
+                    } else {
+                        break;
+                    }
+                }
+            }
+
+            // Lock Delay Check when grounded
+            const grounded = collidesBoard(p.type, p.rot, p.x, p.y + 1);
+            state.isGrounded = grounded;
+            if (grounded) {
+                state.lockTimer += dt;
+                if (state.lockTimer >= state.lockDelayMax || state.lockResets >= state.maxLockResets) {
+                    lockActivePiece();
+                }
+            } else {
+                state.lockTimer = 0;
+            }
+        }
+
+        // =====================================================================
+        // 5. SLEEK CANVAS RENDERER (BOARD, GHOST, LOCK BAR, HOLD & NEXT QUEUE)
+        // =====================================================================
+        const canvas = document.getElementById('matrix-canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Logical layout geometry:
+        // Left Side Panel (120px) + Board (10 * cell) + Right Side Panel (120px)
+        const CELL = 26;
+        const BOARD_W = BOARD_COLS * CELL;   // 260
+        const BOARD_H = VISIBLE_ROWS * CELL; // 520
+        const SIDE_W = 124;
+        const PAD_TOP = 16;
+        const PAD_BOT = 16;
+        const LOGICAL_W = SIDE_W + BOARD_W + SIDE_W; // 508
+        const LOGICAL_H = PAD_TOP + BOARD_H + PAD_BOT; // 552
+
+        function resizeCanvas() {
+            const hdr = document.querySelector('header').offsetHeight || 38;
+            const ftr = document.querySelector('footer').offsetHeight || 62;
+            const availW = window.innerWidth - 24;
+            const availH = window.innerHeight - hdr - ftr - 24;
+
+            const ratio = LOGICAL_W / LOGICAL_H;
+            let h = Math.max(280, availH);
+            let w = h * ratio;
+            if (w > availW) {
+                w = availW;
+                h = w / ratio;
+            }
+
+            canvas.style.width = `${Math.floor(w)}px`;
+            canvas.style.height = `${Math.floor(h)}px`;
+            canvas.width = LOGICAL_W;
+            canvas.height = LOGICAL_H;
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+
+        function drawBevelCell(px, py, size, color, alpha = 1, ghost = false) {
+            ctx.save();
+            ctx.globalAlpha = alpha;
+
+            if (ghost) {
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 1.6;
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+                ctx.fillRect(px + 1.5, py + 1.5, size - 3, size - 3);
+                ctx.strokeRect(px + 1.5, py + 1.5, size - 3, size - 3);
+                ctx.restore();
+                return;
+            }
+
+            // Base fill
+            ctx.fillStyle = color;
+            ctx.fillRect(px + 1, py + 1, size - 2, size - 2);
+
+            // Top & Left specular highlight
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.34)';
+            ctx.fillRect(px + 1, py + 1, size - 2, 3);
+            ctx.fillRect(px + 1, py + 1, 3, size - 2);
+
+            // Bottom & Right inner shadow
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.34)';
+            ctx.fillRect(px + 1, py + size - 4, size - 2, 3);
+            ctx.fillRect(px + size - 4, py + 1, 3, size - 2);
+
+            // Crisp inner core glint
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.14)';
+            ctx.fillRect(px + 5, py + 5, Math.max(2, size - 10), Math.max(2, size - 10));
+
+            ctx.restore();
+        }
+
+        function drawMiniPiece(type, boxX, boxY, boxW, boxH, dimmed = false) {
+            if (!type) return;
+            const mat = getShapeMatrix(type, 0);
+            const def = TETROMINOES[type];
+            const miniCell = 15;
+
+            // Compute tight bounding box of active cells
+            let minR = 4, maxR = -1, minC = 4, maxC = -1;
+            for (let r = 0; r < mat.length; r++) {
+                for (let c = 0; c < mat[r].length; c++) {
+                    if (mat[r][c]) {
+                        if (r < minR) minR = r;
+                        if (r > maxR) maxR = r;
+                        if (c < minC) minC = c;
+                        if (c > maxC) maxC = c;
+                    }
+                }
+            }
+            if (maxR < minR) return;
+
+            const pw = (maxC - minC + 1) * miniCell;
+            const ph = (maxR - minR + 1) * miniCell;
+            const startX = boxX + (boxW - pw) * 0.5 - minC * miniCell;
+            const startY = boxY + (boxH - ph) * 0.5 - minR * miniCell;
+
+            for (let r = minR; r <= maxR; r++) {
+                for (let c = minC; c <= maxC; c++) {
+                    if (mat[r][c]) {
+                        drawBevelCell(
+                            startX + c * miniCell,
+                            startY + r * miniCell,
+                            miniCell,
+                            def.color,
+                            dimmed ? 0.38 : 1
+                        );
+                    }
+                }
+            }
+        }
+
+        function renderMatrix() {
+            ctx.fillStyle = '#070c18';
+            ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+
+            ctx.save();
+            if (state.shakeTimer > 0) {
+                const sx = (Math.random() - 0.5) * 5;
+                const sy = (Math.random() - 0.5) * 5;
+                ctx.translate(sx, sy);
+            }
+
+            const bx = SIDE_W;
+            const by = PAD_TOP;
+
+            // --- Left Panel: HOLD Slot & Telemetry ---
+            ctx.fillStyle = 'rgba(13, 21, 41, 0.85)';
+            ctx.fillRect(10, by, SIDE_W - 20, 96);
+            ctx.strokeStyle = 'rgba(125, 211, 252, 0.25)';
+            ctx.lineWidth = 1.2;
+            ctx.strokeRect(10, by, SIDE_W - 20, 96);
+
+            ctx.font = '700 10px "Chakra Petch", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillStyle = state.holdUsedThisTurn ? '#64748b' : '#7dd3fc';
+            ctx.fillText('HOLD [C]', 10 + (SIDE_W - 20) * 0.5, by + 16);
+            drawMiniPiece(state.holdType, 10, by + 22, SIDE_W - 20, 68, state.holdUsedThisTurn);
+
+            // Score / Best / Level / Lines readouts
+            const statsY = by + 114;
+            ctx.fillStyle = 'rgba(13, 21, 41, 0.85)';
+            ctx.fillRect(10, statsY, SIDE_W - 20, 254);
+            ctx.strokeRect(10, statsY, SIDE_W - 20, 254);
+
+            function drawStatBlock(label, valStr, yPos, accent = '#f8fafc') {
+                ctx.textAlign = 'left';
+                ctx.font = '600 9px "Chakra Petch", sans-serif';
+                ctx.fillStyle = '#94a3b8';
+                ctx.fillText(label, 18, yPos);
+                ctx.font = '700 13px "JetBrains Mono", monospace';
+                ctx.fillStyle = accent;
+                ctx.fillText(valStr, 18, yPos + 16);
+            }
+
+            drawStatBlock('SCORE', String(state.score).padStart(7, '0'), statsY + 20, '#38bdf8');
+            drawStatBlock('BEST', String(state.bestScore).padStart(7, '0'), statsY + 66, '#facc15');
+            drawStatBlock('LEVEL', String(state.level), statsY + 112, '#c084fc');
+            drawStatBlock('LINES', String(state.lines), statsY + 158, '#4ade80');
+
+            // Active Combo / B2B indicator badge in left panel
+            if (state.combo > 0 || state.backToBack) {
+                ctx.font = '700 9px "Chakra Petch", sans-serif';
+                ctx.fillStyle = '#22d3ee';
+                if (state.backToBack) ctx.fillText('B2B ACTIVE', 18, statsY + 206);
+                if (state.combo > 0) {
+                    ctx.fillStyle = '#fbbf24';
+                    ctx.fillText(`COMBO x${state.combo}`, 18, statsY + 224);
+                }
+            }
+
+            // --- Center Board Matrix (10 x 20) ---
+            ctx.fillStyle = '#050811';
+            ctx.fillRect(bx, by, BOARD_W, BOARD_H);
+
+            // Subtle matrix grid lines
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.08)';
+            ctx.lineWidth = 1;
+            for (let c = 1; c < BOARD_COLS; c++) {
+                ctx.beginPath();
+                ctx.moveTo(bx + c * CELL, by);
+                ctx.lineTo(bx + c * CELL, by + BOARD_H);
+                ctx.stroke();
+            }
+            for (let r = 1; r < VISIBLE_ROWS; r++) {
+                ctx.beginPath();
+                ctx.moveTo(bx, by + r * CELL);
+                ctx.lineTo(bx + BOARD_W, by + r * CELL);
+                ctx.stroke();
+            }
+
+            // Locked blocks in visible area (rows BUFFER_ROWS .. TOTAL_ROWS - 1)
+            for (let r = BUFFER_ROWS; r < TOTAL_ROWS; r++) {
+                const clearingInfo = state.clearingRows.find(cr => cr.row === r);
+                for (let c = 0; c < BOARD_COLS; c++) {
+                    const cell = state.grid[r][c];
+                    if (!cell) continue;
+                    const drawX = bx + c * CELL;
+                    const drawY = by + (r - BUFFER_ROWS) * CELL;
+
+                    if (clearingInfo) {
+                        const flashRatio = Math.max(0, clearingInfo.timer / clearingInfo.maxTimer);
+                        drawBevelCell(drawX, drawY, CELL, cell.color, flashRatio);
+                        ctx.fillStyle = `rgba(255, 255, 255, ${flashRatio * 0.85})`;
+                        ctx.fillRect(drawX, drawY, CELL, CELL);
+                    } else {
+                        drawBevelCell(drawX, drawY, CELL, cell.color, 1);
+                    }
+                }
+            }
+
+            // Ghost Landing Projection + Active Piece
+            if (state.phase === 'playing' && state.active && state.clearingRows.length === 0) {
+                const p = state.active;
+                const def = TETROMINOES[p.type];
+                const mat = getShapeMatrix(p.type, p.rot);
+                const ghostY = computeGhostY();
+
+                if (ghostY > p.y) {
+                    for (let r = 0; r < mat.length; r++) {
+                        for (let c = 0; c < mat[r].length; c++) {
+                            if (!mat[r][c]) continue;
+                            const visR = ghostY + r - BUFFER_ROWS;
+                            if (visR >= 0 && visR < VISIBLE_ROWS) {
+                                drawBevelCell(bx + (p.x + c) * CELL, by + visR * CELL, CELL, def.color, 0.85, true);
+                            }
+                        }
+                    }
+                }
+
+                for (let r = 0; r < mat.length; r++) {
+                    for (let c = 0; c < mat[r].length; c++) {
+                        if (!mat[r][c]) continue;
+                        const visR = p.y + r - BUFFER_ROWS;
+                        if (visR >= 0 && visR < VISIBLE_ROWS) {
+                            drawBevelCell(bx + (p.x + c) * CELL, by + visR * CELL, CELL, def.color, 1, false);
+                        }
+                    }
+                }
+            }
+
+            // Lock Delay Bar along bottom edge of matrix
+            const lockBarY = by + BOARD_H + 5;
+            ctx.fillStyle = 'rgba(30, 41, 59, 0.9)';
+            ctx.fillRect(bx, lockBarY, BOARD_W, 5);
+            if (state.isGrounded && state.phase === 'playing') {
+                const remFrac = Math.max(0, 1 - state.lockTimer / state.lockDelayMax);
+                ctx.fillStyle = remFrac > 0.35 ? '#22d3ee' : '#f43f5e';
+                ctx.fillRect(bx, lockBarY, BOARD_W * remFrac, 5);
+            }
+
+            // Outer Board Frame
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.55)';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(bx, by, BOARD_W, BOARD_H);
+
+            // Line-Clear & Smash Particles
+            state.particles.forEach(pt => {
+                const alpha = Math.max(0, pt.life / pt.maxLife);
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = pt.color;
+                const px = bx + pt.x * CELL;
+                const py = by + pt.y * CELL;
+                ctx.fillRect(px - pt.size * 0.5, py - pt.size * 0.5, pt.size, pt.size);
+                ctx.restore();
+            });
+
+            // Combo / Tetris / T-Spin Callout Banner
+            if (state.callout) {
+                const fade = Math.min(1, state.callout.timer * 1.4);
+                ctx.save();
+                ctx.globalAlpha = fade;
+                ctx.textAlign = 'center';
+                ctx.font = '800 16px "Chakra Petch", sans-serif';
+                ctx.fillStyle = '#050811';
+                ctx.fillText(state.callout.text, bx + BOARD_W * 0.5 + 1.5, by + BOARD_H * 0.38 + 1.5);
+                ctx.fillStyle = state.callout.color;
+                ctx.fillText(state.callout.text, bx + BOARD_W * 0.5, by + BOARD_H * 0.38);
+
+                ctx.font = '700 10px "JetBrains Mono", monospace';
+                ctx.fillStyle = '#f8fafc';
+                ctx.fillText(state.callout.subtext, bx + BOARD_W * 0.5, by + BOARD_H * 0.38 + 18);
+                ctx.restore();
+            }
+
+            // --- Right Panel: NEXT 3 Queue ---
+            const rx = SIDE_W + BOARD_W + 10;
+            const rw = SIDE_W - 20;
+            ctx.fillStyle = 'rgba(13, 21, 41, 0.85)';
+            ctx.fillRect(rx, by, rw, 236);
+            ctx.strokeStyle = 'rgba(125, 211, 252, 0.25)';
+            ctx.lineWidth = 1.2;
+            ctx.strokeRect(rx, by, rw, 236);
+
+            ctx.font = '700 10px "Chakra Petch", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#7dd3fc';
+            ctx.fillText('NEXT', rx + rw * 0.5, by + 16);
+
+            for (let i = 0; i < 3; i++) {
+                const pType = state.nextQueue[i];
+                drawMiniPiece(pType, rx + 6, by + 24 + i * 68, rw - 12, 60, i > 0);
+            }
+
+            // Key Legend in Right Panel Lower Box
+            const helpY = by + 250;
+            ctx.fillStyle = 'rgba(13, 21, 41, 0.72)';
+            ctx.fillRect(rx, helpY, rw, 118);
+            ctx.strokeRect(rx, helpY, rw, 118);
+
+            ctx.textAlign = 'left';
+            ctx.font = '600 8.5px "Chakra Petch", sans-serif';
+            ctx.fillStyle = '#cbd5e1';
+            const lines = [
+                '←/→ : MOVE',
+                '↑/X/Z : ROTATE',
+                '↓ : SOFT DROP',
+                'SPACE : HARD DROP',
+                'C/SHIFT : HOLD',
+                'P : PAUSE • M : MUTE'
+            ];
+            lines.forEach((txt, idx) => {
+                ctx.fillText(txt, rx + 8, helpY + 16 + idx * 17);
+            });
+
+            ctx.restore();
+
+            // --- Overlays: Title, Pause & Game Over ---
+            if (state.phase === 'title') {
+                ctx.fillStyle = 'rgba(5, 9, 20, 0.86)';
+                ctx.fillRect(bx + 14, by + 95, BOARD_W - 28, 280);
+                ctx.strokeStyle = '#22d3ee';
+                ctx.lineWidth = 1.8;
+                ctx.strokeRect(bx + 14, by + 95, BOARD_W - 28, 280);
+
+                ctx.textAlign = 'center';
+                ctx.font = '800 18px "Chakra Petch", sans-serif';
+                ctx.fillStyle = '#22d3ee';
+                ctx.fillText('TETROMINO', bx + BOARD_W * 0.5, by + 136);
+                ctx.fillStyle = '#f8fafc';
+                ctx.fillText('MATRIX', bx + BOARD_W * 0.5, by + 158);
+
+                ctx.font = '600 10px "Chakra Petch", sans-serif';
+                ctx.fillStyle = '#94a3b8';
+                ctx.fillText('7-BAG • SRS KICKS • LOCK DELAY', bx + BOARD_W * 0.5, by + 190);
+                ctx.fillText('COMBO • B2B • T-SPIN BONUS', bx + BOARD_W * 0.5, by + 208);
+
+                if (Math.floor(state.worldTime * 3) % 2 === 0) {
+                    ctx.font = '700 12px "Chakra Petch", sans-serif';
+                    ctx.fillStyle = '#facc15';
+                    ctx.fillText('PRESS ENTER OR SPACE', bx + BOARD_W * 0.5, by + 266);
+                }
+
+                ctx.font = '600 9.5px "Chakra Petch", sans-serif';
+                ctx.fillStyle = '#7dd3fc';
+                ctx.fillText('OR TAP ANY CONTROL TO START', bx + BOARD_W * 0.5, by + 292);
+            } else if (state.phase === 'paused') {
+                ctx.fillStyle = 'rgba(5, 9, 20, 0.82)';
+                ctx.fillRect(bx + 26, by + 195, BOARD_W - 52, 92);
+                ctx.strokeStyle = '#38bdf8';
+                ctx.lineWidth = 1.5;
+                ctx.strokeRect(bx + 26, by + 195, BOARD_W - 52, 92);
+
+                ctx.textAlign = 'center';
+                ctx.font = '800 16px "Chakra Petch", sans-serif';
+                ctx.fillStyle = '#38bdf8';
+                ctx.fillText('PAUSED', bx + BOARD_W * 0.5, by + 234);
+                ctx.font = '600 10px "Chakra Petch", sans-serif';
+                ctx.fillStyle = '#cbd5e1';
+                ctx.fillText('PRESS P TO RESUME', bx + BOARD_W * 0.5, by + 260);
+            } else if (state.phase === 'gameover') {
+                ctx.fillStyle = 'rgba(10, 6, 16, 0.88)';
+                ctx.fillRect(bx + 18, by + 160, BOARD_W - 36, 166);
+                ctx.strokeStyle = '#f43f5e';
+                ctx.lineWidth = 1.8;
+                ctx.strokeRect(bx + 18, by + 160, BOARD_W - 36, 166);
+
+                ctx.textAlign = 'center';
+                ctx.font = '800 17px "Chakra Petch", sans-serif';
+                ctx.fillStyle = '#f43f5e';
+                ctx.fillText('MATRIX OVERFLOW', bx + BOARD_W * 0.5, by + 198);
+
+                ctx.font = '700 11px "JetBrains Mono", monospace';
+                ctx.fillStyle = '#f8fafc';
+                ctx.fillText(`FINAL SCORE: ${state.score}`, bx + BOARD_W * 0.5, by + 228);
+                ctx.fillStyle = '#4ade80';
+                ctx.fillText(`LINES: ${state.lines}  LV: ${state.level}`, bx + BOARD_W * 0.5, by + 250);
+
+                if (Math.floor(state.worldTime * 3) % 2 === 0) {
+                    ctx.font = '700 11px "Chakra Petch", sans-serif';
+                    ctx.fillStyle = '#facc15';
+                    ctx.fillText('PRESS ENTER OR SPACE TO PLAY AGAIN', bx + BOARD_W * 0.5, by + 294);
+                }
+            }
+        }
+
+        // =====================================================================
+        // 6. KEYBOARD, TOUCH & UTILITY BUTTON HANDLERS
+        // =====================================================================
+        function syncButtons() {
+            document.getElementById('btn-mute').textContent = audio.muted ? 'AUDIO: OFF [M]' : 'AUDIO: ON [M]';
+            document.getElementById('btn-music').textContent = audio.musicEnabled ? 'SYNTH: ON' : 'SYNTH: OFF';
+        }
+
+        window.addEventListener('keydown', (e) => {
+            audio.init();
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+                e.preventDefault();
+            }
+
+            const alreadyDown = !!state.keys[e.code];
+            state.keys[e.code] = true;
+            if (alreadyDown || e.repeat) return;
+
+            if (e.code === 'KeyM') {
+                audio.toggleMute();
+                syncButtons();
+                return;
+            }
+            if (e.code === 'KeyP') {
+                if (state.phase === 'playing') state.phase = 'paused';
+                else if (state.phase === 'paused') state.phase = 'playing';
+                return;
+            }
+
+            if (state.phase === 'title' || state.phase === 'gameover') {
+                if (e.code === 'Enter' || e.code === 'Space') {
+                    startNewMatrix();
+                }
+                return;
+            }
+
+            if (state.phase !== 'playing') return;
+
+            if (e.code === 'ArrowUp' || e.code === 'KeyX') {
+                rotatePiece(1);
+            } else if (e.code === 'KeyZ') {
+                rotatePiece(-1);
+            } else if (e.code === 'Space') {
+                hardDropPiece();
+            } else if (e.code === 'KeyC' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+                holdCurrentPiece();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            state.keys[e.code] = false;
+        });
+
+        document.getElementById('btn-music').addEventListener('click', () => {
+            audio.init();
+            audio.toggleMusic();
+            syncButtons();
+        });
+
+        document.getElementById('btn-mute').addEventListener('click', () => {
+            audio.init();
+            audio.toggleMute();
+            syncButtons();
+        });
+
+        document.getElementById('btn-pause').addEventListener('click', () => {
+            audio.init();
+            if (state.phase === 'playing') state.phase = 'paused';
+            else if (state.phase === 'paused') state.phase = 'playing';
+        });
+
+        document.getElementById('btn-restart').addEventListener('click', () => {
+            startNewMatrix();
+        });
+
+        function bindHoldTouch(btnId, touchKey) {
+            const el = document.getElementById(btnId);
+            el.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                audio.init();
+                if (state.phase === 'title' || state.phase === 'gameover') {
+                    startNewMatrix();
+                    return;
+                }
+                state.touch[touchKey] = true;
+                el.classList.add('active');
+            });
+            const release = () => {
+                state.touch[touchKey] = false;
+                el.classList.remove('active');
+            };
+            el.addEventListener('pointerup', release);
+            el.addEventListener('pointerleave', release);
+            el.addEventListener('pointercancel', release);
+        }
+
+        bindHoldTouch('pad-left', 'left');
+        bindHoldTouch('pad-right', 'right');
+        bindHoldTouch('pad-down', 'down');
+
+        document.getElementById('pad-cw').addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            audio.init();
+            if (state.phase === 'title' || state.phase === 'gameover') { startNewMatrix(); return; }
+            rotatePiece(1);
+            e.currentTarget.classList.add('active');
+        });
+        document.getElementById('pad-cw').addEventListener('pointerup', (e) => e.currentTarget.classList.remove('active'));
+        document.getElementById('pad-cw').addEventListener('pointerleave', (e) => e.currentTarget.classList.remove('active'));
+
+        document.getElementById('pad-ccw').addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            audio.init();
+            if (state.phase === 'title' || state.phase === 'gameover') { startNewMatrix(); return; }
+            rotatePiece(-1);
+            e.currentTarget.classList.add('active');
+        });
+        document.getElementById('pad-ccw').addEventListener('pointerup', (e) => e.currentTarget.classList.remove('active'));
+        document.getElementById('pad-ccw').addEventListener('pointerleave', (e) => e.currentTarget.classList.remove('active'));
+
+        document.getElementById('pad-hold').addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            audio.init();
+            if (state.phase === 'title' || state.phase === 'gameover') { startNewMatrix(); return; }
+            holdCurrentPiece();
+            e.currentTarget.classList.add('active');
+        });
+        document.getElementById('pad-hold').addEventListener('pointerup', (e) => e.currentTarget.classList.remove('active'));
+        document.getElementById('pad-hold').addEventListener('pointerleave', (e) => e.currentTarget.classList.remove('active'));
+
+        document.getElementById('pad-drop').addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            audio.init();
+            if (state.phase === 'title' || state.phase === 'gameover') { startNewMatrix(); return; }
+            hardDropPiece();
+            e.currentTarget.classList.add('active');
+        });
+        document.getElementById('pad-drop').addEventListener('pointerup', (e) => e.currentTarget.classList.remove('active'));
+        document.getElementById('pad-drop').addEventListener('pointerleave', (e) => e.currentTarget.classList.remove('active'));
+
+        canvas.addEventListener('pointerdown', () => {
+            audio.init();
+            if (state.phase === 'title' || state.phase === 'gameover') {
+                startNewMatrix();
+            }
+        });
+
+        // =====================================================================
+        // 7. INITIALIZATION & MAIN ANIMATION LOOP
+        // =====================================================================
+        let prevNow = performance.now();
+
+        function loop(now) {
+            requestAnimationFrame(loop);
+            const dt = Math.min((now - prevNow) / 1000, 0.05);
+            prevNow = now;
+
+            updateMatrix(dt);
+            renderMatrix();
+        }
+
+        window.onload = function () {
+            state.grid = createEmptyGrid();
+            ensureNextQueue();
+            syncButtons();
+            resizeCanvas();
+            requestAnimationFrame(loop);
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,1609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>FORT APOCALYPSE 1982 — Cavern Gunship</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #05070e;
+            font-family: 'Press Start 2P', monospace;
+            color: #f8fafc;
+        }
+        canvas {
+            display: block;
+            image-rendering: crisp-edges;
+        }
+        .gunship-bezel {
+            background: #070a12;
+            border: 2px solid #f59e0b;
+            box-shadow: 0 0 28px rgba(245, 158, 11, 0.22), inset 0 0 18px rgba(0, 0, 0, 0.92);
+        }
+        .stick-btn {
+            background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+            border: 2px solid #38bdf8;
+            box-shadow: 0 4px 0 #0369a1;
+            transition: transform 0.05s ease, background-color 0.08s ease;
+        }
+        .stick-btn:active, .stick-btn.active {
+            transform: translateY(3px);
+            box-shadow: 0 1px 0 #0369a1;
+            background: #0284c7;
+        }
+        .fire-btn {
+            background: linear-gradient(180deg, #ef4444 0%, #991b1b 100%);
+            border: 2px solid #fca5a5;
+            box-shadow: 0 4px 0 #7f1d1d;
+            transition: transform 0.05s ease, background-color 0.08s ease;
+        }
+        .fire-btn:active, .fire-btn.active {
+            transform: translateY(3px);
+            box-shadow: 0 1px 0 #7f1d1d;
+            background: #dc2626;
+        }
+        .missile-btn {
+            background: linear-gradient(180deg, #f59e0b 0%, #b45309 100%);
+            border: 2px solid #fef08a;
+            box-shadow: 0 4px 0 #78350f;
+            transition: transform 0.05s ease, background-color 0.08s ease;
+        }
+        .missile-btn:active, .missile-btn.active {
+            transform: translateY(3px);
+            box-shadow: 0 1px 0 #78350f;
+            background: #d97706;
+        }
+        .hud-pill {
+            background: #0f172a;
+            border: 1.5px solid #334155;
+            transition: border-color 0.12s, color 0.12s;
+        }
+        .hud-pill:hover {
+            border-color: #fbbf24;
+            color: #fde68a;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-between p-1.5 sm:p-2.5">
+
+    <!-- Top Utility Header -->
+    <header class="w-full max-w-5xl flex flex-wrap items-center justify-between gap-1.5 px-1 py-0.5 z-20">
+        <div class="flex items-center gap-2">
+            <span class="inline-block w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+            <span class="text-[8px] sm:text-[10px] text-amber-300 tracking-wider">FORT APOCALYPSE • 1982</span>
+        </div>
+        <div class="flex items-center gap-1 sm:gap-2">
+            <button id="btn-hover" class="hud-pill px-2 py-1.5 rounded-lg text-[7px] sm:text-[9px] text-emerald-300 cursor-pointer">
+                HOVER: OFF [H]
+            </button>
+            <button id="btn-audio" class="hud-pill px-2 py-1.5 rounded-lg text-[7px] sm:text-[9px] text-amber-300 cursor-pointer">
+                SOUND: ON [M]
+            </button>
+            <button id="btn-pause" class="hud-pill px-2 py-1.5 rounded-lg text-[7px] sm:text-[9px] text-sky-300 cursor-pointer">
+                PAUSE [P]
+            </button>
+            <button id="btn-restart" class="hud-pill px-2 py-1.5 rounded-lg text-[7px] sm:text-[9px] text-rose-300 cursor-pointer">
+                NEW SORTIE
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Cavern Viewport -->
+    <main class="relative flex-1 w-full flex items-center justify-center min-h-0 my-1">
+        <div class="gunship-bezel rounded-xl overflow-hidden flex items-center justify-center">
+            <canvas id="fort-canvas"></canvas>
+        </div>
+    </main>
+
+    <!-- Touch / Arcade Deck Controls -->
+    <footer class="w-full max-w-3xl flex items-center justify-between gap-2 px-2 pb-1 z-20">
+        <!-- Left Flight Stick Pad -->
+        <div class="grid grid-cols-3 gap-1 w-32 sm:w-36">
+            <div></div>
+            <button id="pad-up" aria-label="Collective Up" class="stick-btn h-9 sm:h-10 rounded-lg flex items-center justify-center text-[10px] text-white cursor-pointer">▲</button>
+            <div></div>
+            <button id="pad-left" aria-label="Bank Left" class="stick-btn h-9 sm:h-10 rounded-lg flex items-center justify-center text-[10px] text-white cursor-pointer">◀</button>
+            <button id="pad-down" aria-label="Collective Down" class="stick-btn h-9 sm:h-10 rounded-lg flex items-center justify-center text-[10px] text-white cursor-pointer">▼</button>
+            <button id="pad-right" aria-label="Bank Right" class="stick-btn h-9 sm:h-10 rounded-lg flex items-center justify-center text-[10px] text-white cursor-pointer">▶</button>
+        </div>
+
+        <!-- Center Stabilizer / Launch Button -->
+        <div class="flex flex-col items-center gap-1">
+            <button id="btn-launch" class="hud-pill px-3 py-2 rounded-xl text-[8px] sm:text-[9px] text-amber-300 tracking-wider cursor-pointer">
+                LAUNCH / START
+            </button>
+        </div>
+
+        <!-- Right Weapons: Cannon & Homing/Heavy Missile -->
+        <div class="flex items-center gap-2">
+            <button id="pad-missile" aria-label="Fire Missile" class="missile-btn px-2.5 sm:px-3 h-11 sm:h-12 rounded-xl flex items-center justify-center text-[8px] sm:text-[9px] text-slate-950 font-bold cursor-pointer">
+                MISSILE
+            </button>
+            <button id="pad-cannon" aria-label="Fire Laser Cannon" class="fire-btn px-3 sm:px-4 h-11 sm:h-12 rounded-xl flex items-center justify-center text-[8px] sm:text-[10px] text-white font-bold cursor-pointer">
+                CANNON
+            </button>
+        </div>
+    </footer>
+
+    <script>
+        /**
+         * FORT APOCALYPSE 1982 — CAVERN GUNSHIP
+         * Complete Single-File HTML5 Canvas + Web Audio API Arcade Game
+         */
+
+        // =====================================================================
+        // 1. PROCEDURAL WEB AUDIO SYNTHESIZER (ROTOR, LASER, MISSILE, EXPLOSION, REFUEL)
+        // =====================================================================
+        class GunshipAudio {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+                this.rotorTimer = 0;
+                this.refuelTickTimer = 0;
+                this.alarmTimer = 0;
+            }
+
+            init() {
+                if (this.ctx) {
+                    if (this.ctx.state === 'suspended') {
+                        this.ctx.resume().catch(() => {});
+                    }
+                    return;
+                }
+                try {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                } catch (e) {
+                    console.warn('Web Audio unavailable:', e);
+                }
+            }
+
+            toggleMute() {
+                this.muted = !this.muted;
+                return this.muted;
+            }
+
+            tone(freq, type, startTime, duration, volume = 0.08, slideTo = null) {
+                if (this.muted || !this.ctx || !freq || freq <= 0) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, startTime);
+                if (slideTo) {
+                    osc.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), startTime + duration);
+                }
+
+                gain.gain.setValueAtTime(0.001, startTime);
+                gain.gain.linearRampToValueAtTime(volume, startTime + 0.008);
+                gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(startTime);
+                osc.stop(startTime + duration + 0.015);
+            }
+
+            noise(startTime, duration, cutoff = 700, volume = 0.14) {
+                if (this.muted || !this.ctx) return;
+                const len = Math.max(1, Math.floor(this.ctx.sampleRate * duration));
+                const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+                const data = buf.getChannelData(0);
+                for (let i = 0; i < len; i++) {
+                    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * duration * 0.45));
+                }
+                const src = this.ctx.createBufferSource();
+                src.buffer = buf;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(cutoff, startTime);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(volume, startTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+                src.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                src.start(startTime);
+            }
+
+            playCannon() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.tone(880, 'sawtooth', now, 0.07, 0.075, 220);
+            }
+
+            playMissile() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.noise(now, 0.22, 1100, 0.11);
+                this.tone(240, 'sawtooth', now, 0.2, 0.08, 620);
+            }
+
+            playExplosion(big = false) {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.noise(now, big ? 0.45 : 0.24, big ? 520 : 780, big ? 0.22 : 0.15);
+                this.tone(big ? 120 : 170, 'sawtooth', now, big ? 0.35 : 0.18, big ? 0.12 : 0.08, 36);
+            }
+
+            playDamage() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.noise(now, 0.28, 900, 0.18);
+                this.tone(290, 'square', now, 0.22, 0.1, 75);
+            }
+
+            playFortressClear() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const notes = [440, 554.37, 659.25, 880, 1108.73];
+                notes.forEach((f, idx) => {
+                    this.tone(f, 'square', now + idx * 0.09, 0.13, 0.09);
+                });
+            }
+
+            updateContinuous(dt, active, thrustRatio, refueling, lowFuel) {
+                if (!this.ctx || this.muted || !active) return;
+
+                // Subtle rhythmic helicopter rotor thump
+                this.rotorTimer -= dt;
+                if (this.rotorTimer <= 0) {
+                    const interval = Math.max(0.055, 0.095 - thrustRatio * 0.025);
+                    this.rotorTimer = interval;
+                    const freq = 52 + thrustRatio * 24;
+                    this.tone(freq, 'triangle', this.ctx.currentTime, interval * 0.72, 0.028 + thrustRatio * 0.022);
+                }
+
+                // Refuel / Ammo Supply Beep
+                if (refueling) {
+                    this.refuelTickTimer -= dt;
+                    if (this.refuelTickTimer <= 0) {
+                        this.refuelTickTimer = 0.12;
+                        this.tone(660, 'square', this.ctx.currentTime, 0.05, 0.055, 880);
+                    }
+                }
+
+                // Low Fuel Warning Chirp
+                if (lowFuel && !refueling) {
+                    this.alarmTimer -= dt;
+                    if (this.alarmTimer <= 0) {
+                        this.alarmTimer = 0.45;
+                        this.tone(740, 'square', this.ctx.currentTime, 0.06, 0.05, 520);
+                    }
+                }
+            }
+        }
+
+        const audio = new GunshipAudio();
+
+        // =====================================================================
+        // 2. WORLD DIMENSIONS, CAVERN GEOMETRY & FORTRESS SECTORS
+        // =====================================================================
+        // Viewport: 800 x 480 inside a rich multi-chamber cavern world (2800 x 1400)
+        const VIEW_W = 800;
+        const VIEW_H = 480;
+        const WORLD_W = 2800;
+        const WORLD_H = 1400;
+
+        const state = {
+            phase: 'title', // 'title', 'playing', 'paused', 'fortress_clear', 'gameover'
+            fortressLevel: 1,
+            score: 0,
+            highScore: parseInt(localStorage.getItem('fort_apoc_1982_hi') || '0', 10),
+            hull: 100,
+            maxHull: 100,
+            fuel: 100,
+            maxFuel: 100,
+            missiles: 12,
+            maxMissiles: 12,
+            autoHover: false,
+            refuelingNow: false,
+            refuelStatusText: '',
+            phaseTimer: 0,
+            worldTime: 0,
+            shakeTimer: 0,
+            shakeMag: 0,
+
+            // World Terrain & Entities
+            ceilingPolys: [],   // Array of { points: [{x, y}, ...] } forming cavern ceiling & pillars
+            floorPolys: [],     // Array of { points: [{x, y}, ...] } forming cavern floor & ledges
+            landingPads: [],    // { id, label, x, y, w, h, kind: 'surface'|'depot' }
+            reactors: [],       // { id, x, y, r, hp, maxHp, pulse }
+            turrets: [],        // { x, y, hp, cooldown, aimAngle }
+            drones: [],         // { x, y, vx, vy, baseY, patrolMinX, patrolMaxX, hp, fireCooldown, phase }
+            playerShots: [],    // { x, y, vx, vy, kind: 'cannon'|'missile', life, targetRef }
+            enemyShots: [],     // { x, y, vx, vy, life }
+            particles: [],      // { x, y, vx, vy, color, size, life, maxLife }
+            popups: [],         // { x, y, text, color, life }
+
+            heli: {
+                x: 240,
+                y: 120,
+                vx: 0,
+                vy: 0,
+                angle: 0,
+                facing: 1,
+                rotorPhase: 0,
+                invuln: 0,
+                cannonCooldown: 0,
+                missileCooldown: 0
+            },
+
+            cam: { x: 0, y: 0 },
+            keys: {},
+            touch: { up: false, down: false, left: false, right: false, cannon: false, missile: false }
+        };
+
+        // Helper: Check if a world point (px, py) lies inside a convex/simple polygon
+        function pointInPoly(px, py, poly) {
+            const pts = poly.points;
+            let inside = false;
+            for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+                const xi = pts[i].x, yi = pts[i].y;
+                const xj = pts[j].x, yj = pts[j].y;
+                const intersect = ((yi > py) !== (yj > py)) &&
+                    (px < (xj - xi) * (py - yi) / ((yj - yi) || 0.0001) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
+
+        function collidesCavern(x, y, radius) {
+            // World outer bounds
+            if (x - radius < 12 || x + radius > WORLD_W - 12 || y - radius < 12 || y + radius > WORLD_H - 12) {
+                return true;
+            }
+            // Sample 8 perimeter points + center against ceiling & floor rock formations
+            const samples = [
+                [0, 0],
+                [radius, 0], [-radius, 0],
+                [0, radius], [0, -radius],
+                [radius * 0.72, radius * 0.72], [-radius * 0.72, radius * 0.72],
+                [radius * 0.72, -radius * 0.72], [-radius * 0.72, -radius * 0.72]
+            ];
+            for (let s = 0; s < samples.length; s++) {
+                const sx = x + samples[s][0];
+                const sy = y + samples[s][1];
+                for (let i = 0; i < state.ceilingPolys.length; i++) {
+                    if (pointInPoly(sx, sy, state.ceilingPolys[i])) return true;
+                }
+                for (let i = 0; i < state.floorPolys.length; i++) {
+                    if (pointInPoly(sx, sy, state.floorPolys[i])) return true;
+                }
+            }
+            return false;
+        }
+
+        function buildFortressLayout() {
+            state.ceilingPolys = [];
+            state.floorPolys = [];
+            state.landingPads = [];
+            state.reactors = [];
+            state.turrets = [];
+            state.drones = [];
+            state.playerShots = [];
+            state.enemyShots = [];
+            state.particles = [];
+            state.popups = [];
+
+            // -----------------------------------------------------------------
+            // 1. MULTI-CHAMBER CAVERN ROOF & ROCK PILLARS
+            // -----------------------------------------------------------------
+            // Left Surface Launch Shaft opening around x=140..360, y=0..185
+            state.ceilingPolys.push({
+                points: [
+                    { x: 0, y: 0 }, { x: 140, y: 0 }, { x: 155, y: 120 },
+                    { x: 110, y: 260 }, { x: 0, y: 280 }
+                ]
+            });
+
+            // Central-Left Rock Divider Pillar (creates upper-left & lower-left caverns)
+            state.ceilingPolys.push({
+                points: [
+                    { x: 360, y: 0 }, { x: 1180, y: 0 }, { x: 1150, y: 240 },
+                    { x: 960, y: 310 }, { x: 740, y: 290 }, { x: 520, y: 210 },
+                    { x: 380, y: 130 }
+                ]
+            });
+
+            // Hanging Stalactite / Tunnel Bridge near x=1550
+            state.ceilingPolys.push({
+                points: [
+                    { x: 1340, y: 0 }, { x: 2120, y: 0 }, { x: 2080, y: 270 },
+                    { x: 1840, y: 350 }, { x: 1620, y: 340 }, { x: 1380, y: 220 }
+                ]
+            });
+
+            // Right Chamber Roof
+            state.ceilingPolys.push({
+                points: [
+                    { x: 2260, y: 0 }, { x: WORLD_W, y: 0 }, { x: WORLD_W, y: 240 },
+                    { x: 2540, y: 290 }, { x: 2290, y: 180 }
+                ]
+            });
+
+            // Mid-cavern floating rock island for tactical cover
+            state.ceilingPolys.push({
+                points: [
+                    { x: 1220, y: 640 }, { x: 1460, y: 620 }, { x: 1510, y: 740 },
+                    { x: 1250, y: 760 }
+                ]
+            });
+
+            // -----------------------------------------------------------------
+            // 2. CAVERN FLOOR, SUB-LEVEL CHAMBERS & FLAT LANDING LEDGES
+            // -----------------------------------------------------------------
+            // Left Surface Launch Pad Deck (flat top at y=220, x=150..330)
+            state.floorPolys.push({
+                points: [
+                    { x: 0, y: 460 }, { x: 150, y: 220 }, { x: 330, y: 220 },
+                    { x: 420, y: 560 }, { x: 520, y: 880 }, { x: 520, y: WORLD_H },
+                    { x: 0, y: WORLD_H }
+                ]
+            });
+
+            // Lower-Center Cavern Floor + Supply Depot Ledge #1 (flat at y=980, x=820..1000)
+            state.floorPolys.push({
+                points: [
+                    { x: 660, y: WORLD_H }, { x: 680, y: 1080 }, { x: 820, y: 980 },
+                    { x: 1000, y: 980 }, { x: 1140, y: 1120 }, { x: 1560, y: 1140 },
+                    { x: 1560, y: WORLD_H }
+                ]
+            });
+
+            // Right Deep Reactor Vault Floor + Supply Depot Ledge #2 (flat at y=860, x=2120..2300)
+            state.floorPolys.push({
+                points: [
+                    { x: 1740, y: WORLD_H }, { x: 1780, y: 960 }, { x: 2120, y: 860 },
+                    { x: 2300, y: 860 }, { x: 2480, y: 1040 }, { x: WORLD_W, y: 980 },
+                    { x: WORLD_W, y: WORLD_H }
+                ]
+            });
+
+            // -----------------------------------------------------------------
+            // 3. REFUEL & AMMO SUPPLY PADS (SURFACE PAD + 2 CAVERN DEPOTS)
+            // -----------------------------------------------------------------
+            state.landingPads = [
+                { id: 'pad_surface', label: 'SURFACE PAD [FUEL+AMMO]', x: 162, y: 210, w: 156, h: 12, kind: 'surface' },
+                { id: 'pad_depot1',  label: 'DEPOT ALPHA [FUEL+AMMO]', x: 832, y: 970, w: 156, h: 12, kind: 'depot' },
+                { id: 'pad_depot2',  label: 'DEPOT OMEGA [FUEL+AMMO]', x: 2132, y: 850, w: 156, h: 12, kind: 'depot' }
+            ];
+
+            // -----------------------------------------------------------------
+            // 4. FORTRESS REACTOR CORES (DESTROY ALL TO CLEAR FORTRESS)
+            // -----------------------------------------------------------------
+            const hpScale = 1 + (state.fortressLevel - 1) * 0.25;
+            state.reactors = [
+                { id: 'R1', x: 890,  y: 520, r: 24, hp: Math.round(60 * hpScale), maxHp: Math.round(60 * hpScale), pulse: 0 },
+                { id: 'R2', x: 1840, y: 540, r: 24, hp: Math.round(70 * hpScale), maxHp: Math.round(70 * hpScale), pulse: 1.5 },
+                { id: 'R3', x: 2540, y: 660, r: 26, hp: Math.round(85 * hpScale), maxHp: Math.round(85 * hpScale), pulse: 3.0 }
+            ];
+
+            // -----------------------------------------------------------------
+            // 5. DESTRUCTIBLE CAVERN TURRETS
+            // -----------------------------------------------------------------
+            const turretSpots = [
+                [460, 218], [660, 560], [1040, 978], [1340, 738],
+                [1640, 1138], [1980, 958], [2380, 1038], [2640, 978]
+            ];
+            turretSpots.forEach(([tx, ty]) => {
+                state.turrets.push({
+                    x: tx,
+                    y: ty,
+                    hp: Math.round(25 * hpScale),
+                    cooldown: 1.2 + Math.random() * 1.4,
+                    aimAngle: -Math.PI * 0.5
+                });
+            });
+
+            // -----------------------------------------------------------------
+            // 6. PATROLLING CAVERN DRONES
+            // -----------------------------------------------------------------
+            const droneConfigs = [
+                { x: 560,  y: 380, minX: 430,  maxX: 820,  vx: 64 },
+                { x: 1260, y: 450, minX: 1080, maxX: 1520, vx: -72 },
+                { x: 920,  y: 780, minX: 720,  maxX: 1160, vx: 68 },
+                { x: 1720, y: 760, minX: 1560, maxX: 2040, vx: -76 },
+                { x: 2360, y: 460, minX: 2140, maxX: 2680, vx: 82 }
+            ];
+            droneConfigs.forEach((dc, idx) => {
+                state.drones.push({
+                    x: dc.x,
+                    y: dc.y,
+                    baseY: dc.y,
+                    vx: dc.vx,
+                    vy: 0,
+                    patrolMinX: dc.minX,
+                    patrolMaxX: dc.maxX,
+                    hp: Math.round(30 * hpScale),
+                    fireCooldown: 1.1 + idx * 0.4,
+                    phase: idx * 1.3
+                });
+            });
+
+            // Position Helicopter on Surface Launch Pad
+            const h = state.heli;
+            h.x = 240;
+            h.y = 192;
+            h.vx = 0;
+            h.vy = 0;
+            h.angle = 0;
+            h.facing = 1;
+            h.invuln = 0.8;
+            h.cannonCooldown = 0;
+            h.missileCooldown = 0;
+
+            state.cam.x = Math.max(0, Math.min(WORLD_W - VIEW_W, h.x - VIEW_W * 0.35));
+            state.cam.y = Math.max(0, Math.min(WORLD_H - VIEW_H, h.y - VIEW_H * 0.35));
+        }
+
+        function startNewSortie(resetScore = true) {
+            audio.init();
+            if (resetScore) {
+                state.score = 0;
+                state.fortressLevel = 1;
+            }
+            state.hull = state.maxHull;
+            state.fuel = state.maxFuel;
+            state.missiles = state.maxMissiles;
+            state.refuelingNow = false;
+            state.refuelStatusText = '';
+            buildFortressLayout();
+            state.phase = 'playing';
+        }
+
+        function addPoints(pts, wx = null, wy = null, text = null) {
+            state.score += pts;
+            if (state.score > state.highScore) {
+                state.highScore = state.score;
+                localStorage.setItem('fort_apoc_1982_hi', String(state.highScore));
+            }
+            if (wx !== null && wy !== null) {
+                state.popups.push({
+                    x: wx,
+                    y: wy,
+                    text: text || `+${pts}`,
+                    color: '#fde047',
+                    life: 0.9
+                });
+            }
+        }
+
+        function spawnExplosion(x, y, count = 16, palette = ['#fbbf24', '#ef4444', '#f97316', '#fde047']) {
+            for (let i = 0; i < count; i++) {
+                const ang = Math.random() * Math.PI * 2;
+                const spd = 35 + Math.random() * 165;
+                state.particles.push({
+                    x,
+                    y,
+                    vx: Math.cos(ang) * spd,
+                    vy: Math.sin(ang) * spd,
+                    color: palette[i % palette.length],
+                    size: 2.5 + Math.random() * 3.5,
+                    life: 0.35 + Math.random() * 0.4,
+                    maxLife: 0.75
+                });
+            }
+        }
+
+        function damageHelicopter(amount, impactVx = 0, impactVy = 0) {
+            const h = state.heli;
+            if (h.invuln > 0 || state.phase !== 'playing') return;
+
+            state.hull = Math.max(0, state.hull - amount);
+            h.invuln = 0.75;
+            h.vx += impactVx;
+            h.vy += impactVy;
+            state.shakeTimer = 0.22;
+            state.shakeMag = 5.5;
+            audio.playDamage();
+            spawnExplosion(h.x, h.y, 12, ['#ef4444', '#fbbf24', '#f8fafc']);
+
+            if (state.hull <= 0) {
+                state.phase = 'gameover';
+                spawnExplosion(h.x, h.y, 34);
+                audio.playExplosion(true);
+            }
+        }
+
+        // =====================================================================
+        // 3. WEAPONS, REFUELING & SIMULATION STEP
+        // =====================================================================
+        function fireCannon() {
+            const h = state.heli;
+            if (h.cannonCooldown > 0 || state.phase !== 'playing') return;
+            h.cannonCooldown = 0.14;
+            audio.playCannon();
+
+            const noseX = h.x + h.facing * 20;
+            const noseY = h.y + 4 + Math.sin(h.angle) * 14;
+            const speed = 520;
+            state.playerShots.push({
+                x: noseX,
+                y: noseY,
+                vx: Math.cos(h.angle) * speed * (h.facing >= 0 ? 1 : -1) + h.vx * 0.25,
+                vy: Math.sin(h.angle) * speed * (h.facing >= 0 ? 1 : -1) + h.vy * 0.25,
+                kind: 'cannon',
+                life: 1.05
+            });
+        }
+
+        function fireMissile() {
+            const h = state.heli;
+            if (h.missileCooldown > 0 || state.missiles <= 0 || state.phase !== 'playing') return;
+            state.missiles--;
+            h.missileCooldown = 0.36;
+            audio.playMissile();
+
+            // Find nearest reactor or enemy ahead for soft homing assist
+            let bestTarget = null;
+            let bestDist = 380;
+            state.reactors.forEach(r => {
+                const d = Math.hypot(r.x - h.x, r.y - h.y);
+                if (d < bestDist) { bestDist = d; bestTarget = r; }
+            });
+            if (!bestTarget) {
+                state.drones.forEach(dr => {
+                    const d = Math.hypot(dr.x - h.x, dr.y - h.y);
+                    if (d < bestDist) { bestDist = d; bestTarget = dr; }
+                });
+            }
+            if (!bestTarget) {
+                state.turrets.forEach(tu => {
+                    const d = Math.hypot(tu.x - h.x, tu.y - h.y);
+                    if (d < bestDist) { bestDist = d; bestTarget = tu; }
+                });
+            }
+
+            const initSpeed = 290;
+            const initAngle = h.facing >= 0 ? h.angle : Math.PI - h.angle;
+            state.playerShots.push({
+                x: h.x + h.facing * 14,
+                y: h.y + 9,
+                vx: Math.cos(initAngle) * initSpeed,
+                vy: Math.sin(initAngle) * initSpeed,
+                kind: 'missile',
+                life: 2.2,
+                targetRef: bestTarget
+            });
+        }
+
+        function updateSimulation(dt) {
+            state.worldTime += dt;
+            if (state.shakeTimer > 0) state.shakeTimer = Math.max(0, state.shakeTimer - dt);
+
+            for (let i = state.popups.length - 1; i >= 0; i--) {
+                state.popups[i].life -= dt;
+                state.popups[i].y -= 26 * dt;
+                if (state.popups[i].life <= 0) state.popups.splice(i, 1);
+            }
+
+            for (let i = state.particles.length - 1; i >= 0; i--) {
+                const pt = state.particles[i];
+                pt.life -= dt;
+                pt.x += pt.vx * dt;
+                pt.y += pt.vy * dt;
+                pt.vy += 120 * dt;
+                if (pt.life <= 0) state.particles.splice(i, 1);
+            }
+
+            if (state.phase === 'paused' || state.phase === 'title' || state.phase === 'gameover') return;
+
+            if (state.phase === 'fortress_clear') {
+                state.phaseTimer -= dt;
+                if (state.phaseTimer <= 0) {
+                    state.fortressLevel++;
+                    addPoints(1500);
+                    state.hull = Math.min(state.maxHull, state.hull + 35);
+                    state.fuel = state.maxFuel;
+                    state.missiles = state.maxMissiles;
+                    buildFortressLayout();
+                    state.phase = 'playing';
+                }
+                return;
+            }
+
+            // --- Helicopter Flight Physics ---
+            const h = state.heli;
+            if (h.invuln > 0) h.invuln = Math.max(0, h.invuln - dt);
+            if (h.cannonCooldown > 0) h.cannonCooldown = Math.max(0, h.cannonCooldown - dt);
+            if (h.missileCooldown > 0) h.missileCooldown = Math.max(0, h.missileCooldown - dt);
+
+            const upHeld = state.keys['ArrowUp'] || state.keys['KeyW'] || state.touch.up;
+            const downHeld = state.keys['ArrowDown'] || state.keys['KeyS'] || state.touch.down;
+            const leftHeld = state.keys['ArrowLeft'] || state.keys['KeyA'] || state.touch.left;
+            const rightHeld = state.keys['ArrowRight'] || state.keys['KeyD'] || state.touch.right;
+            const cannonHeld = state.keys['Space'] || state.keys['KeyZ'] || state.keys['KeyJ'] || state.touch.cannon;
+            const missileHeld = state.keys['ShiftLeft'] || state.keys['ShiftRight'] || state.keys['KeyX'] || state.keys['KeyK'] || state.touch.missile;
+
+            if (cannonHeld) fireCannon();
+            if (missileHeld) fireMissile();
+
+            const hasFuel = state.fuel > 0;
+            const horizAccel = hasFuel ? 420 : 120;
+            const vertLiftAccel = hasFuel ? 540 : 0;
+            const gravity = 240;
+            const maxVx = 245;
+            const maxVy = 210;
+
+            let thrustRatio = 0;
+
+            if (leftHeld && !rightHeld) {
+                h.facing = -1;
+                h.vx = Math.max(-maxVx, h.vx - horizAccel * dt);
+                thrustRatio += 0.45;
+            } else if (rightHeld && !leftHeld) {
+                h.facing = 1;
+                h.vx = Math.min(maxVx, h.vx + horizAccel * dt);
+                thrustRatio += 0.45;
+            } else {
+                // Smooth aerodynamic drag
+                const drag = state.autoHover ? 260 : 135;
+                if (Math.abs(h.vx) <= drag * dt) h.vx = 0;
+                else h.vx -= Math.sign(h.vx) * drag * dt;
+            }
+
+            if (upHeld && hasFuel) {
+                h.vy = Math.max(-maxVy, h.vy - vertLiftAccel * dt);
+                thrustRatio += 0.65;
+            } else if (downHeld) {
+                h.vy = Math.min(maxVy, h.vy + 310 * dt);
+                thrustRatio += 0.2;
+            } else if (state.autoHover && hasFuel) {
+                // Optional auto-hover stabilization counters gravity smoothly
+                const hoverDiff = -h.vy;
+                h.vy += Math.max(-280 * dt, Math.min(280 * dt, hoverDiff * 6));
+                thrustRatio += 0.35;
+            } else {
+                h.vy = Math.min(maxVy, h.vy + gravity * dt);
+            }
+
+            // Banking tilt angle follows horizontal velocity
+            const targetAngle = (h.vx / maxVx) * 0.24 * h.facing;
+            h.angle += (targetAngle - h.angle) * Math.min(1, dt * 10);
+            h.rotorPhase += dt * (26 + thrustRatio * 22);
+
+            // Fuel consumption proportional to rotor activity
+            if (state.fuel > 0) {
+                const burnRate = 1.45 + thrustRatio * 1.35;
+                state.fuel = Math.max(0, state.fuel - burnRate * dt);
+            }
+
+            // Check Refuel / Ammo Supply Pad contact
+            state.refuelingNow = false;
+            state.refuelStatusText = '';
+            for (let i = 0; i < state.landingPads.length; i++) {
+                const pad = state.landingPads[i];
+                const overPadX = h.x >= pad.x - 10 && h.x <= pad.x + pad.w + 10;
+                const nearPadTop = Math.abs((h.y + 13) - pad.y) <= 14;
+                const slowEnough = Math.hypot(h.vx, h.vy) < 85;
+                if (overPadX && nearPadTop && slowEnough) {
+                    state.refuelingNow = true;
+                    state.fuel = Math.min(state.maxFuel, state.fuel + 34 * dt);
+                    state.missiles = Math.min(state.maxMissiles, state.missiles + 5.5 * dt);
+                    state.hull = Math.min(state.maxHull, state.hull + 12 * dt);
+                    state.refuelStatusText = `REFUELING AT ${pad.label}`;
+                    break;
+                }
+            }
+
+            audio.updateContinuous(dt, true, thrustRatio, state.refuelingNow, state.fuel < 22);
+
+            // Move Helicopter & Check Cavern Wall / Floor Collisions
+            const prevVx = h.vx;
+            const prevVy = h.vy;
+            h.x += h.vx * dt;
+            h.y += h.vy * dt;
+
+            if (collidesCavern(h.x, h.y, 13)) {
+                // Revert & bounce gently off rock wall
+                h.x -= h.vx * dt;
+                h.y -= h.vy * dt;
+                const impactSpeed = Math.hypot(prevVx, prevVy);
+                h.vx = -prevVx * 0.35;
+                h.vy = -prevVy * 0.35;
+
+                // Soft touch-down on a landing pad doesn't hurt hull
+                const onPad = state.landingPads.some(pad =>
+                    h.x >= pad.x - 8 && h.x <= pad.x + pad.w + 8 && Math.abs((h.y + 13) - pad.y) <= 16
+                );
+                if (!onPad && impactSpeed > 65) {
+                    const dmg = Math.min(28, Math.round((impactSpeed - 55) * 0.14));
+                    damageHelicopter(dmg, -prevVx * 0.4, -prevVy * 0.4);
+                }
+            }
+
+            // Smooth Camera Tracking
+            const targetCamX = Math.max(0, Math.min(WORLD_W - VIEW_W, h.x - VIEW_W * 0.45));
+            const targetCamY = Math.max(0, Math.min(WORLD_H - VIEW_H, h.y - VIEW_H * 0.48));
+            state.cam.x += (targetCamX - state.cam.x) * Math.min(1, dt * 7.5);
+            state.cam.y += (targetCamY - state.cam.y) * Math.min(1, dt * 7.5);
+
+            // --- Update Player Cannon & Homing Missiles ---
+            for (let i = state.playerShots.length - 1; i >= 0; i--) {
+                const s = state.playerShots[i];
+                s.life -= dt;
+
+                if (s.kind === 'missile') {
+                    // Exhaust trail
+                    if (Math.random() < 0.75) {
+                        state.particles.push({
+                            x: s.x, y: s.y,
+                            vx: -s.vx * 0.15 + (Math.random() - 0.5) * 20,
+                            vy: -s.vy * 0.15 + (Math.random() - 0.5) * 20,
+                            color: '#fde047', size: 2.5, life: 0.18, maxLife: 0.18
+                        });
+                    }
+                    // Gentle guidance toward locked target if still alive
+                    if (s.targetRef && s.targetRef.hp > 0) {
+                        const desired = Math.atan2(s.targetRef.y - s.y, s.targetRef.x - s.x);
+                        const curAng = Math.atan2(s.vy, s.vx);
+                        let diff = desired - curAng;
+                        while (diff > Math.PI) diff -= Math.PI * 2;
+                        while (diff < -Math.PI) diff += Math.PI * 2;
+                        const nextAng = curAng + Math.max(-4.5 * dt, Math.min(4.5 * dt, diff));
+                        const spd = 340;
+                        s.vx = Math.cos(nextAng) * spd;
+                        s.vy = Math.sin(nextAng) * spd;
+                    }
+                }
+
+                s.x += s.vx * dt;
+                s.y += s.vy * dt;
+
+                if (s.life <= 0 || collidesCavern(s.x, s.y, 3)) {
+                    spawnExplosion(s.x, s.y, s.kind === 'missile' ? 10 : 4);
+                    if (s.kind === 'missile') audio.playExplosion(false);
+                    state.playerShots.splice(i, 1);
+                    continue;
+                }
+
+                const dmg = s.kind === 'missile' ? 28 : 9;
+                let consumed = false;
+
+                // Hit Reactors
+                for (let r = state.reactors.length - 1; r >= 0; r--) {
+                    const rec = state.reactors[r];
+                    if (Math.hypot(s.x - rec.x, s.y - rec.y) <= rec.r + 5) {
+                        rec.hp -= dmg;
+                        consumed = true;
+                        spawnExplosion(s.x, s.y, 7);
+                        if (rec.hp <= 0) {
+                            audio.playExplosion(true);
+                            spawnExplosion(rec.x, rec.y, 28);
+                            state.shakeTimer = 0.35;
+                            state.shakeMag = 7;
+                            addPoints(1000, rec.x, rec.y - 16, 'REACTOR 1000');
+                            state.reactors.splice(r, 1);
+                        }
+                        break;
+                    }
+                }
+
+                // Hit Turrets
+                if (!consumed) {
+                    for (let t = state.turrets.length - 1; t >= 0; t--) {
+                        const tu = state.turrets[t];
+                        if (Math.hypot(s.x - tu.x, s.y - (tu.y - 8)) <= 15) {
+                            tu.hp -= dmg;
+                            consumed = true;
+                            spawnExplosion(s.x, s.y, 6);
+                            if (tu.hp <= 0) {
+                                audio.playExplosion(false);
+                                spawnExplosion(tu.x, tu.y - 8, 16);
+                                addPoints(250, tu.x, tu.y - 18, '250');
+                                state.turrets.splice(t, 1);
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                // Hit Patrolling Drones
+                if (!consumed) {
+                    for (let d = state.drones.length - 1; d >= 0; d--) {
+                        const dr = state.drones[d];
+                        if (Math.hypot(s.x - dr.x, s.y - dr.y) <= 16) {
+                            dr.hp -= dmg;
+                            consumed = true;
+                            spawnExplosion(s.x, s.y, 6);
+                            if (dr.hp <= 0) {
+                                audio.playExplosion(false);
+                                spawnExplosion(dr.x, dr.y, 18);
+                                addPoints(350, dr.x, dr.y - 14, '350');
+                                state.drones.splice(d, 1);
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                if (consumed) {
+                    state.playerShots.splice(i, 1);
+                }
+            }
+
+            // --- Update Turrets ---
+            state.turrets.forEach(tu => {
+                const dx = h.x - tu.x;
+                const dy = h.y - (tu.y - 10);
+                const dist = Math.hypot(dx, dy);
+                tu.aimAngle = Math.atan2(dy, dx);
+                tu.cooldown -= dt;
+
+                if (dist < 460 && tu.cooldown <= 0) {
+                    tu.cooldown = Math.max(1.1, 2.2 - (state.fortressLevel - 1) * 0.18);
+                    const spd = 175 + state.fortressLevel * 12;
+                    state.enemyShots.push({
+                        x: tu.x,
+                        y: tu.y - 10,
+                        vx: Math.cos(tu.aimAngle) * spd,
+                        vy: Math.sin(tu.aimAngle) * spd,
+                        life: 2.6
+                    });
+                }
+            });
+
+            // --- Update Patrolling Drones ---
+            state.drones.forEach(dr => {
+                dr.phase += dt * 3.2;
+                dr.x += dr.vx * dt;
+                dr.y = dr.baseY + Math.sin(dr.phase) * 26;
+
+                if (dr.x <= dr.patrolMinX) { dr.x = dr.patrolMinX; dr.vx = Math.abs(dr.vx); }
+                if (dr.x >= dr.patrolMaxX) { dr.x = dr.patrolMaxX; dr.vx = -Math.abs(dr.vx); }
+
+                const dist = Math.hypot(h.x - dr.x, h.y - dr.y);
+                if (dist < 18) {
+                    damageHelicopter(20, (h.x - dr.x) * 6, (h.y - dr.y) * 6);
+                }
+
+                dr.fireCooldown -= dt;
+                if (dist < 480 && dr.fireCooldown <= 0) {
+                    dr.fireCooldown = Math.max(1.25, 2.35 - (state.fortressLevel - 1) * 0.2);
+                    const ang = Math.atan2(h.y - dr.y, h.x - dr.x);
+                    const spd = 165 + state.fortressLevel * 12;
+                    state.enemyShots.push({
+                        x: dr.x,
+                        y: dr.y,
+                        vx: Math.cos(ang) * spd,
+                        vy: Math.sin(ang) * spd,
+                        life: 2.6
+                    });
+                }
+            });
+
+            // --- Update Enemy Projectiles ---
+            for (let i = state.enemyShots.length - 1; i >= 0; i--) {
+                const es = state.enemyShots[i];
+                es.life -= dt;
+                es.x += es.vx * dt;
+                es.y += es.vy * dt;
+
+                if (es.life <= 0 || collidesCavern(es.x, es.y, 3)) {
+                    state.enemyShots.splice(i, 1);
+                    continue;
+                }
+
+                if (Math.hypot(es.x - h.x, es.y - h.y) <= 13) {
+                    state.enemyShots.splice(i, 1);
+                    damageHelicopter(14, es.vx * 0.35, es.vy * 0.35);
+                }
+            }
+
+            // --- Check Fortress Reactor Destruction Victory ---
+            if (state.reactors.length === 0) {
+                state.phase = 'fortress_clear';
+                state.phaseTimer = 2.6;
+                audio.playFortressClear();
+            }
+        }
+
+        // =====================================================================
+        // 4. CANVAS RENDERER (CAVERN, HELICOPTER, REACTORS, RADAR & HUD)
+        // =====================================================================
+        const canvas = document.getElementById('fort-canvas');
+        const ctx = canvas.getContext('2d');
+
+        function fitCanvas() {
+            const hdr = document.querySelector('header').offsetHeight || 36;
+            const ftr = document.querySelector('footer').offsetHeight || 64;
+            const availW = window.innerWidth - 14;
+            const availH = window.innerHeight - hdr - ftr - 16;
+
+            const ratio = VIEW_W / VIEW_H; // 5 : 3
+            let h = Math.max(240, availH);
+            let w = h * ratio;
+            if (w > availW) {
+                w = availW;
+                h = w / ratio;
+            }
+
+            canvas.style.width = `${Math.floor(w)}px`;
+            canvas.style.height = `${Math.floor(h)}px`;
+            canvas.width = VIEW_W;
+            canvas.height = VIEW_H;
+        }
+
+        window.addEventListener('resize', fitCanvas);
+
+        function drawRockPoly(poly, fillTop, fillDeep, strokeCol) {
+            const pts = poly.points;
+            if (!pts || pts.length < 3) return;
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(pts[0].x, pts[0].y);
+            for (let i = 1; i < pts.length; i++) {
+                ctx.lineTo(pts[i].x, pts[i].y);
+            }
+            ctx.closePath();
+
+            const grad = ctx.createLinearGradient(0, 0, 0, WORLD_H);
+            grad.addColorStop(0, fillTop);
+            grad.addColorStop(1, fillDeep);
+            ctx.fillStyle = grad;
+            ctx.fill();
+
+            ctx.strokeStyle = strokeCol;
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        function drawHelicopter(h) {
+            ctx.save();
+            ctx.translate(h.x, h.y);
+
+            if (h.invuln > 0 && Math.floor(state.worldTime * 20) % 2 === 0) {
+                ctx.globalAlpha = 0.45;
+            }
+
+            ctx.rotate(h.angle);
+            ctx.scale(h.facing, 1);
+
+            // Tail boom & vertical stabilizer
+            ctx.fillStyle = '#d97706';
+            ctx.fillRect(-24, -4, 14, 5);
+            ctx.fillStyle = '#ef4444';
+            ctx.beginPath();
+            ctx.moveTo(-24, -4);
+            ctx.lineTo(-28, -12);
+            ctx.lineTo(-20, -12);
+            ctx.lineTo(-18, -4);
+            ctx.closePath();
+            ctx.fill();
+
+            // Tail rotor blades
+            const tailSpan = Math.sin(h.rotorPhase * 1.4) * 6;
+            ctx.strokeStyle = '#e2e8f0';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-24, -9 - tailSpan);
+            ctx.lineTo(-24, -9 + tailSpan);
+            ctx.stroke();
+
+            // Gunship fuselage
+            ctx.fillStyle = '#f59e0b';
+            ctx.beginPath();
+            ctx.ellipse(0, 1, 14, 8.5, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#78350f';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            // Canopy glass
+            ctx.fillStyle = '#38bdf8';
+            ctx.beginPath();
+            ctx.ellipse(5, -1, 7, 5, 0, -Math.PI * 0.5, Math.PI * 0.35);
+            ctx.fill();
+
+            // Nose laser cannon barrel
+            ctx.fillStyle = '#cbd5e1';
+            ctx.fillRect(12, 2, 9, 3);
+
+            // Landing skids
+            ctx.strokeStyle = '#94a3b8';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-9, 10);
+            ctx.lineTo(9, 10);
+            ctx.moveTo(-5, 8);
+            ctx.lineTo(-5, 10);
+            ctx.moveTo(5, 8);
+            ctx.lineTo(5, 10);
+            ctx.stroke();
+
+            // Rotor mast & spinning main blades
+            ctx.fillStyle = '#cbd5e1';
+            ctx.fillRect(-1, -11, 3, 4);
+            const bladeHalfW = Math.max(4, Math.abs(Math.cos(h.rotorPhase)) * 22);
+            ctx.strokeStyle = '#f8fafc';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.moveTo(-bladeHalfW, -11);
+            ctx.lineTo(bladeHalfW, -11);
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function drawHUD() {
+            // Top Telemetry Strip
+            ctx.fillStyle = 'rgba(7, 10, 18, 0.88)';
+            ctx.fillRect(0, 0, VIEW_W, 44);
+            ctx.strokeStyle = '#334155';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(0, 44);
+            ctx.lineTo(VIEW_W, 44);
+            ctx.stroke();
+
+            ctx.font = '8px "Press Start 2P", monospace';
+            ctx.textAlign = 'left';
+            ctx.fillStyle = '#fbbf24';
+            ctx.fillText(`FORT ${state.fortressLevel}`, 12, 16);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(`SCORE ${String(state.score).padStart(6, '0')}`, 12, 32);
+
+            // Hull Bar
+            ctx.fillStyle = '#94a3b8';
+            ctx.fillText('HULL', 162, 16);
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(206, 8, 86, 10);
+            ctx.fillStyle = state.hull > 35 ? '#22c55e' : '#ef4444';
+            ctx.fillRect(206, 8, Math.max(0, (state.hull / state.maxHull) * 86), 10);
+
+            // Fuel Bar
+            ctx.fillStyle = '#94a3b8';
+            ctx.fillText('FUEL', 162, 32);
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(206, 24, 86, 10);
+            ctx.fillStyle = state.fuel > 25 ? '#38bdf8' : '#f97316';
+            ctx.fillRect(206, 24, Math.max(0, (state.fuel / state.maxFuel) * 86), 10);
+
+            // Missiles & Reactors Remaining
+            ctx.fillStyle = '#fde047';
+            ctx.fillText(`MSL:${Math.floor(state.missiles)}/${state.maxMissiles}`, 308, 16);
+            ctx.fillStyle = '#f43f5e';
+            ctx.fillText(`REACTORS:${state.reactors.length}`, 308, 32);
+
+            // Minimap Radar (Top Right: 140 x 36)
+            const rx = VIEW_W - 154;
+            const ry = 4;
+            const rw = 142;
+            const rh = 36;
+            const sx = rw / WORLD_W;
+            const sy = rh / WORLD_H;
+
+            ctx.fillStyle = '#030712';
+            ctx.fillRect(rx, ry, rw, rh);
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 1.2;
+            ctx.strokeRect(rx, ry, rw, rh);
+
+            // Landing Pads on Radar (green)
+            ctx.fillStyle = '#4ade80';
+            state.landingPads.forEach(pad => {
+                ctx.fillRect(rx + pad.x * sx, ry + pad.y * sy, Math.max(3, pad.w * sx), 2);
+            });
+
+            // Reactors on Radar (pulsing red/yellow)
+            ctx.fillStyle = '#ef4444';
+            state.reactors.forEach(rec => {
+                ctx.fillRect(rx + rec.x * sx - 1.5, ry + rec.y * sy - 1.5, 3, 3);
+            });
+
+            // Helicopter on Radar (white/amber)
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(rx + state.heli.x * sx - 2, ry + state.heli.y * sy - 2, 4, 4);
+
+            // Camera viewport frame on radar
+            ctx.strokeStyle = 'rgba(250, 204, 21, 0.55)';
+            ctx.strokeRect(rx + state.cam.x * sx, ry + state.cam.y * sy, VIEW_W * sx, VIEW_H * sy);
+
+            // Refuel / Low Fuel Status Banner
+            if (state.refuelingNow && state.refuelStatusText) {
+                ctx.font = '8px "Press Start 2P", monospace';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#4ade80';
+                ctx.fillText(state.refuelStatusText, VIEW_W * 0.5, 62);
+            } else if (state.fuel < 22 && state.phase === 'playing') {
+                if (Math.floor(state.worldTime * 6) % 2 === 0) {
+                    ctx.font = '8px "Press Start 2P", monospace';
+                    ctx.textAlign = 'center';
+                    ctx.fillStyle = '#f97316';
+                    ctx.fillText('LOW FUEL — LAND ON PAD OR DEPOT!', VIEW_W * 0.5, 62);
+                }
+            }
+        }
+
+        function render() {
+            ctx.fillStyle = '#070b14';
+            ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+
+            ctx.save();
+            let shakeX = 0;
+            let shakeY = 0;
+            if (state.shakeTimer > 0) {
+                shakeX = (Math.random() - 0.5) * state.shakeMag * 2;
+                shakeY = (Math.random() - 0.5) * state.shakeMag * 2;
+            }
+            ctx.translate(-state.cam.x + shakeX, -state.cam.y + shakeY);
+
+            // Subtle subterranean grid lines for spatial depth
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.05)';
+            ctx.lineWidth = 1;
+            const gStartX = Math.floor(state.cam.x / 100) * 100;
+            const gStartY = Math.floor(state.cam.y / 100) * 100;
+            for (let gx = gStartX; gx < state.cam.x + VIEW_W + 100; gx += 100) {
+                ctx.beginPath();
+                ctx.moveTo(gx, state.cam.y);
+                ctx.lineTo(gx, state.cam.y + VIEW_H);
+                ctx.stroke();
+            }
+            for (let gy = gStartY; gy < state.cam.y + VIEW_H + 100; gy += 100) {
+                ctx.beginPath();
+                ctx.moveTo(state.cam.x, gy);
+                ctx.lineTo(state.cam.x + VIEW_W, gy);
+                ctx.stroke();
+            }
+
+            // Cavern Ceiling & Floor Rock Formations
+            state.ceilingPolys.forEach(p => drawRockPoly(p, '#334155', '#0f172a', '#64748b'));
+            state.floorPolys.forEach(p => drawRockPoly(p, '#3f2e21', '#18110c', '#78553a'));
+
+            // Landing & Refuel Supply Pads
+            state.landingPads.forEach(pad => {
+                ctx.fillStyle = '#1e293b';
+                ctx.fillRect(pad.x, pad.y, pad.w, pad.h);
+                ctx.fillStyle = state.refuelingNow ? '#4ade80' : '#22c55e';
+                ctx.fillRect(pad.x + 4, pad.y, pad.w - 8, 4);
+
+                ctx.font = '7px "Press Start 2P", monospace';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#86efac';
+                ctx.fillText(pad.label, pad.x + pad.w * 0.5, pad.y + 22);
+            });
+
+            // Fortress Reactors
+            state.reactors.forEach(rec => {
+                rec.pulse += 0.08;
+                const glow = 1 + Math.sin(rec.pulse) * 0.12;
+                ctx.save();
+                ctx.translate(rec.x, rec.y);
+
+                ctx.fillStyle = '#1e293b';
+                ctx.beginPath();
+                ctx.arc(0, 0, rec.r + 4, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#ef4444';
+                ctx.beginPath();
+                ctx.arc(0, 0, rec.r * 0.78 * glow, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#fde047';
+                ctx.beginPath();
+                ctx.arc(0, 0, rec.r * 0.36, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Reactor HP mini bar above core
+                const bw = 42;
+                ctx.fillStyle = '#0f172a';
+                ctx.fillRect(-bw * 0.5, -rec.r - 12, bw, 5);
+                ctx.fillStyle = '#facc15';
+                ctx.fillRect(-bw * 0.5, -rec.r - 12, bw * Math.max(0, rec.hp / rec.maxHp), 5);
+                ctx.restore();
+            });
+
+            // Destructible Turrets
+            state.turrets.forEach(tu => {
+                ctx.save();
+                ctx.translate(tu.x, tu.y);
+                ctx.fillStyle = '#475569';
+                ctx.fillRect(-11, -7, 22, 7);
+                ctx.strokeStyle = '#ef4444';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(0, -7);
+                ctx.lineTo(Math.cos(tu.aimAngle) * 14, -7 + Math.sin(tu.aimAngle) * 14);
+                ctx.stroke();
+                ctx.restore();
+            });
+
+            // Patrolling Drones
+            state.drones.forEach(dr => {
+                ctx.save();
+                ctx.translate(dr.x, dr.y);
+                ctx.fillStyle = '#991b1b';
+                ctx.beginPath();
+                ctx.moveTo(0, -9);
+                ctx.lineTo(12, 0);
+                ctx.lineTo(0, 9);
+                ctx.lineTo(-12, 0);
+                ctx.closePath();
+                ctx.fill();
+                ctx.strokeStyle = '#fb923c';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+
+                ctx.fillStyle = '#fde047';
+                ctx.fillRect(-3, -3, 6, 6);
+                ctx.restore();
+            });
+
+            // Player Shots (Laser Bolts & Missiles)
+            state.playerShots.forEach(s => {
+                if (s.kind === 'cannon') {
+                    ctx.strokeStyle = '#38bdf8';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.moveTo(s.x, s.y);
+                    ctx.lineTo(s.x - s.vx * 0.025, s.y - s.vy * 0.025);
+                    ctx.stroke();
+                } else {
+                    ctx.save();
+                    ctx.translate(s.x, s.y);
+                    ctx.rotate(Math.atan2(s.vy, s.vx));
+                    ctx.fillStyle = '#facc15';
+                    ctx.fillRect(-6, -2.5, 12, 5);
+                    ctx.fillStyle = '#ef4444';
+                    ctx.fillRect(3, -2.5, 4, 5);
+                    ctx.restore();
+                }
+            });
+
+            // Enemy Shots
+            ctx.fillStyle = '#fb7185';
+            state.enemyShots.forEach(es => {
+                ctx.beginPath();
+                ctx.arc(es.x, es.y, 4, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Helicopter Gunship
+            if (state.phase !== 'gameover') {
+                drawHelicopter(state.heli);
+            }
+
+            // Particles & Score Popups
+            state.particles.forEach(pt => {
+                ctx.globalAlpha = Math.max(0, pt.life / pt.maxLife);
+                ctx.fillStyle = pt.color;
+                ctx.fillRect(pt.x - pt.size * 0.5, pt.y - pt.size * 0.5, pt.size, pt.size);
+            });
+            ctx.globalAlpha = 1;
+
+            state.popups.forEach(pop => {
+                ctx.font = '8px "Press Start 2P", monospace';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = pop.color;
+                ctx.fillText(pop.text, pop.x, pop.y);
+            });
+
+            ctx.restore();
+
+            // Fixed Screen HUD & Radar
+            drawHUD();
+
+            // Overlays
+            if (state.phase === 'title') {
+                ctx.fillStyle = 'rgba(5, 8, 16, 0.84)';
+                ctx.fillRect(90, 86, VIEW_W - 180, 316);
+                ctx.strokeStyle = '#f59e0b';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(90, 86, VIEW_W - 180, 316);
+
+                ctx.textAlign = 'center';
+                ctx.font = '18px "Press Start 2P", monospace';
+                ctx.fillStyle = '#f59e0b';
+                ctx.fillText('FORT APOCALYPSE', VIEW_W * 0.5, 128);
+                ctx.font = '9px "Press Start 2P", monospace';
+                ctx.fillStyle = '#38bdf8';
+                ctx.fillText('1982 CAVERN GUNSHIP', VIEW_W * 0.5, 150);
+
+                ctx.font = '8px "Press Start 2P", monospace';
+                ctx.fillStyle = '#e2e8f0';
+                ctx.fillText('ARROWS / WASD : THRUST & BANK', VIEW_W * 0.5, 186);
+                ctx.fillText('SPACE / Z : LASER CANNON', VIEW_W * 0.5, 206);
+                ctx.fillText('SHIFT / X : HOMING MISSILE', VIEW_W * 0.5, 226);
+                ctx.fillText('H : AUTO-HOVER  •  M : SOUND', VIEW_W * 0.5, 246);
+                ctx.fillStyle = '#4ade80';
+                ctx.fillText('DESTROY ALL 3 REACTORS TO CLEAR FORT', VIEW_W * 0.5, 276);
+                ctx.fillStyle = '#fde047';
+                ctx.fillText('LAND ON PADS TO REFUEL & RE-ARM', VIEW_W * 0.5, 296);
+
+                if (Math.floor(state.worldTime * 2.6) % 2 === 0) {
+                    ctx.font = '10px "Press Start 2P", monospace';
+                    ctx.fillStyle = '#fbbf24';
+                    ctx.fillText('PRESS ENTER OR LAUNCH TO BEGIN', VIEW_W * 0.5, 348);
+                }
+            } else if (state.phase === 'paused') {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+                ctx.fillRect(260, 205, 280, 64);
+                ctx.strokeStyle = '#38bdf8';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(260, 205, 280, 64);
+                ctx.textAlign = 'center';
+                ctx.font = '14px "Press Start 2P", monospace';
+                ctx.fillStyle = '#38bdf8';
+                ctx.fillText('PAUSED', VIEW_W * 0.5, 243);
+            } else if (state.phase === 'fortress_clear') {
+                ctx.fillStyle = 'rgba(5, 12, 24, 0.82)';
+                ctx.fillRect(150, 180, VIEW_W - 300, 100);
+                ctx.strokeStyle = '#4ade80';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(150, 180, VIEW_W - 300, 100);
+
+                ctx.textAlign = 'center';
+                ctx.font = '13px "Press Start 2P", monospace';
+                ctx.fillStyle = '#4ade80';
+                ctx.fillText('FORTRESS DESTROYED!', VIEW_W * 0.5, 220);
+                ctx.font = '9px "Press Start 2P", monospace';
+                ctx.fillStyle = '#fde047';
+                ctx.fillText('DEPLOYING TO NEXT FORTRESS...', VIEW_W * 0.5, 250);
+            } else if (state.phase === 'gameover') {
+                ctx.fillStyle = 'rgba(10, 5, 8, 0.86)';
+                ctx.fillRect(160, 165, VIEW_W - 320, 130);
+                ctx.strokeStyle = '#ef4444';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(160, 165, VIEW_W - 320, 130);
+
+                ctx.textAlign = 'center';
+                ctx.font = '16px "Press Start 2P", monospace';
+                ctx.fillStyle = '#ef4444';
+                ctx.fillText('GUNSHIP LOST', VIEW_W * 0.5, 208);
+                ctx.font = '9px "Press Start 2P", monospace';
+                ctx.fillStyle = '#ffffff';
+                ctx.fillText(`FINAL SCORE: ${state.score}`, VIEW_W * 0.5, 236);
+                if (Math.floor(state.worldTime * 2.5) % 2 === 0) {
+                    ctx.fillStyle = '#fbbf24';
+                    ctx.fillText('PRESS ENTER OR LAUNCH TO RETRY', VIEW_W * 0.5, 268);
+                }
+            }
+        }
+
+        // =====================================================================
+        // 5. KEYBOARD, TOUCH & TOP CONTROL BINDINGS
+        // =====================================================================
+        function syncHoverLabel() {
+            document.getElementById('btn-hover').textContent = state.autoHover ? 'HOVER: ON [H]' : 'HOVER: OFF [H]';
+        }
+
+        function syncAudioLabel() {
+            document.getElementById('btn-audio').textContent = audio.muted ? 'SOUND: OFF [M]' : 'SOUND: ON [M]';
+        }
+
+        window.addEventListener('keydown', (e) => {
+            audio.init();
+            state.keys[e.code] = true;
+            if (e.repeat) return;
+
+            if (e.code === 'KeyM') {
+                audio.toggleMute();
+                syncAudioLabel();
+                return;
+            }
+            if (e.code === 'KeyH') {
+                state.autoHover = !state.autoHover;
+                syncHoverLabel();
+                return;
+            }
+            if (e.code === 'KeyP') {
+                if (state.phase === 'playing') state.phase = 'paused';
+                else if (state.phase === 'paused') state.phase = 'playing';
+                return;
+            }
+            if (e.code === 'Enter' && (state.phase === 'title' || state.phase === 'gameover')) {
+                startNewSortie(true);
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            state.keys[e.code] = false;
+        });
+
+        document.getElementById('btn-hover').addEventListener('click', () => {
+            audio.init();
+            state.autoHover = !state.autoHover;
+            syncHoverLabel();
+        });
+
+        document.getElementById('btn-audio').addEventListener('click', () => {
+            audio.init();
+            audio.toggleMute();
+            syncAudioLabel();
+        });
+
+        document.getElementById('btn-pause').addEventListener('click', () => {
+            audio.init();
+            if (state.phase === 'playing') state.phase = 'paused';
+            else if (state.phase === 'paused') state.phase = 'playing';
+        });
+
+        document.getElementById('btn-restart').addEventListener('click', () => {
+            startNewSortie(true);
+        });
+
+        document.getElementById('btn-launch').addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            audio.init();
+            if (state.phase === 'title' || state.phase === 'gameover') {
+                startNewSortie(true);
+            } else if (state.phase === 'paused') {
+                state.phase = 'playing';
+            }
+        });
+
+        function bindTouch(id, key) {
+            const el = document.getElementById(id);
+            el.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                audio.init();
+                if (state.phase === 'title' || state.phase === 'gameover') {
+                    startNewSortie(true);
+                    return;
+                }
+                state.touch[key] = true;
+                el.classList.add('active');
+            });
+            const end = () => {
+                state.touch[key] = false;
+                el.classList.remove('active');
+            };
+            el.addEventListener('pointerup', end);
+            el.addEventListener('pointerleave', end);
+            el.addEventListener('pointercancel', end);
+        }
+
+        bindTouch('pad-up', 'up');
+        bindTouch('pad-down', 'down');
+        bindTouch('pad-left', 'left');
+        bindTouch('pad-right', 'right');
+        bindTouch('pad-cannon', 'cannon');
+        bindTouch('pad-missile', 'missile');
+
+        canvas.addEventListener('pointerdown', () => {
+            audio.init();
+            if (state.phase === 'title' || state.phase === 'gameover') {
+                startNewSortie(true);
+            }
+        });
+
+        // =====================================================================
+        // 6. WINDOW ONLOAD & ANIMATION LOOP
+        // =====================================================================
+        let lastTime = performance.now();
+
+        function loop(now) {
+            requestAnimationFrame(loop);
+            const dt = Math.min((now - lastTime) / 1000, 0.05);
+            lastTime = now;
+
+            updateSimulation(dt);
+            render();
+        }
+
+        window.onload = function () {
+            buildFortressLayout();
+            state.phase = 'title';
+            fitCanvas();
+            requestAnimationFrame(loop);
+        };
+    </script>
+</body>
+</html>
