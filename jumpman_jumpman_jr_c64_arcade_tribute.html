@@ -1,0 +1,1408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>JUMPMAN &amp; JUMPMAN JR. — C64 Arcade Tribute</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&family=JetBrains+Mono:wght@600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #16102c;
+            font-family: 'Inter', sans-serif;
+            color: #f8fafc;
+        }
+        .c64-font {
+            font-family: 'JetBrains Mono', monospace;
+            font-variant-numeric: tabular-nums;
+        }
+        #game-canvas {
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            display: block;
+            box-shadow: 0 18px 48px rgba(0, 0, 0, 0.72), 0 0 0 2px rgba(120, 105, 196, 0.45);
+        }
+        .c64-panel {
+            background: rgba(24, 18, 52, 0.86);
+            border: 1px solid rgba(154, 138, 224, 0.35);
+            box-shadow: 0 10px 26px rgba(5, 3, 15, 0.65);
+        }
+        .c64-btn {
+            background: rgba(45, 35, 92, 0.9);
+            border: 1px solid rgba(167, 152, 238, 0.38);
+            transition: transform 0.08s ease, background-color 0.14s ease, border-color 0.14s ease;
+        }
+        .c64-btn:hover {
+            background: rgba(65, 51, 128, 0.96);
+            border-color: #93c5fd;
+        }
+        .c64-btn:active {
+            transform: scale(0.96);
+        }
+        .c64-btn.active {
+            background: rgba(37, 99, 235, 0.55);
+            border-color: #7dd3fc;
+            color: #e0f2fe;
+        }
+        .touch-pad-btn {
+            background: rgba(38, 29, 78, 0.84);
+            border: 1.5px solid rgba(167, 152, 238, 0.45);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+        }
+        .touch-pad-btn:active, .touch-pad-btn.pressed {
+            background: rgba(59, 130, 246, 0.65);
+            border-color: #bae6fd;
+            transform: scale(0.94);
+        }
+    </style>
+</head>
+<body class="relative w-full h-full overflow-hidden flex flex-col items-center justify-between p-2 sm:p-3">
+
+    <!-- Top C64 Status & Control Bar -->
+    <header class="w-full max-w-5xl z-20 flex flex-col gap-1.5 shrink-0">
+        <!-- Score / Level / Timer / Lives / High Score Readout -->
+        <div class="c64-panel rounded-xl px-3 py-2 flex flex-wrap items-center justify-between gap-2 c64-font text-xs sm:text-sm">
+            <div class="flex items-center gap-3 sm:gap-5">
+                <div>
+                    <span class="text-[10px] text-purple-300 block leading-none">SCORE</span>
+                    <span id="hud-score" class="font-extrabold text-amber-300">000000</span>
+                </div>
+                <div>
+                    <span class="text-[10px] text-purple-300 block leading-none">HIGH</span>
+                    <span id="hud-high" class="font-extrabold text-cyan-300">000000</span>
+                </div>
+                <div>
+                    <span class="text-[10px] text-purple-300 block leading-none">LEVEL</span>
+                    <span id="hud-level" class="font-extrabold text-white">1/5</span>
+                </div>
+                <div>
+                    <span class="text-[10px] text-purple-300 block leading-none">BOMBS</span>
+                    <span id="hud-bombs" class="font-extrabold text-rose-400">0/0</span>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3 sm:gap-5">
+                <div>
+                    <span class="text-[10px] text-purple-300 block leading-none">TIME</span>
+                    <span id="hud-time" class="font-extrabold text-emerald-300">060</span>
+                </div>
+                <div>
+                    <span class="text-[10px] text-purple-300 block leading-none">LIVES</span>
+                    <span id="hud-lives" class="font-extrabold text-amber-200">♥♥♥</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stage Selector & Utility Buttons -->
+        <div class="flex flex-wrap items-center justify-between gap-1.5">
+            <div id="stage-selector" class="flex items-center gap-1 overflow-x-auto max-w-full py-0.5"></div>
+
+            <div class="flex items-center gap-1.5">
+                <button id="btn-music" class="c64-btn active rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-cyan-200 cursor-pointer" title="Toggle Chiptune Music">
+                    🎵 MUSIC: ON
+                </button>
+                <button id="btn-mute" class="c64-btn rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-emerald-200 cursor-pointer" title="Mute / Unmute SFX [M]">
+                    🔊 SFX [M]
+                </button>
+                <button id="btn-restart" class="c64-btn rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-amber-200 cursor-pointer" title="Restart Level [R]">
+                    ↻ RESTART [R]
+                </button>
+                <button id="btn-pause" class="c64-btn rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-white cursor-pointer" title="Pause / Resume [P]">
+                    PAUSE [P]
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Center Responsive Playfield Container -->
+    <main id="canvas-wrap" class="relative flex-1 w-full max-w-5xl flex items-center justify-center my-1 min-h-0">
+        <canvas id="game-canvas"></canvas>
+
+        <!-- Start / Pause / Level Clear / Game Over / Victory Overlay Card -->
+        <div id="overlay-card" class="absolute inset-0 flex items-center justify-center p-4 pointer-events-auto">
+            <div class="c64-panel rounded-2xl max-w-md w-full p-5 text-center flex flex-col gap-3">
+                <div id="overlay-badge" class="c64-font text-[11px] font-bold uppercase tracking-widest text-cyan-300">
+                    COMMODORE 64 ARCADE TRIBUTE
+                </div>
+                <h1 id="overlay-title" class="text-xl sm:text-2xl font-extrabold text-amber-300 tracking-wide">
+                    JUMPMAN &amp; JUMPMAN JR.
+                </h1>
+                <p id="overlay-desc" class="text-xs sm:text-sm text-slate-200 leading-relaxed">
+                    Defuse every pulsing bomb across multi-tiered girders, ladders, moving platforms, and hazard beams before time expires.
+                </p>
+
+                <div class="bg-slate-950/65 border border-purple-400/25 rounded-xl p-3 text-left text-[11px] text-slate-300 c64-font space-y-1">
+                    <div><span class="text-amber-300 font-bold">MOVE / CLIMB:</span> ARROWS or WASD</div>
+                    <div><span class="text-cyan-300 font-bold">JUMP / ARC:</span> SPACE, Z, UP, or W</div>
+                    <div><span class="text-emerald-300 font-bold">CONTROLS:</span> P = PAUSE • M = MUTE • R = RESTART</div>
+                </div>
+
+                <div class="flex items-center justify-center gap-2 pt-1">
+                    <button id="btn-overlay-primary" class="c64-btn active rounded-xl px-5 py-2.5 text-xs sm:text-sm font-extrabold text-white cursor-pointer">
+                        PLAY LEVEL 1
+                    </button>
+                    <button id="btn-overlay-next" class="c64-btn hidden rounded-xl px-4 py-2.5 text-xs sm:text-sm font-bold text-amber-200 cursor-pointer">
+                        NEXT STAGE ▶
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Bottom Touch D-Pad + Jump Button (Mobile / Tablet) & Desktop Footer Hint -->
+    <footer class="w-full max-w-5xl z-20 shrink-0">
+        <!-- Mobile / Tablet Touch Controls -->
+        <div id="touch-pad" class="flex md:hidden items-end justify-between px-2 pb-1">
+            <!-- D-Pad -->
+            <div class="grid grid-cols-3 gap-1.5 w-36 h-36">
+                <div></div>
+                <button id="t-up" class="touch-pad-btn rounded-xl text-sm font-bold text-cyan-200 flex items-center justify-center">▲</button>
+                <div></div>
+                <button id="t-left" class="touch-pad-btn rounded-xl text-sm font-bold text-white flex items-center justify-center">◀</button>
+                <div class="rounded-xl bg-slate-900/40 border border-purple-500/20"></div>
+                <button id="t-right" class="touch-pad-btn rounded-xl text-sm font-bold text-white flex items-center justify-center">▶</button>
+                <div></div>
+                <button id="t-down" class="touch-pad-btn rounded-xl text-sm font-bold text-cyan-200 flex items-center justify-center">▼</button>
+                <div></div>
+            </div>
+
+            <!-- Jump Button -->
+            <button id="t-jump" class="touch-pad-btn rounded-2xl px-6 h-16 text-sm font-extrabold tracking-wider text-amber-300 flex items-center justify-center mb-2">
+                JUMP
+            </button>
+        </div>
+
+        <!-- Desktop Compact Legend -->
+        <div class="hidden md:flex items-center justify-between text-[11px] text-purple-200/80 c64-font px-1">
+            <span id="level-banner-text">STAGE 1: BASIC GIRDERS &amp; LADDERS</span>
+            <span>DEFUSE ALL BOMBS • AVOID BULLETS, FALLING GIRDERS &amp; LASER BEAMS</span>
+        </div>
+    </footer>
+
+    <script>
+        /**
+         * JUMPMAN & JUMPMAN JR. — C64 ARCADE TRIBUTE
+         * Self-contained Single-File HTML5 Canvas + Web Audio API SID Synthesizer
+         * Logical C64-inspired internal resolution: 640 x 400 scaled crisply to viewport
+         */
+
+        const LOGICAL_W = 640;
+        const LOGICAL_H = 400;
+        const STORAGE_KEY = 'jumpman_c64_high_score_v1';
+
+        // =====================================================================
+        // 1. WEB AUDIO API SID-INSPIRED SYNTHESIZER & CHIPTUNE SEQUENCER
+        // =====================================================================
+        class C64AudioEngine {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+                this.musicEnabled = true;
+                this.stepTimer = 0;
+                this.climbStepTimer = 0;
+                this.musicTimer = 0;
+                this.noteIdx = 0;
+                // Upbeat C64-style arpeggiated bass/lead notes (frequencies in Hz)
+                this.melody = [
+                    261.63, 329.63, 392.00, 523.25,
+                    293.66, 349.23, 440.00, 587.33,
+                    329.63, 392.00, 493.88, 659.25,
+                    293.66, 392.00, 440.00, 392.00
+                ];
+                this.bass = [
+                    130.81, 0, 196.00, 0,
+                    146.83, 0, 220.00, 0,
+                    164.81, 0, 246.94, 0,
+                    146.83, 0, 196.00, 0
+                ];
+            }
+
+            init() {
+                if (this.ctx) {
+                    if (this.ctx.state === 'suspended') {
+                        this.ctx.resume().catch(() => {});
+                    }
+                    return;
+                }
+                try {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                } catch (err) {
+                    console.warn('Web Audio API unavailable:', err);
+                }
+            }
+
+            toggleMute() {
+                this.muted = !this.muted;
+                return this.muted;
+            }
+
+            toggleMusic() {
+                this.musicEnabled = !this.musicEnabled;
+                return this.musicEnabled;
+            }
+
+            playWave(freq, type, startTime, duration, volume = 0.06, slideTo = null) {
+                if (this.muted || !this.ctx || !freq || freq <= 0) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, startTime);
+                if (slideTo) {
+                    osc.frequency.exponentialRampToValueAtTime(Math.max(28, slideTo), startTime + duration);
+                }
+
+                gain.gain.setValueAtTime(0.001, startTime);
+                gain.gain.linearRampToValueAtTime(volume, startTime + 0.008);
+                gain.gain.exponentialRampToValueAtTime(0.0008, startTime + duration);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(startTime);
+                osc.stop(startTime + duration + 0.02);
+            }
+
+            playNoise(duration, volume = 0.08) {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const len = Math.max(1, Math.floor(this.ctx.sampleRate * duration));
+                const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+                const data = buf.getChannelData(0);
+                for (let i = 0; i < len; i++) {
+                    data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+                }
+                const src = this.ctx.createBufferSource();
+                src.buffer = buf;
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(volume, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+                src.connect(gain);
+                gain.connect(this.ctx.destination);
+                src.start(now);
+            }
+
+            playJump() {
+                if (this.muted || !this.ctx) return;
+                this.playWave(190, 'square', this.ctx.currentTime, 0.16, 0.055, 580);
+            }
+
+            playBombDefuse() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.playWave(523.25, 'square', now, 0.07, 0.06);
+                this.playWave(783.99, 'square', now + 0.06, 0.09, 0.06);
+                this.playWave(1046.5, 'triangle', now + 0.12, 0.14, 0.07);
+            }
+
+            playLevelClear() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const fanfare = [523.25, 659.25, 783.99, 1046.5, 783.99, 1046.5];
+                fanfare.forEach((f, idx) => {
+                    this.playWave(f, 'square', now + idx * 0.09, 0.14, 0.06);
+                });
+            }
+
+            playHit() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.playNoise(0.28, 0.14);
+                this.playWave(240, 'sawtooth', now, 0.3, 0.08, 55);
+            }
+
+            playGameOver() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const notes = [392.0, 349.23, 329.63, 261.63];
+                notes.forEach((f, idx) => {
+                    this.playWave(f, 'sawtooth', now + idx * 0.18, 0.24, 0.065);
+                });
+            }
+
+            update(dt, activeGameplay, isRunning, isClimbing) {
+                if (!this.ctx || this.muted || !activeGameplay) return;
+
+                if (isRunning) {
+                    this.stepTimer -= dt;
+                    if (this.stepTimer <= 0) {
+                        this.stepTimer = 0.13;
+                        this.playWave(145, 'triangle', this.ctx.currentTime, 0.035, 0.035, 95);
+                    }
+                } else {
+                    this.stepTimer = 0.05;
+                }
+
+                if (isClimbing) {
+                    this.climbStepTimer -= dt;
+                    if (this.climbStepTimer <= 0) {
+                        this.climbStepTimer = 0.14;
+                        this.playWave(220, 'square', this.ctx.currentTime, 0.035, 0.025, 290);
+                    }
+                } else {
+                    this.climbStepTimer = 0.05;
+                }
+
+                if (this.musicEnabled) {
+                    this.musicTimer -= dt;
+                    if (this.musicTimer <= 0) {
+                        this.musicTimer = 0.16;
+                        const idx = this.noteIdx % this.melody.length;
+                        const now = this.ctx.currentTime;
+                        this.playWave(this.melody[idx], 'square', now, 0.11, 0.022);
+                        if (this.bass[idx] > 0) {
+                            this.playWave(this.bass[idx], 'triangle', now, 0.14, 0.035);
+                        }
+                        this.noteIdx++;
+                    }
+                }
+            }
+        }
+
+        const c64Audio = new C64AudioEngine();
+
+        // =====================================================================
+        // 2. FIVE MULTI-PLATFORM LEVELS INSPIRED BY JUMPMAN & JUMPMAN JR.
+        // =====================================================================
+        // Platform types: 'solid', 'falling', 'moving', 'hazard'
+        // Moving platform: { x, y, w, h, type: 'moving', moveAxis: 'x'|'y', range, speed, baseX, baseY }
+        // Falling platform: { x, y, w, h, type: 'falling', state: 'idle'|'shaking'|'fallen', timer }
+        // Hazard beam: { x, y, w, h, type: 'hazard' }
+        // Ladder: { x, y, h } (x is center X, y is top Y, h is height)
+        // Bullet: { x, y, vx, vy, minX, maxX, color }
+        // Bomb: { x, y, collected: false, phase: 0 }
+
+        const LEVELS = [
+            {
+                id: 1,
+                title: 'STAGE 1: BASIC GIRDERS & LADDERS',
+                shortLabel: 'L1: GIRDERS',
+                timeLimit: 60,
+                spawn: { x: 64, y: 342 },
+                platforms: [
+                    { x: 0,   y: 368, w: 640, h: 14, type: 'solid' },
+                    { x: 40,  y: 294, w: 230, h: 10, type: 'solid' },
+                    { x: 370, y: 294, w: 230, h: 10, type: 'solid' },
+                    { x: 165, y: 218, w: 310, h: 10, type: 'solid' },
+                    { x: 35,  y: 144, w: 210, h: 10, type: 'solid' },
+                    { x: 395, y: 144, w: 210, h: 10, type: 'solid' },
+                    { x: 210, y: 84,  w: 220, h: 10, type: 'solid' }
+                ],
+                ladders: [
+                    { x: 135, y: 294, h: 74 },
+                    { x: 505, y: 294, h: 74 },
+                    { x: 235, y: 218, h: 76 },
+                    { x: 405, y: 218, h: 76 },
+                    { x: 145, y: 144, h: 74 },
+                    { x: 495, y: 144, h: 74 },
+                    { x: 270, y: 84,  h: 60 },
+                    { x: 370, y: 84,  h: 60 }
+                ],
+                bombs: [
+                    { x: 68,  y: 274 },
+                    { x: 572, y: 274 },
+                    { x: 320, y: 198 },
+                    { x: 65,  y: 124 },
+                    { x: 575, y: 124 },
+                    { x: 320, y: 64 }
+                ],
+                bullets: [
+                    { x: 210, y: 354, vx: 115, minX: 160, maxX: 470, color: 0xf43f5e },
+                    { x: 430, y: 204, vx: -105, minX: 185, maxX: 455, color: 0xfacc15 }
+                ]
+            },
+            {
+                id: 2,
+                title: 'STAGE 2: BULLET & DROP ZONE',
+                shortLabel: 'L2: DROP ZONE',
+                timeLimit: 65,
+                spawn: { x: 56, y: 342 },
+                platforms: [
+                    { x: 0,   y: 368, w: 640, h: 14, type: 'solid' },
+                    { x: 35,  y: 300, w: 150, h: 10, type: 'falling' },
+                    { x: 245, y: 300, w: 150, h: 10, type: 'solid' },
+                    { x: 455, y: 300, w: 150, h: 10, type: 'falling' },
+                    { x: 95,  y: 224, w: 140, h: 10, type: 'solid' },
+                    { x: 265, y: 224, w: 110, h: 10, type: 'falling' },
+                    { x: 405, y: 224, w: 140, h: 10, type: 'solid' },
+                    { x: 50,  y: 148, w: 185, h: 10, type: 'falling' },
+                    { x: 405, y: 148, w: 185, h: 10, type: 'falling' },
+                    { x: 190, y: 88,  w: 260, h: 10, type: 'solid' }
+                ],
+                ladders: [
+                    { x: 320, y: 300, h: 68 },
+                    { x: 150, y: 224, h: 76 },
+                    { x: 490, y: 224, h: 76 },
+                    { x: 285, y: 88,  h: 136 },
+                    { x: 355, y: 88,  h: 136 }
+                ],
+                bombs: [
+                    { x: 110, y: 280 },
+                    { x: 530, y: 280 },
+                    { x: 130, y: 204 },
+                    { x: 510, y: 204 },
+                    { x: 110, y: 128 },
+                    { x: 530, y: 128 },
+                    { x: 320, y: 68 }
+                ],
+                bullets: [
+                    { x: 120, y: 354, vx: 145, minX: 90,  maxX: 550, color: 0xf43f5e },
+                    { x: 520, y: 354, vx: -135, minX: 90, maxX: 550, color: 0x38bdf8 },
+                    { x: 320, y: 286, vx: 130, minX: 255, maxX: 385, color: 0xfacc15 }
+                ]
+            },
+            {
+                id: 3,
+                title: 'STAGE 3: MOVING PLATFORMS & HAZARD BEAMS',
+                shortLabel: 'L3: MOVING & BEAMS',
+                timeLimit: 70,
+                spawn: { x: 54, y: 342 },
+                platforms: [
+                    { x: 0,   y: 368, w: 640, h: 14, type: 'solid' },
+                    { x: 25,  y: 302, w: 165, h: 10, type: 'solid' },
+                    { x: 230, y: 302, w: 95,  h: 10, type: 'moving', moveAxis: 'x', range: 65, speed: 1.65 },
+                    { x: 445, y: 302, w: 170, h: 10, type: 'solid' },
+                    { x: 40,  y: 222, w: 190, h: 10, type: 'solid' },
+                    { x: 270, y: 222, w: 100, h: 10, type: 'hazard' },
+                    { x: 410, y: 222, w: 190, h: 10, type: 'solid' },
+                    { x: 150, y: 146, w: 95,  h: 10, type: 'moving', moveAxis: 'x', range: 60, speed: 1.85 },
+                    { x: 395, y: 146, w: 95,  h: 10, type: 'moving', moveAxis: 'x', range: 60, speed: -1.85 },
+                    { x: 195, y: 84,  w: 250, h: 10, type: 'solid' }
+                ],
+                ladders: [
+                    { x: 115, y: 302, h: 66 },
+                    { x: 530, y: 302, h: 66 },
+                    { x: 120, y: 222, h: 80 },
+                    { x: 520, y: 222, h: 80 },
+                    { x: 245, y: 84,  h: 62 },
+                    { x: 395, y: 84,  h: 62 }
+                ],
+                bombs: [
+                    { x: 565, y: 282 },
+                    { x: 75,  y: 202 },
+                    { x: 565, y: 202 },
+                    { x: 195, y: 126 },
+                    { x: 445, y: 126 },
+                    { x: 320, y: 64 }
+                ],
+                bullets: [
+                    { x: 180, y: 354, vx: 150, minX: 120, maxX: 520, color: 0xf43f5e },
+                    { x: 480, y: 208, vx: -125, minX: 415, maxX: 590, color: 0x38bdf8 }
+                ]
+            },
+            {
+                id: 4,
+                title: 'STAGE 4: JUMPMAN JR. TWIN-VAULT GAUNTLET',
+                shortLabel: 'L4: JR. VAULTS',
+                timeLimit: 75,
+                spawn: { x: 320, y: 342 },
+                platforms: [
+                    { x: 0,   y: 368, w: 640, h: 14, type: 'solid' },
+                    // Left Vault
+                    { x: 30,  y: 304, w: 230, h: 10, type: 'solid' },
+                    { x: 55,  y: 232, w: 180, h: 10, type: 'falling' },
+                    { x: 30,  y: 160, w: 230, h: 10, type: 'solid' },
+                    // Center Bridge & Elevator
+                    { x: 280, y: 232, w: 80,  h: 10, type: 'moving', moveAxis: 'y', range: 52, speed: 1.7 },
+                    { x: 245, y: 92,  w: 150, h: 10, type: 'solid' },
+                    // Right Vault
+                    { x: 380, y: 304, w: 230, h: 10, type: 'solid' },
+                    { x: 405, y: 232, w: 180, h: 10, type: 'falling' },
+                    { x: 380, y: 160, w: 230, h: 10, type: 'solid' }
+                ],
+                ladders: [
+                    { x: 95,  y: 304, h: 64 },
+                    { x: 185, y: 232, h: 72 },
+                    { x: 95,  y: 160, h: 72 },
+                    { x: 545, y: 304, h: 64 },
+                    { x: 455, y: 232, h: 72 },
+                    { x: 545, y: 160, h: 72 },
+                    { x: 270, y: 92,  h: 68 },
+                    { x: 370, y: 92,  h: 68 }
+                ],
+                bombs: [
+                    { x: 60,  y: 284 },
+                    { x: 60,  y: 140 },
+                    { x: 580, y: 284 },
+                    { x: 580, y: 140 },
+                    { x: 275, y: 72 },
+                    { x: 365, y: 72 }
+                ],
+                bullets: [
+                    { x: 80,  y: 290, vx: 130, minX: 40,  maxX: 250, color: 0xf43f5e },
+                    { x: 560, y: 290, vx: -130, minX: 390, maxX: 600, color: 0xf43f5e },
+                    { x: 320, y: 354, vx: 165, minX: 110, maxX: 530, color: 0xfacc15 }
+                ]
+            },
+            {
+                id: 5,
+                title: 'STAGE 5: HIGH-ALTITUDE LADDER & LASER MAZE',
+                shortLabel: 'L5: LASER MAZE',
+                timeLimit: 80,
+                spawn: { x: 48, y: 342 },
+                platforms: [
+                    { x: 0,   y: 368, w: 640, h: 14, type: 'solid' },
+                    { x: 30,  y: 312, w: 175, h: 10, type: 'solid' },
+                    { x: 235, y: 312, w: 170, h: 10, type: 'hazard' },
+                    { x: 435, y: 312, w: 175, h: 10, type: 'solid' },
+                    { x: 65,  y: 244, w: 130, h: 10, type: 'falling' },
+                    { x: 255, y: 244, w: 130, h: 10, type: 'moving', moveAxis: 'x', range: 70, speed: 2.1 },
+                    { x: 445, y: 244, w: 130, h: 10, type: 'falling' },
+                    { x: 35,  y: 176, w: 220, h: 10, type: 'solid' },
+                    { x: 385, y: 176, w: 220, h: 10, type: 'solid' },
+                    { x: 110, y: 112, w: 145, h: 10, type: 'falling' },
+                    { x: 385, y: 112, w: 145, h: 10, type: 'falling' },
+                    { x: 220, y: 62,  w: 200, h: 10, type: 'solid' }
+                ],
+                ladders: [
+                    { x: 120, y: 312, h: 56 },
+                    { x: 520, y: 312, h: 56 },
+                    { x: 130, y: 244, h: 68 },
+                    { x: 510, y: 244, h: 68 },
+                    { x: 155, y: 176, h: 68 },
+                    { x: 485, y: 176, h: 68 },
+                    { x: 185, y: 112, h: 64 },
+                    { x: 455, y: 112, h: 64 },
+                    { x: 250, y: 62,  h: 50 },
+                    { x: 390, y: 62,  h: 50 }
+                ],
+                bombs: [
+                    { x: 56,  y: 292 },
+                    { x: 584, y: 292 },
+                    { x: 90,  y: 156 },
+                    { x: 550, y: 156 },
+                    { x: 135, y: 92 },
+                    { x: 505, y: 92 },
+                    { x: 320, y: 42 }
+                ],
+                bullets: [
+                    { x: 160, y: 354, vx: 165, minX: 90,  maxX: 550, color: 0xf43f5e },
+                    { x: 480, y: 354, vx: -155, minX: 90, maxX: 550, color: 0x38bdf8 },
+                    { x: 90,  y: 162, vx: 135, minX: 45,  maxX: 245, color: 0xfacc15 },
+                    { x: 540, y: 162, vx: -135, minX: 395, maxX: 595, color: 0xfacc15 }
+                ]
+            }
+        ];
+
+        // =====================================================================
+        // 3. CANVAS SETUP, STARFIELD & GAME STATE
+        // =====================================================================
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = LOGICAL_W;
+        canvas.height = LOGICAL_H;
+
+        // C64-inspired starfield
+        const stars = Array.from({ length: 85 }, (_, i) => ({
+            x: (i * 97) % LOGICAL_W,
+            y: (i * 53) % (LOGICAL_H - 25),
+            size: (i % 3 === 0) ? 2 : 1,
+            phase: i * 0.7,
+            color: i % 4 === 0 ? '#fde047' : (i % 3 === 0 ? '#7dd3fc' : '#e2e8f0')
+        }));
+
+        function loadHighScore() {
+            try {
+                return parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10) || 0;
+            } catch (_) {
+                return 0;
+            }
+        }
+
+        function saveHighScore(val) {
+            try {
+                localStorage.setItem(STORAGE_KEY, String(val));
+            } catch (_) {}
+        }
+
+        const gameState = {
+            screen: 'title', // 'title', 'playing', 'paused', 'levelClear', 'gameOver', 'victory'
+            levelIdx: 0,
+            score: 0,
+            highScore: loadHighScore(),
+            lives: 3,
+            timeLeft: 60,
+            clock: 0,
+            hitFreeze: 0,
+
+            player: {
+                x: 64,
+                y: 342,
+                w: 12,
+                h: 20,
+                vx: 0,
+                vy: 0,
+                facing: 1, // 1 right, -1 left
+                grounded: false,
+                climbing: false,
+                somersaultAngle: 0,
+                runAnim: 0,
+                invulnTimer: 0
+            },
+
+            platforms: [],
+            ladders: [],
+            bombs: [],
+            bullets: [],
+            particles: [],
+            keys: {},
+            touch: { left: false, right: false, up: false, down: false, jump: false }
+        };
+
+        function addScore(pts) {
+            gameState.score += pts;
+            if (gameState.score > gameState.highScore) {
+                gameState.highScore = gameState.score;
+                saveHighScore(gameState.highScore);
+            }
+            updateHUD();
+        }
+
+        function spawnBurst(x, y, color, count = 16) {
+            for (let i = 0; i < count; i++) {
+                const ang = (i / count) * Math.PI * 2 + Math.random() * 0.4;
+                const spd = 35 + Math.random() * 115;
+                gameState.particles.push({
+                    x,
+                    y,
+                    vx: Math.cos(ang) * spd,
+                    vy: Math.sin(ang) * spd - 25,
+                    life: 0.45 + Math.random() * 0.35,
+                    maxLife: 0.8,
+                    size: 2 + Math.floor(Math.random() * 3),
+                    color
+                });
+            }
+        }
+
+        function loadLevel(idx, resetPlayerFull = true) {
+            const safeIdx = ((idx % LEVELS.length) + LEVELS.length) % LEVELS.length;
+            const lvl = LEVELS[safeIdx];
+            gameState.levelIdx = safeIdx;
+            gameState.timeLeft = lvl.timeLimit;
+            gameState.particles = [];
+
+            gameState.platforms = lvl.platforms.map(p => ({
+                ...p,
+                baseX: p.x,
+                baseY: p.y,
+                phase: Math.random() * Math.PI * 2,
+                state: 'idle',
+                timer: 0
+            }));
+
+            gameState.ladders = lvl.ladders.map(l => ({ ...l }));
+            gameState.bombs = lvl.bombs.map((b, i) => ({
+                x: b.x,
+                y: b.y,
+                collected: false,
+                phase: i * 0.85
+            }));
+            gameState.bullets = lvl.bullets.map(b => ({ ...b }));
+
+            if (resetPlayerFull) {
+                gameState.player.x = lvl.spawn.x;
+                gameState.player.y = lvl.spawn.y;
+                gameState.player.vx = 0;
+                gameState.player.vy = 0;
+                gameState.player.grounded = false;
+                gameState.player.climbing = false;
+                gameState.player.somersaultAngle = 0;
+                gameState.player.invulnTimer = 0.6;
+            }
+
+            document.getElementById('level-banner-text').textContent = lvl.title;
+            syncStageButtons();
+            updateHUD();
+        }
+
+        function showOverlay(mode) {
+            const card = document.getElementById('overlay-card');
+            const badge = document.getElementById('overlay-badge');
+            const title = document.getElementById('overlay-title');
+            const desc = document.getElementById('overlay-desc');
+            const primaryBtn = document.getElementById('btn-overlay-primary');
+            const nextBtn = document.getElementById('btn-overlay-next');
+
+            card.classList.remove('hidden');
+            nextBtn.classList.add('hidden');
+
+            const lvl = LEVELS[gameState.levelIdx];
+
+            if (mode === 'title') {
+                badge.textContent = 'COMMODORE 64 ARCADE TRIBUTE';
+                title.textContent = 'JUMPMAN & JUMPMAN JR.';
+                desc.textContent = 'Run, climb ladders, jump across girders and falling platforms, and defuse all pulsing bombs across 5 classic stages.';
+                primaryBtn.textContent = `PLAY ${lvl.shortLabel}`;
+            } else if (mode === 'paused') {
+                badge.textContent = 'SIMULATION PAUSED';
+                title.textContent = 'PAUSED';
+                desc.textContent = `${lvl.title} — Press Resume or P to continue defusing bombs.`;
+                primaryBtn.textContent = 'RESUME GAME';
+            } else if (mode === 'levelClear') {
+                const timeBonus = Math.max(0, Math.ceil(gameState.timeLeft)) * 25;
+                badge.textContent = 'STAGE COMPLETE';
+                title.textContent = `${lvl.shortLabel} CLEARED!`;
+                desc.textContent = `All bombs defused! Time bonus awarded: +${timeBonus} PTS.`;
+                primaryBtn.textContent = 'REPLAY STAGE';
+                if (gameState.levelIdx < LEVELS.length - 1) {
+                    nextBtn.classList.remove('hidden');
+                    nextBtn.textContent = `NEXT: ${LEVELS[gameState.levelIdx + 1].shortLabel} ▶`;
+                } else {
+                    nextBtn.classList.remove('hidden');
+                    nextBtn.textContent = 'FINAL VICTORY ▶';
+                }
+            } else if (mode === 'gameOver') {
+                badge.textContent = 'OUT OF JUMPMEN';
+                title.textContent = 'GAME OVER';
+                desc.textContent = `Final Score: ${gameState.score.toLocaleString()} • High Score: ${gameState.highScore.toLocaleString()}. Ready for another run?`;
+                primaryBtn.textContent = 'NEW GAME';
+            } else if (mode === 'victory') {
+                badge.textContent = 'ALL 5 STAGES CONQUERED';
+                title.textContent = 'MASTER JUMPMAN!';
+                desc.textContent = `Every vault and hazard maze cleared! Final Score: ${gameState.score.toLocaleString()} • High Score: ${gameState.highScore.toLocaleString()}.`;
+                primaryBtn.textContent = 'PLAY AGAIN';
+            }
+        }
+
+        function hideOverlay() {
+            document.getElementById('overlay-card').classList.add('hidden');
+        }
+
+        function startGameAtLevel(idx, resetScoreAndLives = false) {
+            c64Audio.init();
+            if (resetScoreAndLives) {
+                gameState.score = 0;
+                gameState.lives = 3;
+            }
+            loadLevel(idx, true);
+            gameState.screen = 'playing';
+            hideOverlay();
+            updateHUD();
+        }
+
+        function handlePlayerHazardHit() {
+            if (gameState.player.invulnTimer > 0 || gameState.screen !== 'playing') return;
+            c64Audio.playHit();
+            spawnBurst(gameState.player.x, gameState.player.y - 10, '#f43f5e', 24);
+            gameState.lives -= 1;
+            updateHUD();
+
+            if (gameState.lives <= 0) {
+                gameState.screen = 'gameOver';
+                c64Audio.playGameOver();
+                showOverlay('gameOver');
+            } else {
+                const lvl = LEVELS[gameState.levelIdx];
+                gameState.player.x = lvl.spawn.x;
+                gameState.player.y = lvl.spawn.y;
+                gameState.player.vx = 0;
+                gameState.player.vy = 0;
+                gameState.player.climbing = false;
+                gameState.player.somersaultAngle = 0;
+                gameState.player.invulnTimer = 1.4;
+            }
+        }
+
+        function handleLevelClear() {
+            if (gameState.screen !== 'playing') return;
+            const timeBonus = Math.max(0, Math.ceil(gameState.timeLeft)) * 25;
+            addScore(timeBonus);
+            c64Audio.playLevelClear();
+
+            if (gameState.levelIdx >= LEVELS.length - 1) {
+                gameState.screen = 'victory';
+                showOverlay('victory');
+            } else {
+                gameState.screen = 'levelClear';
+                showOverlay('levelClear');
+            }
+        }
+
+        // =====================================================================
+        // 4. PHYSICS, COLLISIONS, BOMBS, BULLETS & PARTICLE UPDATE
+        // =====================================================================
+        function isNearLadder(px, py) {
+            for (let i = 0; i < gameState.ladders.length; i++) {
+                const l = gameState.ladders[i];
+                if (Math.abs(px - l.x) < 12 && py >= l.y - 6 && py <= l.y + l.h + 8) {
+                    return l;
+                }
+            }
+            return null;
+        }
+
+        function updateGameplay(dt) {
+            if (gameState.screen !== 'playing') return;
+            gameState.clock += dt;
+
+            // Countdown timer
+            gameState.timeLeft -= dt;
+            if (gameState.timeLeft <= 0) {
+                gameState.timeLeft = 0;
+                updateHUD();
+                handlePlayerHazardHit();
+                return;
+            }
+
+            // Update moving & falling platforms
+            gameState.platforms.forEach(p => {
+                if (p.type === 'moving') {
+                    p.phase += dt * p.speed;
+                    const offset = Math.sin(p.phase) * p.range;
+                    if (p.moveAxis === 'x') {
+                        p.x = p.baseX + offset;
+                    } else {
+                        p.y = p.baseY + offset;
+                    }
+                } else if (p.type === 'falling') {
+                    if (p.state === 'shaking') {
+                        p.timer -= dt;
+                        if (p.timer <= 0) {
+                            p.state = 'fallen';
+                            p.timer = 3.2; // Respawn girder after 3.2s
+                        }
+                    } else if (p.state === 'fallen') {
+                        p.timer -= dt;
+                        if (p.timer <= 0) {
+                            p.state = 'idle';
+                            p.y = p.baseY;
+                        }
+                    }
+                }
+            });
+
+            const pl = gameState.player;
+            if (pl.invulnTimer > 0) pl.invulnTimer = Math.max(0, pl.invulnTimer - dt);
+
+            const moveLeft = gameState.keys['ArrowLeft'] || gameState.keys['KeyA'] || gameState.touch.left;
+            const moveRight = gameState.keys['ArrowRight'] || gameState.keys['KeyD'] || gameState.touch.right;
+            const climbUp = gameState.keys['ArrowUp'] || gameState.keys['KeyW'] || gameState.touch.up;
+            const climbDown = gameState.keys['ArrowDown'] || gameState.keys['KeyS'] || gameState.touch.down;
+            const jumpPressed = gameState.keys['Space'] || gameState.keys['KeyZ'] || gameState.keys['ArrowUp'] || gameState.keys['KeyW'] || gameState.touch.jump;
+
+            const ladder = isNearLadder(pl.x, pl.y);
+
+            // Enter or leave ladder climbing
+            if (ladder && (climbUp || climbDown)) {
+                pl.climbing = true;
+                pl.grounded = false;
+                pl.vy = 0;
+                pl.somersaultAngle = 0;
+                pl.x += (ladder.x - pl.x) * Math.min(1, dt * 14);
+            } else if (!ladder) {
+                pl.climbing = false;
+            }
+
+            if (pl.climbing) {
+                const climbSpeed = 112;
+                pl.vy = 0;
+                if (climbUp) pl.vy = -climbSpeed;
+                if (climbDown) pl.vy = climbSpeed;
+                pl.vx = ((moveRight ? 1 : 0) - (moveLeft ? 1 : 0)) * 55;
+                pl.y += pl.vy * dt;
+                pl.x += pl.vx * dt;
+
+                // Clamp within ladder span
+                if (ladder) {
+                    if (pl.y < ladder.y) {
+                        pl.y = ladder.y;
+                        pl.climbing = false;
+                        pl.grounded = true;
+                    } else if (pl.y > ladder.y + ladder.h) {
+                        pl.y = ladder.y + ladder.h;
+                        pl.climbing = false;
+                    }
+                }
+            } else {
+                // Horizontal run & momentum
+                const dir = (moveRight ? 1 : 0) - (moveLeft ? 1 : 0);
+                const runSpeed = 158;
+                if (dir !== 0) {
+                    pl.facing = dir;
+                    pl.vx += (dir * runSpeed - pl.vx) * Math.min(1, dt * 16);
+                    pl.runAnim += dt * 14;
+                } else {
+                    pl.vx *= Math.pow(0.001, dt);
+                    pl.runAnim = 0;
+                }
+
+                // Jump with arc & somersault
+                if (jumpPressed && pl.grounded) {
+                    pl.vy = -345;
+                    pl.grounded = false;
+                    pl.somersaultAngle = 0.01;
+                    c64Audio.playJump();
+                }
+
+                // Gravity
+                pl.vy = Math.min(480, pl.vy + 860 * dt);
+
+                const prevBottom = pl.y;
+                pl.x = Math.max(14, Math.min(LOGICAL_W - 14, pl.x + pl.vx * dt));
+                pl.y += pl.vy * dt;
+
+                if (!pl.grounded && pl.somersaultAngle > 0) {
+                    pl.somersaultAngle += pl.facing * dt * 13.5;
+                }
+
+                // Platform landing & hazard check
+                pl.grounded = false;
+                for (let i = 0; i < gameState.platforms.length; i++) {
+                    const p = gameState.platforms[i];
+                    if (p.type === 'falling' && p.state === 'fallen') continue;
+
+                    const withinX = pl.x + pl.w * 0.42 >= p.x && pl.x - pl.w * 0.42 <= p.x + p.w;
+                    if (withinX && pl.vy >= 0 && prevBottom <= p.y + 7 && pl.y >= p.y) {
+                        if (p.type === 'hazard') {
+                            handlePlayerHazardHit();
+                            return;
+                        }
+                        pl.y = p.y;
+                        pl.vy = 0;
+                        pl.grounded = true;
+                        pl.somersaultAngle = 0;
+
+                        if (p.type === 'falling' && p.state === 'idle') {
+                            p.state = 'shaking';
+                            p.timer = 0.65;
+                        }
+                    }
+                }
+            }
+
+            // Bomb collection / defusal
+            let remainingBombs = 0;
+            gameState.bombs.forEach(b => {
+                b.phase += dt * 5.5;
+                if (b.collected) return;
+                remainingBombs++;
+
+                const dist = Math.hypot(pl.x - b.x, (pl.y - 10) - b.y);
+                if (dist < 17) {
+                    b.collected = true;
+                    remainingBombs--;
+                    addScore(250);
+                    c64Audio.playBombDefuse();
+                    spawnBurst(b.x, b.y, '#38bdf8', 18);
+                }
+            });
+
+            updateHUD();
+
+            if (remainingBombs === 0) {
+                handleLevelClear();
+                return;
+            }
+
+            // Roaming bullets & sparks
+            gameState.bullets.forEach(bul => {
+                bul.x += bul.vx * dt;
+                if (bul.x <= bul.minX) {
+                    bul.x = bul.minX;
+                    bul.vx = Math.abs(bul.vx);
+                } else if (bul.x >= bul.maxX) {
+                    bul.x = bul.maxX;
+                    bul.vx = -Math.abs(bul.vx);
+                }
+
+                const d = Math.hypot(pl.x - bul.x, (pl.y - 10) - bul.y);
+                if (d < 11) {
+                    handlePlayerHazardHit();
+                }
+            });
+
+            // Update particles
+            for (let i = gameState.particles.length - 1; i >= 0; i--) {
+                const pt = gameState.particles[i];
+                pt.x += pt.vx * dt;
+                pt.y += pt.vy * dt;
+                pt.vy += 220 * dt;
+                pt.life -= dt;
+                if (pt.life <= 0) {
+                    gameState.particles.splice(i, 1);
+                }
+            }
+
+            const isRunning = pl.grounded && !pl.climbing && Math.abs(pl.vx) > 25;
+            c64Audio.update(dt, gameState.screen === 'playing', isRunning, pl.climbing);
+        }
+
+        // =====================================================================
+        // 5. C64 PIXEL RENDERING (BACKGROUND, GIRDERS, LADDERS, BOMBS, JUMPMAN)
+        // =====================================================================
+        function drawC64Backdrop() {
+            // Classic C64 deep indigo/violet space gradient
+            const grad = ctx.createLinearGradient(0, 0, 0, LOGICAL_H);
+            grad.addColorStop(0, '#140e2e');
+            grad.addColorStop(0.65, '#1d1542');
+            grad.addColorStop(1, '#261b54');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+
+            // Twinkling stars
+            stars.forEach(s => {
+                const twinkle = 0.45 + 0.55 * Math.sin(gameState.clock * 3.2 + s.phase);
+                ctx.globalAlpha = twinkle;
+                ctx.fillStyle = s.color;
+                ctx.fillRect(s.x, s.y, s.size, s.size);
+            });
+            ctx.globalAlpha = 1;
+        }
+
+        function drawPlatformsAndLadders() {
+            // Ladders
+            gameState.ladders.forEach(l => {
+                ctx.fillStyle = '#38bdf8';
+                ctx.fillRect(l.x - 8, l.y, 3, l.h);
+                ctx.fillRect(l.x + 5, l.y, 3, l.h);
+                ctx.fillStyle = '#bae6fd';
+                for (let ry = l.y + 6; ry < l.y + l.h; ry += 10) {
+                    ctx.fillRect(l.x - 5, ry, 10, 2);
+                }
+            });
+
+            // Platforms / Girders
+            gameState.platforms.forEach(p => {
+                if (p.type === 'falling' && p.state === 'fallen') return;
+
+                let drawX = p.x;
+                let drawY = p.y;
+                if (p.type === 'falling' && p.state === 'shaking') {
+                    drawX += (Math.random() - 0.5) * 4;
+                }
+
+                if (p.type === 'solid') {
+                    ctx.fillStyle = '#9333ea';
+                    ctx.fillRect(drawX, drawY, p.w, p.h);
+                    ctx.fillStyle = '#e879f9';
+                    ctx.fillRect(drawX, drawY, p.w, 2);
+                } else if (p.type === 'falling') {
+                    ctx.fillStyle = p.state === 'shaking' ? '#fb923c' : '#d97706';
+                    ctx.fillRect(drawX, drawY, p.w, p.h);
+                    ctx.fillStyle = '#fde68a';
+                    for (let gx = drawX + 4; gx < drawX + p.w - 4; gx += 12) {
+                        ctx.fillRect(gx, drawY + 2, 6, 4);
+                    }
+                } else if (p.type === 'moving') {
+                    ctx.fillStyle = '#0284c7';
+                    ctx.fillRect(drawX, drawY, p.w, p.h);
+                    ctx.fillStyle = '#7dd3fc';
+                    ctx.fillRect(drawX, drawY, p.w, 2);
+                } else if (p.type === 'hazard') {
+                    const pulse = 0.65 + 0.35 * Math.sin(gameState.clock * 14);
+                    ctx.fillStyle = '#e11d48';
+                    ctx.fillRect(drawX, drawY, p.w, p.h);
+                    ctx.fillStyle = pulse > 0.75 ? '#fef08a' : '#fda4af';
+                    for (let sx = drawX + 2; sx < drawX + p.w - 4; sx += 8) {
+                        ctx.fillRect(sx, drawY - 2, 4, 3);
+                    }
+                }
+            });
+        }
+
+        function drawBombs() {
+            gameState.bombs.forEach(b => {
+                if (b.collected) return;
+                const bob = Math.sin(b.phase) * 2;
+                const bx = Math.round(b.x);
+                const by = Math.round(b.y + bob);
+
+                // Fuse & spark
+                ctx.fillStyle = '#e2e8f0';
+                ctx.fillRect(bx - 1, by - 10, 2, 4);
+                ctx.fillStyle = Math.sin(b.phase * 2.5) > 0 ? '#fde047' : '#fb7185';
+                ctx.fillRect(bx - 2, by - 13, 5, 3);
+
+                // Bomb body
+                ctx.fillStyle = '#1e293b';
+                ctx.fillRect(bx - 6, by - 6, 12, 11);
+                ctx.fillStyle = '#ef4444';
+                ctx.fillRect(bx - 4, by - 4, 8, 7);
+                ctx.fillStyle = '#fef08a';
+                ctx.fillRect(bx - 2, by - 2, 3, 3);
+            });
+        }
+
+        function drawBullets() {
+            gameState.bullets.forEach(bul => {
+                const bx = Math.round(bul.x);
+                const by = Math.round(bul.y);
+                ctx.fillStyle = '#' + bul.color.toString(16).padStart(6, '0');
+                ctx.fillRect(bx - 5, by - 3, 10, 6);
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(bx - 2, by - 1, 4, 2);
+            });
+        }
+
+        function drawJumpmanSprite() {
+            const pl = gameState.player;
+            if (pl.invulnTimer > 0 && Math.floor(pl.invulnTimer * 16) % 2 === 0) {
+                return;
+            }
+
+            // Jumpman Jr. is slightly more compact/nimble on Stages 4 & 5
+            const isJr = gameState.levelIdx >= 3;
+            const scale = isJr ? 0.88 : 1.0;
+
+            ctx.save();
+            ctx.translate(Math.round(pl.x), Math.round(pl.y - 10 * scale));
+            if (!pl.grounded && !pl.climbing && pl.somersaultAngle !== 0) {
+                ctx.rotate(pl.somersaultAngle);
+            }
+            ctx.scale(pl.facing * scale, scale);
+
+            // Classic C64 Jumpman palette: red cap/shirt, blue overalls, tan face
+            ctx.fillStyle = '#ef4444'; // Cap & torso
+            ctx.fillRect(-5, -10, 10, 3);
+            ctx.fillRect(-4, -5, 8, 5);
+
+            ctx.fillStyle = '#fde68a'; // Face
+            ctx.fillRect(-2, -7, 6, 3);
+
+            ctx.fillStyle = '#3b82f6'; // Overalls / pants
+            ctx.fillRect(-4, 0, 8, 4);
+
+            // Animated legs
+            const legSwing = pl.climbing
+                ? Math.sin(pl.y * 0.35) * 3
+                : (pl.grounded && Math.abs(pl.vx) > 20 ? Math.sin(pl.runAnim) * 4 : 0);
+            ctx.fillStyle = '#f8fafc';
+            ctx.fillRect(-4 + legSwing, 4, 3, 6);
+            ctx.fillRect(1 - legSwing, 4, 3, 6);
+
+            ctx.restore();
+        }
+
+        function drawParticles() {
+            gameState.particles.forEach(pt => {
+                ctx.globalAlpha = Math.max(0, pt.life / pt.maxLife);
+                ctx.fillStyle = pt.color;
+                ctx.fillRect(Math.round(pt.x), Math.round(pt.y), pt.size, pt.size);
+            });
+            ctx.globalAlpha = 1;
+        }
+
+        function renderScene() {
+            drawC64Backdrop();
+            drawPlatformsAndLadders();
+            drawBombs();
+            drawBullets();
+            drawJumpmanSprite();
+            drawParticles();
+        }
+
+        // =====================================================================
+        // 6. HUD, STAGE SELECTOR, RESPONSIVE RESIZING & INPUT HANDLERS
+        // =====================================================================
+        function updateHUD() {
+            document.getElementById('hud-score').textContent = String(gameState.score).padStart(6, '0');
+            document.getElementById('hud-high').textContent = String(gameState.highScore).padStart(6, '0');
+            document.getElementById('hud-level').textContent = `${gameState.levelIdx + 1}/${LEVELS.length}`;
+
+            const totalBombs = gameState.bombs.length;
+            const defusedBombs = gameState.bombs.filter(b => b.collected).length;
+            document.getElementById('hud-bombs').textContent = `${defusedBombs}/${totalBombs}`;
+            document.getElementById('hud-time').textContent = String(Math.max(0, Math.ceil(gameState.timeLeft))).padStart(3, '0');
+            document.getElementById('hud-lives').textContent = '♥'.repeat(Math.max(0, gameState.lives)) || '0';
+        }
+
+        function syncStageButtons() {
+            document.querySelectorAll('.stage-pick-btn').forEach((btn, i) => {
+                btn.classList.toggle('active', i === gameState.levelIdx);
+            });
+        }
+
+        function buildStageSelector() {
+            const wrap = document.getElementById('stage-selector');
+            wrap.innerHTML = '';
+            LEVELS.forEach((lvl, idx) => {
+                const btn = document.createElement('button');
+                btn.className = 'stage-pick-btn c64-btn rounded-lg px-2 py-1 text-[11px] font-bold text-slate-200 shrink-0 cursor-pointer';
+                btn.textContent = lvl.shortLabel;
+                btn.addEventListener('click', () => {
+                    startGameAtLevel(idx, gameState.screen === 'title' || gameState.screen === 'gameOver' || gameState.screen === 'victory');
+                });
+                wrap.appendChild(btn);
+            });
+            syncStageButtons();
+        }
+
+        function fitCanvasToViewport() {
+            const wrap = document.getElementById('canvas-wrap');
+            const availW = Math.max(240, wrap.clientWidth);
+            const availH = Math.max(160, wrap.clientHeight);
+            const aspect = LOGICAL_W / LOGICAL_H;
+
+            let renderW = availW;
+            let renderH = renderW / aspect;
+            if (renderH > availH) {
+                renderH = availH;
+                renderW = renderH * aspect;
+            }
+
+            canvas.style.width = `${Math.floor(renderW)}px`;
+            canvas.style.height = `${Math.floor(renderH)}px`;
+        }
+
+        // Keyboard controls
+        window.addEventListener('keydown', (e) => {
+            c64Audio.init();
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+                e.preventDefault();
+            }
+            gameState.keys[e.code] = true;
+            if (e.repeat) return;
+
+            if (e.code === 'KeyP') {
+                if (gameState.screen === 'playing') {
+                    gameState.screen = 'paused';
+                    showOverlay('paused');
+                } else if (gameState.screen === 'paused') {
+                    gameState.screen = 'playing';
+                    hideOverlay();
+                }
+            } else if (e.code === 'KeyM') {
+                const muted = c64Audio.toggleMute();
+                document.getElementById('btn-mute').textContent = muted ? '🔇 MUTED [M]' : '🔊 SFX [M]';
+            } else if (e.code === 'KeyR') {
+                startGameAtLevel(gameState.levelIdx, false);
+            } else if (e.code === 'Enter' && gameState.screen !== 'playing') {
+                if (gameState.screen === 'paused') {
+                    gameState.screen = 'playing';
+                    hideOverlay();
+                } else if (gameState.screen === 'levelClear') {
+                    startGameAtLevel(gameState.levelIdx + 1, false);
+                } else {
+                    startGameAtLevel(0, true);
+                }
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            gameState.keys[e.code] = false;
+        });
+
+        // Touch D-Pad & Jump button bindings
+        function bindTouchButton(id, flagKey) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            const press = (e) => {
+                e.preventDefault();
+                c64Audio.init();
+                gameState.touch[flagKey] = true;
+                el.classList.add('pressed');
+            };
+            const release = (e) => {
+                e.preventDefault();
+                gameState.touch[flagKey] = false;
+                el.classList.remove('pressed');
+            };
+            el.addEventListener('pointerdown', press);
+            el.addEventListener('pointerup', release);
+            el.addEventListener('pointerleave', release);
+            el.addEventListener('pointercancel', release);
+        }
+
+        bindTouchButton('t-left', 'left');
+        bindTouchButton('t-right', 'right');
+        bindTouchButton('t-up', 'up');
+        bindTouchButton('t-down', 'down');
+        bindTouchButton('t-jump', 'jump');
+
+        // Top toolbar & overlay buttons
+        document.getElementById('btn-music').addEventListener('click', () => {
+            c64Audio.init();
+            const on = c64Audio.toggleMusic();
+            const btn = document.getElementById('btn-music');
+            btn.textContent = on ? '🎵 MUSIC: ON' : '🎵 MUSIC: OFF';
+            btn.classList.toggle('active', on);
+        });
+
+        document.getElementById('btn-mute').addEventListener('click', () => {
+            c64Audio.init();
+            const muted = c64Audio.toggleMute();
+            document.getElementById('btn-mute').textContent = muted ? '🔇 MUTED [M]' : '🔊 SFX [M]';
+        });
+
+        document.getElementById('btn-restart').addEventListener('click', () => {
+            startGameAtLevel(gameState.levelIdx, false);
+        });
+
+        document.getElementById('btn-pause').addEventListener('click', () => {
+            c64Audio.init();
+            if (gameState.screen === 'playing') {
+                gameState.screen = 'paused';
+                showOverlay('paused');
+            } else if (gameState.screen === 'paused') {
+                gameState.screen = 'playing';
+                hideOverlay();
+            }
+        });
+
+        document.getElementById('btn-overlay-primary').addEventListener('click', () => {
+            if (gameState.screen === 'paused') {
+                gameState.screen = 'playing';
+                hideOverlay();
+            } else if (gameState.screen === 'levelClear') {
+                startGameAtLevel(gameState.levelIdx, false);
+            } else if (gameState.screen === 'title') {
+                startGameAtLevel(gameState.levelIdx, true);
+            } else {
+                startGameAtLevel(0, true);
+            }
+        });
+
+        document.getElementById('btn-overlay-next').addEventListener('click', () => {
+            if (gameState.levelIdx < LEVELS.length - 1) {
+                startGameAtLevel(gameState.levelIdx + 1, false);
+            } else {
+                gameState.screen = 'victory';
+                showOverlay('victory');
+            }
+        });
+
+        window.addEventListener('resize', fitCanvasToViewport);
+
+        // =====================================================================
+        // 7. MAIN LOOP & INITIALIZATION
+        // =====================================================================
+        let lastFrame = performance.now();
+
+        function loop(now) {
+            requestAnimationFrame(loop);
+            const dt = Math.min((now - lastFrame) / 1000, 0.05);
+            lastFrame = now;
+
+            if (gameState.screen === 'playing') {
+                updateGameplay(dt);
+            } else {
+                gameState.clock += dt * 0.5;
+                c64Audio.update(dt, false, false, false);
+            }
+
+            renderScene();
+        }
+
+        window.onload = function () {
+            buildStageSelector();
+            loadLevel(0, true);
+            fitCanvasToViewport();
+            showOverlay('title');
+            requestAnimationFrame(loop);
+        };
+    </script>
+</body>
+</html>

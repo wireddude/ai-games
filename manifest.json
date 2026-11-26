@@ -6,6 +6,12 @@
     "modified": 1795712451
   },
   {
+    "name": "asteroids_1979_vector_space_arcade.html",
+    "title": "ASTEROIDS 1979 \u2014 Vector Space Arcade",
+    "size": 46122,
+    "modified": 1795713852
+  },
+  {
     "name": "breakout.html",
     "title": "Breakout",
     "size": 13004,
@@ -16,6 +22,12 @@
     "title": "Cat Simulator \u2014 Chaos Mode",
     "size": 45902,
     "modified": 1795115576
+  },
+  {
+    "name": "centipede_1981_atari_arcade_tribute.html",
+    "title": "CENTIPEDE 1981 \u2014 Atari Arcade Tribute",
+    "size": 60769,
+    "modified": 1795714307
   },
   {
     "name": "chess.html",
@@ -52,6 +64,12 @@
     "title": "Deep Space \u2014 a tiny universe simulator",
     "size": 22792,
     "modified": 1791297275
+  },
+  {
+    "name": "defender_1981_williams_electronics_arcade_tribute.html",
+    "title": "DEFENDER 1981 \u2014 Williams Electronics Arcade Tribute",
+    "size": 76072,
+    "modified": 1795714422
   },
   {
     "name": "donkey_kong_1981_arcade_edition.html",
@@ -108,6 +126,12 @@
     "modified": 1795049094
   },
   {
+    "name": "galaxian_1979_namco_arcade_tribute.html",
+    "title": "GALAXIAN 1979 \u2014 Namco Arcade Tribute",
+    "size": 53042,
+    "modified": 1795713913
+  },
+  {
     "name": "geometry-dash.html",
     "title": "Geometry Dash Clone",
     "size": 33830,
@@ -124,6 +148,18 @@
     "title": "GTA 7 \u2014 8-Bit Demake",
     "size": 12574,
     "modified": 1795137929
+  },
+  {
+    "name": "jumpman_jumpman_jr_c64_arcade_tribute.html",
+    "title": "JUMPMAN &amp; JUMPMAN JR. \u2014 C64 Arcade Tribute",
+    "size": 60076,
+    "modified": 1795713844
+  },
+  {
+    "name": "leisure_suit_larry_lounge_lizards_1987_ega_comedy_adventure.html",
+    "title": "LEISURE SUIT LARRY: LOUNGE LIZARDS 1987 \u2014 EGA Comedy Adventure",
+    "size": 85736,
+    "modified": 1795714303
   },
   {
     "name": "missile_command_1980.html",
@@ -222,10 +258,28 @@
     "modified": 1793840037
   },
   {
+    "name": "space_invaders_1978_taito_arcade_tribute.html",
+    "title": "SPACE INVADERS 1978 \u2014 Taito Arcade Tribute",
+    "size": 49971,
+    "modified": 1795714106
+  },
+  {
+    "name": "super_breakout_1978_atari_arcade_tribute.html",
+    "title": "SUPER BREAKOUT 1978 \u2014 Atari Arcade Tribute",
+    "size": 51883,
+    "modified": 1795714445
+  },
+  {
     "name": "super_mario_bros_1985_arcade_edition.html",
     "title": "SUPER MARIO BROS. 1985 \u2014 Arcade Edition",
     "size": 97914,
     "modified": 1795712387
+  },
+  {
+    "name": "tempest_1981_vector_tube_arcade.html",
+    "title": "TEMPEST 1981 \u2014 Vector Tube Arcade",
+    "size": 55116,
+    "modified": 1795713988
   },
   {
     "name": "tetris.html",

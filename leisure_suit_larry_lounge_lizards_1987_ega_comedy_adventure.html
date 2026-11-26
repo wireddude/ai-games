@@ -1,0 +1,1895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>LEISURE SUIT LARRY: LOUNGE LIZARDS 1987 — EGA Comedy Adventure</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&family=JetBrains+Mono:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0b0718;
+            font-family: 'Inter', sans-serif;
+            color: #f8fafc;
+        }
+        .ega-font {
+            font-family: 'JetBrains Mono', monospace;
+            font-variant-numeric: tabular-nums;
+        }
+        #ega-canvas {
+            display: block;
+            image-rendering: pixelated;
+            cursor: crosshair;
+            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.75), 0 0 0 2px rgba(168, 85, 247, 0.4);
+        }
+        .ega-panel {
+            background: rgba(18, 12, 38, 0.92);
+            border: 1px solid rgba(192, 132, 252, 0.34);
+            box-shadow: 0 8px 24px rgba(4, 2, 12, 0.65);
+        }
+        .ega-btn {
+            background: rgba(46, 28, 92, 0.9);
+            border: 1px solid rgba(216, 180, 254, 0.36);
+            transition: transform 0.07s ease, background-color 0.14s ease, border-color 0.14s ease;
+        }
+        .ega-btn:hover {
+            background: rgba(74, 44, 145, 0.98);
+            border-color: #f472b6;
+        }
+        .ega-btn:active {
+            transform: scale(0.96);
+        }
+        .ega-btn.active {
+            background: rgba(219, 39, 119, 0.45);
+            border-color: #f9a8d4;
+            color: #fdf2f8;
+        }
+        .parser-input {
+            user-select: text;
+            -webkit-user-select: text;
+        }
+        #narrator-log {
+            user-select: text;
+            -webkit-user-select: text;
+        }
+    </style>
+</head>
+<body class="w-full h-full overflow-hidden flex flex-col justify-between p-2 sm:p-2.5 gap-1.5">
+
+    <!-- Top Adventure HUD: Location, Score (0/250), Bucks & System Controls -->
+    <header class="w-full max-w-6xl mx-auto ega-panel rounded-xl px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 shrink-0 z-20">
+        <div class="flex flex-wrap items-center gap-3 sm:gap-5 ega-font text-xs">
+            <div>
+                <span class="text-[10px] text-fuchsia-300/80 block leading-none">LOCATION</span>
+                <span id="hud-room" class="font-extrabold text-amber-300">OUTSIDE LEFTY'S LOUNGE</span>
+            </div>
+            <div>
+                <span class="text-[10px] text-cyan-300/80 block leading-none">SCORE</span>
+                <span id="hud-score" class="font-extrabold text-white">0 / 250</span>
+            </div>
+            <div>
+                <span class="text-[10px] text-emerald-300/80 block leading-none">BUCKS</span>
+                <span id="hud-cash" class="font-extrabold text-emerald-300">$45</span>
+            </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-1">
+            <button id="btn-hint" class="ega-btn rounded-lg px-2 py-1 text-[11px] font-bold text-amber-200 cursor-pointer" title="Get a Clever Hint">
+                💡 HINT
+            </button>
+            <button id="btn-save" class="ega-btn rounded-lg px-2 py-1 text-[11px] font-bold text-cyan-200 cursor-pointer" title="Save Adventure">
+                💾 SAVE
+            </button>
+            <button id="btn-load" class="ega-btn rounded-lg px-2 py-1 text-[11px] font-bold text-cyan-200 cursor-pointer" title="Load Saved Adventure">
+                📂 LOAD
+            </button>
+            <button id="btn-music" class="ega-btn active rounded-lg px-2 py-1 text-[11px] font-bold text-pink-200 cursor-pointer" title="Toggle Lounge Synth Loop">
+                🎵 LOUNGE: ON
+            </button>
+            <button id="btn-mute" class="ega-btn rounded-lg px-2 py-1 text-[11px] font-bold text-emerald-200 cursor-pointer" title="Mute / Unmute SFX [M]">
+                🔊 SFX [M]
+            </button>
+            <button id="btn-pause" class="ega-btn rounded-lg px-2 py-1 text-[11px] font-bold text-amber-200 cursor-pointer" title="Pause / Resume [P]">
+                PAUSE [P]
+            </button>
+            <button id="btn-reset" class="ega-btn rounded-lg px-2 py-1 text-[11px] font-bold text-rose-200 cursor-pointer" title="Reset Adventure [R]">
+                ↻ RESET [R]
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Stage: 16-Color EGA Canvas + Narrator / Dialogue Log -->
+    <main class="w-full max-w-6xl mx-auto flex-1 min-h-0 flex flex-col lg:flex-row gap-2">
+        <!-- Left/Center: EGA Graphic Scene Canvas -->
+        <div id="canvas-container" class="relative flex-1 min-h-0 flex items-center justify-center bg-slate-950/50 rounded-xl overflow-hidden border border-purple-500/25">
+            <canvas id="ega-canvas"></canvas>
+
+            <!-- Toast Status Banner (Save/Load/Hint/Victory) -->
+            <div id="status-toast" class="hidden absolute top-3 left-1/2 -translate-x-1/2 ega-panel rounded-full px-4 py-1 ega-font text-xs font-bold text-amber-300 z-20 pointer-events-none"></div>
+
+            <!-- Title / Pause / Penthouse Victory Overlay -->
+            <div id="modal-overlay" class="absolute inset-0 flex items-center justify-center p-4 bg-slate-950/70 z-30">
+                <div class="ega-panel rounded-2xl max-w-md w-full p-5 text-center flex flex-col gap-3">
+                    <div id="ov-badge" class="ega-font text-[11px] font-bold uppercase tracking-widest text-pink-300">
+                        1987 EGA LOUNGE COMEDY ADVENTURE
+                    </div>
+                    <h1 id="ov-title" class="text-xl sm:text-2xl font-extrabold text-amber-300 tracking-wide">
+                        LEISURE SUIT LARRY
+                    </h1>
+                    <p id="ov-desc" class="text-xs sm:text-sm text-slate-200 leading-relaxed">
+                        Slip on your sharpest polyester leisure suit, jingle your gold chain, sweet-talk the nightlife crowd, score a VIP pass, and ride up to the Neon Penthouse Suite.
+                    </p>
+                    <div class="bg-slate-950/75 border border-purple-400/25 rounded-xl p-2.5 text-left text-[11px] text-slate-300 ega-font space-y-1">
+                        <div><span class="text-amber-300 font-bold">CLICK SCENE:</span> Walk or trigger smart action on hotspots</div>
+                        <div><span class="text-cyan-300 font-bold">PARSER:</span> <span class="text-slate-200">look, walk to bar, talk to bouncer, take mints, dance, use keycard</span></div>
+                    </div>
+                    <button id="btn-ov-start" class="ega-btn active rounded-xl py-2.5 px-6 text-xs sm:text-sm font-extrabold text-white cursor-pointer">
+                        START NIGHT ON THE TOWN
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: Narrator Feed & NPC Dialogue Choices -->
+        <aside class="w-full lg:w-80 xl:w-96 ega-panel rounded-xl p-2.5 flex flex-col justify-between gap-2 shrink-0 max-h-44 lg:max-h-none">
+            <div class="flex items-center justify-between border-b border-purple-400/20 pb-1">
+                <span class="ega-font text-[10px] font-bold tracking-wider text-fuchsia-300">NARRATOR &amp; DIALOGUE</span>
+                <span id="room-exits-hint" class="ega-font text-[10px] text-cyan-300">EXITS: LOUNGE</span>
+            </div>
+
+            <div id="narrator-log" class="flex-1 overflow-y-auto text-xs leading-relaxed text-slate-100 space-y-1.5 pr-1"></div>
+
+            <!-- Interactive NPC Dialogue Options (Shown when chatting with an NPC) -->
+            <div id="dialogue-box" class="hidden flex-col gap-1 border-t border-pink-400/30 pt-1.5">
+                <div class="ega-font text-[10px] font-bold text-pink-300">DIALOGUE OPTIONS:</div>
+                <div id="dialogue-choices" class="flex flex-col gap-1"></div>
+            </div>
+        </aside>
+    </main>
+
+    <!-- Bottom Parser Bar, Quick Verbs & Inventory Strip -->
+    <footer class="w-full max-w-6xl mx-auto ega-panel rounded-xl p-2 flex flex-col gap-1.5 shrink-0 z-20">
+        <!-- Quick Verbs + Text Parser Input -->
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-1.5">
+            <div class="flex items-center gap-1 overflow-x-auto shrink-0">
+                <button data-verb="look" class="verb-btn ega-btn rounded-lg px-2 py-1 ega-font text-[11px] font-bold text-cyan-200 cursor-pointer">LOOK</button>
+                <button data-verb="walk to " class="verb-btn ega-btn rounded-lg px-2 py-1 ega-font text-[11px] font-bold text-emerald-200 cursor-pointer">WALK</button>
+                <button data-verb="talk to " class="verb-btn ega-btn rounded-lg px-2 py-1 ega-font text-[11px] font-bold text-pink-200 cursor-pointer">TALK</button>
+                <button data-verb="take " class="verb-btn ega-btn rounded-lg px-2 py-1 ega-font text-[11px] font-bold text-amber-200 cursor-pointer">TAKE</button>
+                <button data-verb="use " class="verb-btn ega-btn rounded-lg px-2 py-1 ega-font text-[11px] font-bold text-purple-200 cursor-pointer">USE</button>
+                <button data-verb="dance" class="verb-btn ega-btn rounded-lg px-2 py-1 ega-font text-[11px] font-bold text-fuchsia-200 cursor-pointer">DANCE</button>
+                <button data-verb="inventory" class="verb-btn ega-btn rounded-lg px-2 py-1 ega-font text-[11px] font-bold text-slate-200 cursor-pointer">INV</button>
+            </div>
+
+            <form id="parser-form" class="flex-1 flex items-center gap-1.5">
+                <span class="ega-font text-xs font-extrabold text-amber-300 pl-1">&gt;</span>
+                <input
+                    id="parser-input"
+                    type="text"
+                    autocomplete="off"
+                    placeholder="What do you want to do? (e.g., look, talk to bouncer, take mints, dance)"
+                    class="parser-input flex-1 bg-slate-950/85 border border-purple-400/35 rounded-lg px-2.5 py-1 text-xs ega-font text-white placeholder-slate-400 focus:outline-none focus:border-pink-400"
+                />
+                <button type="submit" class="ega-btn active rounded-lg px-3 py-1 text-xs font-extrabold text-white cursor-pointer">
+                    DO IT
+                </button>
+            </form>
+        </div>
+
+        <!-- Inventory Bar -->
+        <div class="flex items-center gap-2 overflow-x-auto pt-0.5 border-t border-purple-400/15">
+            <span class="ega-font text-[10px] font-bold text-amber-300 shrink-0">POCKETS:</span>
+            <div id="inventory-strip" class="flex items-center gap-1.5 text-xs"></div>
+        </div>
+    </footer>
+
+    <script>
+        /**
+         * LEISURE SUIT LARRY: LOUNGE LIZARDS 1987 — EGA COMEDY ADVENTURE
+         * Self-contained Single-File HTML5 Canvas + Web Audio API Comedy Adventure
+         * Logical EGA-style resolution: 640 x 360 rendered crisply with zero scanlines.
+         */
+
+        const EGA_W = 640;
+        const EGA_H = 360;
+        const SAVE_KEY = 'lsl_1987_ega_save_v1';
+
+        // Classic 16-color EGA-inspired palette
+        const EGA = {
+            black: '#090614',
+            blue: '#1d4ed8',
+            green: '#15803d',
+            cyan: '#0891b2',
+            red: '#be123c',
+            magenta: '#a21caf',
+            brown: '#78350f',
+            lightGray: '#cbd5e1',
+            darkGray: '#475569',
+            lightBlue: '#60a5fa',
+            lightGreen: '#4ade80',
+            lightCyan: '#22d3ee',
+            lightRed: '#fb7185',
+            lightMagenta: '#e879f9',
+            yellow: '#facc15',
+            white: '#f8fafc',
+            neonPink: '#f472b6',
+            gold: '#fbbf24',
+            tan: '#fcd34d'
+        };
+
+        // =====================================================================
+        // 1. WEB AUDIO API RETRO LOUNGE SYNTH & ADVENTURE SFX ENGINE
+        // =====================================================================
+        class LarryAudioEngine {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+                this.musicOn = true;
+                this.stepTimer = 0;
+                this.musicTimer = 0;
+                this.noteIdx = 0;
+
+                // Cheeky 80s lounge / disco bass & synth groove
+                this.bassLine = [
+                    110.00, 0, 130.81, 146.83,
+                    164.81, 0, 146.83, 130.81,
+                    98.00,  0, 123.47, 146.83,
+                    130.81, 0, 98.00,  110.00
+                ];
+                this.leadLine = [
+                    440.00, 523.25, 0, 659.25,
+                    587.33, 523.25, 493.88, 0,
+                    392.00, 493.88, 0, 587.33,
+                    523.25, 0, 440.00, 0
+                ];
+            }
+
+            init() {
+                if (this.ctx) {
+                    if (this.ctx.state === 'suspended') {
+                        this.ctx.resume().catch(() => {});
+                    }
+                    return;
+                }
+                try {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                } catch (err) {
+                    console.warn('Web Audio API unavailable:', err);
+                }
+            }
+
+            toggleMute() {
+                this.muted = !this.muted;
+                return this.muted;
+            }
+
+            toggleMusic() {
+                this.musicOn = !this.musicOn;
+                return this.musicOn;
+            }
+
+            tone(freq, type, t, dur, vol = 0.05, slideTo = null) {
+                if (this.muted || !this.ctx || !freq || freq <= 0) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, t);
+                if (slideTo) {
+                    osc.frequency.exponentialRampToValueAtTime(Math.max(28, slideTo), t + dur);
+                }
+                gain.gain.setValueAtTime(0.001, t);
+                gain.gain.linearRampToValueAtTime(vol, t + 0.007);
+                gain.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(t);
+                osc.stop(t + dur + 0.02);
+            }
+
+            playClick() {
+                if (!this.ctx || this.muted) return;
+                this.tone(720, 'square', this.ctx.currentTime, 0.045, 0.035, 480);
+            }
+
+            playFootstep() {
+                if (!this.ctx || this.muted) return;
+                this.tone(135 + Math.random() * 20, 'triangle', this.ctx.currentTime, 0.035, 0.028, 75);
+            }
+
+            playDialogueBlip(pitch = 420) {
+                if (!this.ctx || this.muted) return;
+                this.tone(pitch + (Math.random() - 0.5) * 65, 'square', this.ctx.currentTime, 0.04, 0.025);
+            }
+
+            playPickup() {
+                if (!this.ctx || this.muted) return;
+                const now = this.ctx.currentTime;
+                this.tone(587.33, 'triangle', now, 0.08, 0.055);
+                this.tone(880.00, 'triangle', now + 0.07, 0.14, 0.06);
+            }
+
+            playScoreJingle() {
+                if (!this.ctx || this.muted) return;
+                const now = this.ctx.currentTime;
+                [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => {
+                    this.tone(f, 'square', now + i * 0.07, 0.11, 0.05);
+                });
+            }
+
+            playFailWahWah() {
+                if (!this.ctx || this.muted) return;
+                const now = this.ctx.currentTime;
+                this.tone(246.94, 'sawtooth', now, 0.16, 0.05, 220);
+                this.tone(220.00, 'sawtooth', now + 0.17, 0.16, 0.05, 196);
+                this.tone(196.00, 'sawtooth', now + 0.34, 0.34, 0.055, 110);
+            }
+
+            playVictoryFanfare() {
+                if (!this.ctx || this.muted) return;
+                const now = this.ctx.currentTime;
+                const notes = [523.25, 659.25, 783.99, 1046.5, 880.0, 1046.5, 1318.5];
+                notes.forEach((f, i) => {
+                    this.tone(f, 'square', now + i * 0.095, 0.15, 0.055);
+                });
+            }
+
+            update(dt, walking, isDanceRoom) {
+                if (!this.ctx || this.muted) return;
+
+                if (walking) {
+                    this.stepTimer -= dt;
+                    if (this.stepTimer <= 0) {
+                        this.stepTimer = 0.21;
+                        this.playFootstep();
+                    }
+                } else {
+                    this.stepTimer = 0.05;
+                }
+
+                if (this.musicOn) {
+                    this.musicTimer -= dt;
+                    const tempo = isDanceRoom ? 0.15 : 0.21;
+                    if (this.musicTimer <= 0) {
+                        this.musicTimer = tempo;
+                        const idx = this.noteIdx % this.bassLine.length;
+                        const now = this.ctx.currentTime;
+                        if (this.bassLine[idx] > 0) {
+                            this.tone(this.bassLine[idx], 'triangle', now, tempo * 0.85, 0.032);
+                        }
+                        if (this.leadLine[idx] > 0) {
+                            this.tone(this.leadLine[idx], isDanceRoom ? 'square' : 'sine', now, tempo * 0.72, 0.018);
+                        }
+                        this.noteIdx++;
+                    }
+                }
+            }
+        }
+
+        const lAudio = new LarryAudioEngine();
+
+        // =====================================================================
+        // 2. INVENTORY CATALOG, ROOMS, HOTSPOTS & COMEDY DIALOGUE TREES
+        // =====================================================================
+        const ITEMS_DB = {
+            mints: {
+                id: 'mints',
+                name: 'Breath Mints',
+                icon: '🍬',
+                examine: 'Arctic-blast "Chiclets of Destiny." Essential before whispering sweet nothings to anyone.'
+            },
+            coin: {
+                id: 'coin',
+                name: 'Lucky Token',
+                icon: '🪙',
+                examine: 'A heavy brass arcade/jukebox token stamped "LEFTY SAYS YES."'
+            },
+            mixtape: {
+                id: 'mixtape',
+                name: 'Synth Mixtape',
+                icon: '📼',
+                examine: 'A C-90 cassette labeled "SMOOTH SYNTH & KEYTAR JAMS VOL. IV."'
+            },
+            cocktail: {
+                id: 'cocktail',
+                name: 'Velvet Fizz',
+                icon: '🍹',
+                examine: 'A neon-pink umbrella drink garnished with a plastic flamingo.'
+            },
+            vipPass: {
+                id: 'vipPass',
+                name: 'VIP Pass',
+                icon: '🎫',
+                examine: 'A laminated backstage/VIP lanyard signed by DJ Flash.'
+            },
+            keycard: {
+                id: 'keycard',
+                name: 'Penthouse Keycard',
+                icon: '🗝️',
+                examine: 'A gold magnetic card granting access to the Neon Penthouse Suite.'
+            }
+        };
+
+        const ROOMS = {
+            outside: {
+                id: 'outside',
+                title: "OUTSIDE LEFTY'S LOUNGE",
+                exitsText: 'EXITS: LOUNGE DOOR',
+                walkFloor: { minX: 30, maxX: 610, y: 292 },
+                hotspots: [
+                    {
+                        id: 'neon_sign',
+                        label: 'Neon Sign',
+                        x: 215, y: 55, w: 210, h: 52,
+                        walkX: 250, walkY: 292,
+                        look: 'A buzzing pink-and-cyan neon sign reads "LEFTY\'S LOUNGE." One "E" flickers like it\'s had three tequilas.'
+                    },
+                    {
+                        id: 'dumpster',
+                        label: 'Alley Dumpster',
+                        x: 42, y: 215, w: 92, h: 72,
+                        walkX: 115, walkY: 292,
+                        look: 'A green metal dumpster smelling faintly of stale pretzels and broken dreams. Something shiny glints near the base.'
+                    },
+                    {
+                        id: 'puddle',
+                        label: 'Neon Puddle',
+                        x: 150, y: 302, w: 120, h: 28,
+                        walkX: 195, walkY: 296,
+                        look: 'A shallow puddle reflecting purple neon light. Stepping in it won\'t ruin your white polyester shoes—mostly.'
+                    },
+                    {
+                        id: 'payphone',
+                        label: 'Payphone',
+                        x: 455, y: 175, w: 46, h: 78,
+                        walkX: 475, walkY: 292,
+                        look: 'A 1987 street payphone. The coin return slot looks suspiciously inviting.'
+                    },
+                    {
+                        id: 'bouncer',
+                        label: 'Bouncer',
+                        x: 342, y: 185, w: 44, h: 95,
+                        walkX: 310, walkY: 292,
+                        look: 'Bruno the Bouncer: six-foot-four of sculpted velvet rope and zero patience for uncool walk-ups.'
+                    },
+                    {
+                        id: 'lounge_door',
+                        label: 'Lounge Door',
+                        x: 265, y: 155, w: 68, h: 125,
+                        walkX: 298, walkY: 292,
+                        look: 'Heavy oak doors into Lefty\'s Lounge. Bruno blocks casual entry unless you bribe or impress him.'
+                    }
+                ]
+            },
+            lounge: {
+                id: 'lounge',
+                title: "INSIDE LEFTY'S LOUNGE",
+                exitsText: 'EXITS: STREET, DISCO FLOOR, HOTEL LOBBY',
+                walkFloor: { minX: 40, maxX: 600, y: 295 },
+                hotspots: [
+                    {
+                        id: 'bartender',
+                        label: 'Lefty (Bartender)',
+                        x: 235, y: 135, w: 48, h: 76,
+                        walkX: 245, walkY: 278,
+                        look: 'Lefty, the lounge\'s grizzled mixologist, polishes a glass with a rag that hasn\'t seen soap since Reagan\'s first term.'
+                    },
+                    {
+                        id: 'jukebox',
+                        label: 'Jukebox',
+                        x: 72, y: 145, w: 58, h: 98,
+                        walkX: 108, walkY: 292,
+                        look: 'A chrome-and-rainbow jukebox humming softly. A cassette deck slot sits right beneath the song buttons.'
+                    },
+                    {
+                        id: 'bar_counter',
+                        label: 'Bar & Mints',
+                        x: 150, y: 205, w: 215, h: 36,
+                        walkX: 225, walkY: 278,
+                        look: 'A mahogany bar top. A bowl of complimentary breath mints sits right next to a Velvet Fizz.'
+                    },
+                    {
+                        id: 'lounge_patron',
+                        label: 'Lounge Lizard',
+                        x: 418, y: 185, w: 42, h: 92,
+                        walkX: 385, walkY: 292,
+                        look: 'A slick lounge patron nursing a drink and muttering about how the DJ only plays deep tracks.'
+                    },
+                    {
+                        id: 'to_disco',
+                        label: 'Disco Archway',
+                        x: 525, y: 150, w: 75, h: 130,
+                        walkX: 540, walkY: 292,
+                        look: 'Pulsing magenta light spills through the archway into the Retro Disco.'
+                    },
+                    {
+                        id: 'to_street',
+                        label: 'Exit to Street',
+                        x: 28, y: 165, w: 40, h: 115,
+                        walkX: 64, walkY: 292,
+                        look: 'Leads back outside to the street and alley.'
+                    },
+                    {
+                        id: 'to_hotel',
+                        label: 'Hotel Corridor',
+                        x: 332, y: 150, w: 56, h: 95,
+                        walkX: 355, walkY: 278,
+                        look: 'A brass-trimmed doorway leading toward the Hotel & Penthouse Lobby.'
+                    }
+                ]
+            },
+            disco: {
+                id: 'disco',
+                title: 'RETRO DISCO & DANCE FLOOR',
+                exitsText: 'EXITS: LEFTY\'S LOUNGE',
+                walkFloor: { minX: 45, maxX: 595, y: 296 },
+                hotspots: [
+                    {
+                        id: 'disco_ball',
+                        label: 'Disco Ball',
+                        x: 285, y: 24, w: 70, h: 64,
+                        walkX: 320, walkY: 288,
+                        look: 'A spinning mirrored disco ball casting dazzling beams across the dance floor.'
+                    },
+                    {
+                        id: 'dance_floor',
+                        label: 'Dance Floor',
+                        x: 155, y: 245, w: 330, h: 68,
+                        walkX: 320, walkY: 286,
+                        look: 'Color-changing floor tiles pulsing to the beat. Larry\'s white leisure suit practically begs for a spin.'
+                    },
+                    {
+                        id: 'dj_booth',
+                        label: 'DJ Flash',
+                        x: 475, y: 115, w: 115, h: 115,
+                        walkX: 465, walkY: 292,
+                        look: 'DJ Flash spins vinyl and adjusts twin synthesizers behind flashing VU meters.'
+                    },
+                    {
+                        id: 'dancer_npc',
+                        label: 'Disco Star',
+                        x: 235, y: 185, w: 44, h: 92,
+                        walkX: 272, walkY: 292,
+                        look: 'A sharp-dressed dancer gliding effortlessly across the tiles, unimpressed by ordinary footwork.'
+                    },
+                    {
+                        id: 'back_to_lounge',
+                        label: 'To Lounge',
+                        x: 28, y: 165, w: 46, h: 118,
+                        walkX: 68, walkY: 294,
+                        look: 'Head back into Lefty\'s Lounge.'
+                    }
+                ]
+            },
+            hotel: {
+                id: 'hotel',
+                title: 'PENTHOUSE LOBBY & TERRACE',
+                exitsText: 'EXITS: LOUNGE, PENTHOUSE TERRACE',
+                walkFloor: { minX: 40, maxX: 600, y: 295 },
+                hotspots: [
+                    {
+                        id: 'concierge',
+                        label: 'Concierge',
+                        x: 155, y: 155, w: 44, h: 86,
+                        walkX: 192, walkY: 286,
+                        look: 'The night concierge behind a marble desk guards the Penthouse elevator with a stern clipboard.'
+                    },
+                    {
+                        id: 'fountain',
+                        label: 'Lobby Fountain',
+                        x: 265, y: 235, w: 110, h: 52,
+                        walkX: 320, walkY: 296,
+                        look: 'A tiered marble fountain sparkling under soft amber spotlights.'
+                    },
+                    {
+                        id: 'elevator',
+                        label: 'Penthouse Lift',
+                        x: 445, y: 135, w: 72, h: 125,
+                        walkX: 478, walkY: 292,
+                        look: 'Gleaming brass elevator doors marked "PH — PENTHOUSE SUITE." Requires a valid keycard.'
+                    },
+                    {
+                        id: 'terrace_door',
+                        label: 'Sky Terrace',
+                        x: 545, y: 145, w: 62, h: 120,
+                        walkX: 540, walkY: 292,
+                        look: 'Glass doors opening onto the breezy Penthouse Terrace overlooking the neon skyline.'
+                    },
+                    {
+                        id: 'lobby_to_lounge',
+                        label: 'Back to Lounge',
+                        x: 28, y: 165, w: 46, h: 118,
+                        walkX: 68, walkY: 294,
+                        look: 'Return to Lefty\'s Lounge.'
+                    }
+                ]
+            },
+            terrace: {
+                id: 'terrace',
+                title: 'PENTHOUSE SKY TERRACE',
+                exitsText: 'EXITS: PENTHOUSE LOBBY',
+                walkFloor: { minX: 45, maxX: 595, y: 295 },
+                hotspots: [
+                    {
+                        id: 'skyline',
+                        label: 'Neon Skyline',
+                        x: 60, y: 55, w: 520, h: 145,
+                        walkX: 320, walkY: 288,
+                        look: 'Towering 1987 skyscrapers glowing in magenta, cyan, and gold beneath a starry night sky.'
+                    },
+                    {
+                        id: 'balcony_rail',
+                        label: 'Balcony Railing',
+                        x: 75, y: 222, w: 490, h: 24,
+                        walkX: 320, walkY: 285,
+                        look: 'A sleek penthouse balcony rail. A great spot to strike a dramatic pose for the city lights.'
+                    },
+                    {
+                        id: 'terrace_to_lobby',
+                        label: 'Back to Lobby',
+                        x: 28, y: 165, w: 46, h: 118,
+                        walkX: 68, walkY: 294,
+                        look: 'Step back inside the Penthouse Lobby.'
+                    }
+                ]
+            }
+        };
+
+        // =====================================================================
+        // 3. GAME STATE, SCORING, NARRATOR & DIALOGUE SYSTEM
+        // =====================================================================
+        const state = {
+            mode: 'title', // 'title', 'playing', 'paused', 'victory'
+            roomId: 'outside',
+            score: 0,
+            cash: 45,
+            inventory: [],
+            flags: {
+                foundCoin: false,
+                foundMints: false,
+                foundCocktail: false,
+                bouncerBribed: false,
+                discoImpressed: false,
+                foundMixtape: false,
+                djImpressed: false,
+                conciergeBribed: false,
+                penthouseReached: false,
+                inspectedNeon: false,
+                inspectedFountain: false
+            },
+            larry: {
+                x: 115,
+                y: 292,
+                targetX: null,
+                targetY: null,
+                facing: 1,
+                walkPhase: 0,
+                danceTimer: 0,
+                pendingAction: null
+            },
+            hoveredHotspot: null,
+            activeNpcDialogue: null, // { npcId, speaker, lines, choices }
+            clock: 0
+        };
+
+        function awardScore(pts, flagKey = null) {
+            if (flagKey && state.flags[flagKey]) return 0;
+            if (flagKey) state.flags[flagKey] = true;
+            const prev = state.score;
+            state.score = Math.min(250, state.score + pts);
+            const gained = state.score - prev;
+            if (gained > 0) {
+                lAudio.playScoreJingle();
+                showToast(`+${gained} PTS — ${state.score} / 250`);
+            }
+            updateHUD();
+            return gained;
+        }
+
+        function addItem(itemId) {
+            if (!state.inventory.includes(itemId) && ITEMS_DB[itemId]) {
+                state.inventory.push(itemId);
+                lAudio.playPickup();
+                renderInventory();
+                return true;
+            }
+            return false;
+        }
+
+        function removeItem(itemId) {
+            const idx = state.inventory.indexOf(itemId);
+            if (idx >= 0) {
+                state.inventory.splice(idx, 1);
+                renderInventory();
+                return true;
+            }
+            return false;
+        }
+
+        function logNarrator(text, tag = 'NARRATOR') {
+            const log = document.getElementById('narrator-log');
+            const p = document.createElement('div');
+            const tagColor = tag === 'LARRY' ? 'text-amber-300' : (tag === 'NPC' ? 'text-pink-300' : 'text-cyan-300');
+            p.innerHTML = `<span class="ega-font font-bold ${tagColor}">[${tag}]</span> <span>${text}</span>`;
+            log.appendChild(p);
+            log.scrollTop = log.scrollHeight;
+            lAudio.playDialogueBlip(tag === 'NPC' ? 350 : 480);
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('status-toast');
+            toast.textContent = msg;
+            toast.classList.remove('hidden');
+            clearTimeout(showToast._timer);
+            showToast._timer = setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 2200);
+        }
+
+        function openDialogue(npcId, speaker, greeting, choices) {
+            state.activeNpcDialogue = { npcId, speaker, choices };
+            logNarrator(`"${greeting}"`, 'NPC');
+            const box = document.getElementById('dialogue-box');
+            const list = document.getElementById('dialogue-choices');
+            list.innerHTML = '';
+            choices.forEach((ch, idx) => {
+                const btn = document.createElement('button');
+                btn.className = 'ega-btn rounded-lg px-2.5 py-1 text-left text-[11px] font-semibold text-white cursor-pointer';
+                btn.textContent = `${idx + 1}. ${ch.label}`;
+                btn.addEventListener('click', () => {
+                    lAudio.init();
+                    lAudio.playClick();
+                    logNarrator(ch.label, 'LARRY');
+                    ch.onSelect();
+                });
+                list.appendChild(btn);
+            });
+            box.classList.remove('hidden');
+        }
+
+        function closeDialogue() {
+            state.activeNpcDialogue = null;
+            document.getElementById('dialogue-box').classList.add('hidden');
+            document.getElementById('dialogue-choices').innerHTML = '';
+        }
+
+        function transitionToRoom(nextRoomId, spawnX = null, spawnY = null) {
+            if (!ROOMS[nextRoomId]) return;
+            closeDialogue();
+            state.roomId = nextRoomId;
+            const room = ROOMS[nextRoomId];
+            state.larry.x = spawnX !== null ? spawnX : room.walkFloor.minX + 45;
+            state.larry.y = spawnY !== null ? spawnY : room.walkFloor.y;
+            state.larry.targetX = null;
+            state.larry.targetY = null;
+            state.larry.pendingAction = null;
+
+            if (nextRoomId === 'terrace' && !state.flags.penthouseReached) {
+                awardScore(60, 'penthouseReached');
+                state.mode = 'victory';
+                lAudio.playVictoryFanfare();
+                document.getElementById('ov-badge').textContent = 'HIGH SOCIETY ACHIEVED';
+                document.getElementById('ov-title').textContent = 'PENTHOUSE SUCCEED!';
+                document.getElementById('ov-desc').textContent =
+                    `Larry reached the Penthouse Sky Terrace with a score of ${state.score} / 250! The neon skyline is officially impressed.`;
+                document.getElementById('btn-ov-start').textContent = 'PLAY AGAIN';
+                document.getElementById('modal-overlay').classList.remove('hidden');
+            }
+
+            logNarrator(`${room.title}. ${room.hotspots[0].look}`, 'NARRATOR');
+            updateHUD();
+        }
+
+        // =====================================================================
+        // 4. INTERACTIVE ACTION EXECUTION & NATURAL-LANGUAGE PARSER
+        // =====================================================================
+        function executeHotspotInteraction(spot, verbHint = 'auto') {
+            closeDialogue();
+            const l = state.larry;
+
+            if (verbHint === 'look') {
+                logNarrator(spot.look, 'NARRATOR');
+                if (spot.id === 'neon_sign') awardScore(10, 'inspectedNeon');
+                if (spot.id === 'fountain') awardScore(15, 'inspectedFountain');
+                return;
+            }
+
+            // Room exit hotspots
+            if (spot.id === 'lounge_door') {
+                if (state.flags.bouncerBribed) {
+                    transitionToRoom('lounge', 85, 295);
+                } else {
+                    lAudio.playFailWahWah();
+                    logNarrator('Bruno steps across the doorway. "No VIP shake, no entry, pal. Talk to me or slip me a ten-spot."', 'NPC');
+                }
+                return;
+            }
+            if (spot.id === 'to_disco') {
+                transitionToRoom('disco', 85, 296);
+                return;
+            }
+            if (spot.id === 'to_street') {
+                transitionToRoom('outside', 298, 292);
+                return;
+            }
+            if (spot.id === 'to_hotel') {
+                transitionToRoom('hotel', 85, 295);
+                return;
+            }
+            if (spot.id === 'back_to_lounge') {
+                transitionToRoom('lounge', 515, 295);
+                return;
+            }
+            if (spot.id === 'lobby_to_lounge') {
+                transitionToRoom('lounge', 355, 278);
+                return;
+            }
+            if (spot.id === 'terrace_door') {
+                if (state.flags.conciergeBribed || state.inventory.includes('keycard')) {
+                    transitionToRoom('terrace', 85, 295);
+                } else {
+                    lAudio.playFailWahWah();
+                    logNarrator('The terrace door is locked for regular lobby loafers. Chat up the Concierge first!', 'NARRATOR');
+                }
+                return;
+            }
+            if (spot.id === 'terrace_to_lobby') {
+                transitionToRoom('hotel', 515, 295);
+                return;
+            }
+
+            // Item pickups & puzzles
+            if (spot.id === 'dumpster') {
+                if (!state.flags.foundCoin) {
+                    addItem('coin');
+                    awardScore(20, 'foundCoin');
+                    logNarrator('Larry fishes a gleaming brass Lucky Token out of a dry corner near the dumpster. Classy!', 'NARRATOR');
+                } else {
+                    logNarrator('Nothing else in the dumpster except leftover disco flyers and mystery foam.', 'NARRATOR');
+                }
+                return;
+            }
+
+            if (spot.id === 'puddle') {
+                lAudio.playFailWahWah();
+                logNarrator('Larry poses dramatically by the puddle. A passing cab splashes him slightly. "Still sharp!"', 'LARRY');
+                return;
+            }
+
+            if (spot.id === 'payphone') {
+                if (!state.inventory.includes('mixtape') && !state.flags.foundMixtape) {
+                    addItem('mixtape');
+                    state.flags.foundMixtape = true;
+                    awardScore(20);
+                    logNarrator('Larry checks the payphone shelf and pockets a forgotten Synth Mixtape. Score!', 'NARRATOR');
+                } else {
+                    logNarrator('The payphone dials a busy signal straight to 1987.', 'NARRATOR');
+                }
+                return;
+            }
+
+            if (spot.id === 'bar_counter') {
+                if (!state.flags.foundMints) {
+                    addItem('mints');
+                    awardScore(15, 'foundMints');
+                    logNarrator('Larry pockets a tin of Breath Mints from the bar. Freshness is half the battle!', 'NARRATOR');
+                } else if (!state.flags.foundCocktail && state.cash >= 10) {
+                    state.cash -= 10;
+                    addItem('cocktail');
+                    awardScore(20, 'foundCocktail');
+                    updateHUD();
+                    logNarrator('Larry orders a Velvet Fizz ($10) complete with a tiny plastic flamingo.', 'NARRATOR');
+                } else {
+                    logNarrator(spot.look, 'NARRATOR');
+                }
+                return;
+            }
+
+            if (spot.id === 'jukebox') {
+                if (state.inventory.includes('coin')) {
+                    removeItem('coin');
+                    state.cash += 15;
+                    awardScore(25);
+                    updateHUD();
+                    logNarrator('Larry drops the Lucky Token in the jukebox—it clinks out a $15 jackpot payout and plays a smooth synth riff!', 'NARRATOR');
+                } else {
+                    logNarrator('The jukebox flashes neon lights. A Lucky Token or Mixtape might really get it cooking.', 'NARRATOR');
+                }
+                return;
+            }
+
+            if (spot.id === 'dance_floor') {
+                l.danceTimer = 1.6;
+                if (state.inventory.includes('mints') && !state.flags.discoImpressed) {
+                    awardScore(35, 'discoImpressed');
+                    logNarrator('Larry pops a breath mint, hits a crisp 80s side-step, and nails the signature leisure-suit spin!', 'LARRY');
+                } else {
+                    lAudio.playScoreJingle();
+                    logNarrator('Larry bustles onto the dance floor with enthusiastic, slightly questionable rhythm.', 'LARRY');
+                }
+                return;
+            }
+
+            if (spot.id === 'elevator') {
+                if (state.inventory.includes('keycard')) {
+                    transitionToRoom('terrace', 85, 295);
+                } else {
+                    lAudio.playFailWahWah();
+                    logNarrator('The Penthouse elevator panel glows red. You need a Penthouse Keycard from the Concierge.', 'NARRATOR');
+                }
+                return;
+            }
+
+            // NPC Dialogue Trees
+            if (spot.id === 'bouncer') {
+                openDialogue(
+                    'bouncer',
+                    'BRUNO',
+                    state.flags.bouncerBribed
+                        ? 'You\'re already on the list, white-suit. Head inside!'
+                        : 'Nobody gets past Bruno without style or a $10 cover.',
+                    [
+                        {
+                            label: 'Slip Bruno $10 cover charge',
+                            onSelect: () => {
+                                if (state.flags.bouncerBribed) {
+                                    logNarrator('Bruno waves you through. "Save your cash, kid."', 'NPC');
+                                } else if (state.cash >= 10) {
+                                    state.cash -= 10;
+                                    awardScore(30, 'bouncerBribed');
+                                    updateHUD();
+                                    logNarrator('Bruno pockets the ten-spot and unhooks the velvet rope. "Welcome to Lefty\'s."', 'NPC');
+                                } else {
+                                    lAudio.playFailWahWah();
+                                    logNarrator('Bruno frowns. "You\'re short on bucks, Larry."', 'NPC');
+                                }
+                                closeDialogue();
+                            }
+                        },
+                        {
+                            label: 'Flex gold chain & ask for VIP treatment',
+                            onSelect: () => {
+                                lAudio.playFailWahWah();
+                                logNarrator('Bruno squints at the chain. "Nice hardware. Still a $10 cover though."', 'NPC');
+                                closeDialogue();
+                            }
+                        }
+                    ]
+                );
+                return;
+            }
+
+            if (spot.id === 'bartender') {
+                openDialogue(
+                    'bartender',
+                    'LEFTY',
+                    'What\'ll it be, pal? Drinks, gossip, or advice on making it upstairs?',
+                    [
+                        {
+                            label: 'Buy a Velvet Fizz ($10)',
+                            onSelect: () => {
+                                if (state.inventory.includes('cocktail')) {
+                                    logNarrator('Lefty grins. "You already got one with the flamingo, Larry!"', 'NPC');
+                                } else if (state.cash >= 10) {
+                                    state.cash -= 10;
+                                    addItem('cocktail');
+                                    awardScore(20, 'foundCocktail');
+                                    updateHUD();
+                                    logNarrator('Lefty slides over a Velvet Fizz. "Tip the DJ or the Concierge and doors open."', 'NPC');
+                                } else {
+                                    lAudio.playFailWahWah();
+                                    logNarrator('Lefty shakes his head. "Ten bucks even."', 'NPC');
+                                }
+                                closeDialogue();
+                            }
+                        },
+                        {
+                            label: 'Ask how to reach the Penthouse',
+                            onSelect: () => {
+                                logNarrator('Lefty leans in: "Impress the crowd at the Disco, hand DJ Flash a synth mixtape for a VIP Pass, then charm the Concierge."', 'NPC');
+                                closeDialogue();
+                            }
+                        }
+                    ]
+                );
+                return;
+            }
+
+            if (spot.id === 'lounge_patron' || spot.id === 'dancer_npc') {
+                openDialogue(
+                    spot.id,
+                    spot.label.toUpperCase(),
+                    'The beat is hot tonight, though DJ Flash is begging for a fresh synth mixtape!',
+                    [
+                        {
+                            label: 'Give Synth Mixtape (if in pockets)',
+                            onSelect: () => {
+                                if (state.inventory.includes('mixtape')) {
+                                    removeItem('mixtape');
+                                    addItem('vipPass');
+                                    awardScore(40, 'djImpressed');
+                                    logNarrator('Eyes light up! "Pure 1987 gold! Take this VIP Pass—you\'re officially cool."', 'NPC');
+                                } else {
+                                    lAudio.playFailWahWah();
+                                    logNarrator('Larry pats his pockets, coming up empty on mixtapes.', 'LARRY');
+                                }
+                                closeDialogue();
+                            }
+                        },
+                        {
+                            label: 'Strike a smooth leisure-suit pose',
+                            onSelect: () => {
+                                l.danceTimer = 1.2;
+                                logNarrator('"Bold polyester choice," they nod approvingly.', 'NPC');
+                                closeDialogue();
+                            }
+                        }
+                    ]
+                );
+                return;
+            }
+
+            if (spot.id === 'dj_booth') {
+                openDialogue(
+                    'dj',
+                    'DJ FLASH',
+                    state.inventory.includes('vipPass')
+                        ? 'You\'re rocking the VIP Pass, Larry! The Penthouse is calling!'
+                        : 'Yo! Got any killer synth tapes or fresh vibes for the floor?',
+                    [
+                        {
+                            label: 'Hand over Synth Mixtape',
+                            onSelect: () => {
+                                if (state.inventory.includes('mixtape')) {
+                                    removeItem('mixtape');
+                                    addItem('vipPass');
+                                    awardScore(40, 'djImpressed');
+                                    logNarrator('DJ Flash cues the tape! "Instant club anthem! Here\'s a VIP Pass for your trouble."', 'NPC');
+                                } else if (state.inventory.includes('vipPass')) {
+                                    logNarrator('DJ Flash gives a thumbs-up from the booth.', 'NPC');
+                                } else {
+                                    lAudio.playFailWahWah();
+                                    logNarrator('DJ Flash spins a scratch. "Bring me a synth mixtape and we\'re talking VIP."', 'NPC');
+                                }
+                                closeDialogue();
+                            }
+                        },
+                        {
+                            label: 'Request a slow lounge jam',
+                            onSelect: () => {
+                                logNarrator('DJ Flash drops a silky bassline across the speakers.', 'NPC');
+                                closeDialogue();
+                            }
+                        }
+                    ]
+                );
+                return;
+            }
+
+            if (spot.id === 'concierge') {
+                openDialogue(
+                    'concierge',
+                    'CONCIERGE',
+                    state.inventory.includes('keycard')
+                        ? 'Enjoy the Penthouse Suite, sir!'
+                        : 'Penthouse access is strictly for VIPs with a refined touch.',
+                    [
+                        {
+                            label: 'Show VIP Pass & offer Velvet Fizz',
+                            onSelect: () => {
+                                if (state.inventory.includes('keycard')) {
+                                    logNarrator('"The elevator is ready whenever you are."', 'NPC');
+                                } else if (state.inventory.includes('vipPass')) {
+                                    if (state.inventory.includes('cocktail')) {
+                                        removeItem('cocktail');
+                                    }
+                                    addItem('keycard');
+                                    awardScore(45, 'conciergeBribed');
+                                    logNarrator('The Concierge inspects the VIP Pass. "Impeccable credentials. Here is your Penthouse Keycard."', 'NPC');
+                                } else {
+                                    lAudio.playFailWahWah();
+                                    logNarrator('"A VIP Pass from the club would certainly help your case."', 'NPC');
+                                }
+                                closeDialogue();
+                            }
+                        },
+                        {
+                            label: 'Ask about the Penthouse view',
+                            onSelect: () => {
+                                logNarrator('"Panoramic neon views of the whole city—worth every point."', 'NPC');
+                                closeDialogue();
+                            }
+                        }
+                    ]
+                );
+            }
+        }
+
+        function walkLarryTo(tx, ty, onArrive = null) {
+            const room = ROOMS[state.roomId];
+            const clampedX = Math.max(room.walkFloor.minX, Math.min(room.walkFloor.maxX, tx));
+            const clampedY = Math.max(room.walkFloor.y - 12, Math.min(room.walkFloor.y + 18, ty));
+            state.larry.targetX = clampedX;
+            state.larry.targetY = clampedY;
+            state.larry.pendingAction = onArrive;
+            if (clampedX < state.larry.x - 2) state.larry.facing = -1;
+            else if (clampedX > state.larry.x + 2) state.larry.facing = 1;
+        }
+
+        function runParserCommand(rawInput) {
+            if (state.mode !== 'playing') return;
+            const cmd = rawInput.trim().toLowerCase();
+            if (!cmd) return;
+
+            logNarrator(rawInput.trim(), 'LARRY');
+            const room = ROOMS[state.roomId];
+
+            if (cmd === 'help' || cmd === '?') {
+                logNarrator('Try: look, walk to disco/lounge/hotel/terrace/street, talk to bouncer/lefty/dj/concierge, take mints/coin/mixtape, use keycard/coin, dance, inventory.', 'NARRATOR');
+                return;
+            }
+
+            if (cmd === 'inventory' || cmd === 'inv' || cmd === 'i') {
+                const list = state.inventory.length
+                    ? state.inventory.map(id => ITEMS_DB[id].name).join(', ')
+                    : 'empty lint and good intentions';
+                logNarrator(`Larry\'s pockets hold: ${list}.`, 'NARRATOR');
+                return;
+            }
+
+            if (cmd === 'look' || cmd === 'l') {
+                logNarrator(`${room.title}: ${room.hotspots[0].look} (${room.exitsText})`, 'NARRATOR');
+                return;
+            }
+
+            if (cmd.includes('dance')) {
+                const floorSpot = room.hotspots.find(h => h.id === 'dance_floor');
+                if (floorSpot) {
+                    walkLarryTo(floorSpot.walkX, floorSpot.walkY, () => executeHotspotInteraction(floorSpot, 'use'));
+                } else {
+                    state.larry.danceTimer = 1.4;
+                    lAudio.playScoreJingle();
+                    logNarrator('Larry busts a spontaneous groove right where he stands.', 'LARRY');
+                }
+                return;
+            }
+
+            if (cmd.includes('drink')) {
+                if (state.inventory.includes('cocktail')) {
+                    removeItem('cocktail');
+                    lAudio.playPickup();
+                    logNarrator('Larry sips the Velvet Fizz. Smooth and fruity!', 'LARRY');
+                } else {
+                    logNarrator('Larry doesn\'t have a drink in hand right now.', 'NARRATOR');
+                }
+                return;
+            }
+
+            // Walk / go commands
+            if (cmd.startsWith('walk') || cmd.startsWith('go')) {
+                if (cmd.includes('disco') || cmd.includes('dance')) {
+                    transitionToRoom('disco', 85, 296);
+                    return;
+                }
+                if (cmd.includes('hotel') || cmd.includes('lobby') || cmd.includes('penthouse')) {
+                    transitionToRoom('hotel', 85, 295);
+                    return;
+                }
+                if (cmd.includes('terrace') || cmd.includes('balcony')) {
+                    if (state.inventory.includes('keycard') || state.flags.conciergeBribed) {
+                        transitionToRoom('terrace', 85, 295);
+                    } else {
+                        logNarrator('You need a Penthouse Keycard to reach the terrace.', 'NARRATOR');
+                    }
+                    return;
+                }
+                if (cmd.includes('lounge') || cmd.includes('bar') || cmd.includes('inside')) {
+                    if (state.roomId === 'outside') {
+                        const doorSpot = room.hotspots.find(h => h.id === 'lounge_door');
+                        walkLarryTo(doorSpot.walkX, doorSpot.walkY, () => executeHotspotInteraction(doorSpot, 'use'));
+                    } else {
+                        transitionToRoom('lounge', 245, 285);
+                    }
+                    return;
+                }
+                if (cmd.includes('street') || cmd.includes('outside') || cmd.includes('alley')) {
+                    transitionToRoom('outside', 298, 292);
+                    return;
+                }
+            }
+
+            // Match hotspot by keyword
+            const matchedSpot = room.hotspots.find(h =>
+                cmd.includes(h.id.replace('_', ' ')) ||
+                h.label.toLowerCase().split(' ').some(word => word.length > 3 && cmd.includes(word))
+            );
+
+            if (matchedSpot) {
+                const verb = cmd.startsWith('look') || cmd.startsWith('examine') ? 'look' : 'use';
+                walkLarryTo(matchedSpot.walkX, matchedSpot.walkY, () => executeHotspotInteraction(matchedSpot, verb));
+                return;
+            }
+
+            // Smart hint if user types a known item name
+            const matchedItemKey = Object.keys(ITEMS_DB).find(k =>
+                cmd.includes(k) || ITEMS_DB[k].name.toLowerCase().includes(cmd.replace(/^(take|use|get|examine)\s+/, ''))
+            );
+            if (matchedItemKey) {
+                if (state.inventory.includes(matchedItemKey)) {
+                    logNarrator(ITEMS_DB[matchedItemKey].examine, 'NARRATOR');
+                } else {
+                    logNarrator(`You don't have ${ITEMS_DB[matchedItemKey].name} yet—explore the rooms and hotspots to find it.`, 'NARRATOR');
+                }
+                return;
+            }
+
+            lAudio.playFailWahWah();
+            logNarrator(`The parser tilts its head at "${rawInput.trim()}." Try LOOK, TALK TO, TAKE, USE, or DANCE.`, 'NARRATOR');
+        }
+
+        function provideSmartHint() {
+            lAudio.init();
+            lAudio.playClick();
+            if (!state.flags.foundCoin) {
+                logNarrator('HINT: Outside Lefty\'s Lounge, check the Alley Dumpster for a Lucky Token.', 'NARRATOR');
+            } else if (!state.flags.bouncerBribed) {
+                logNarrator('HINT: Talk to Bruno the Bouncer outside and slip him $10 to enter Lefty\'s Lounge.', 'NARRATOR');
+            } else if (!state.flags.foundMints) {
+                logNarrator('HINT: Inside the Lounge, grab the Breath Mints at the Bar, then head to the Disco.', 'NARRATOR');
+            } else if (!state.flags.discoImpressed) {
+                logNarrator('HINT: Step onto the Dance Floor in the Disco and DANCE to impress the crowd.', 'NARRATOR');
+            } else if (!state.inventory.includes('vipPass') && !state.flags.djImpressed) {
+                logNarrator('HINT: Grab the Synth Mixtape by the street Payphone and give it to DJ Flash for a VIP Pass.', 'NARRATOR');
+            } else if (!state.inventory.includes('keycard')) {
+                logNarrator('HINT: Head to the Penthouse Lobby and show your VIP Pass to the Concierge for a Penthouse Keycard.', 'NARRATOR');
+            } else {
+                logNarrator('HINT: Use the Penthouse Lift in the Lobby to ride up to the Sky Terrace!', 'NARRATOR');
+            }
+        }
+
+        // =====================================================================
+        // 5. 16-COLOR EGA SCENE RENDERING & ANIMATED CHARACTERS
+        // =====================================================================
+        const egaCanvas = document.getElementById('ega-canvas');
+        const ectx = egaCanvas.getContext('2d');
+        egaCanvas.width = EGA_W;
+        egaCanvas.height = EGA_H;
+
+        function drawDitherRect(x, y, w, h, c1, c2, step = 4) {
+            ectx.fillStyle = c1;
+            ectx.fillRect(x, y, w, h);
+            ectx.fillStyle = c2;
+            for (let py = y; py < y + h; py += step) {
+                for (let px = x + ((Math.floor(py / step) % 2) * (step * 0.5)); px < x + w; px += step) {
+                    ectx.fillRect(px, py, step * 0.5, step * 0.5);
+                }
+            }
+        }
+
+        function drawLarryCharacter(x, y, facing, walkPhase, danceTimer) {
+            ectx.save();
+            const bob = danceTimer > 0
+                ? Math.abs(Math.sin(danceTimer * 16)) * 6
+                : (walkPhase > 0 ? Math.abs(Math.sin(walkPhase)) * 2.5 : 0);
+            ectx.translate(Math.round(x), Math.round(y - bob));
+            if (danceTimer > 0) {
+                ectx.rotate(Math.sin(danceTimer * 12) * 0.25);
+            }
+            ectx.scale(facing, 1);
+
+            // White leisure suit trousers & shoes
+            const legSwing = danceTimer > 0
+                ? Math.sin(danceTimer * 18) * 5
+                : (walkPhase > 0 ? Math.sin(walkPhase) * 4 : 0);
+
+            ectx.fillStyle = EGA.white;
+            ectx.fillRect(-5 + legSwing, -16, 4, 13);
+            ectx.fillRect(1 - legSwing, -16, 4, 13);
+
+            // Shoes
+            ectx.fillStyle = EGA.black;
+            ectx.fillRect(-6 + legSwing, -3, 6, 3);
+            ectx.fillRect(1 - legSwing, -3, 6, 3);
+
+            // White leisure suit jacket
+            ectx.fillStyle = EGA.white;
+            ectx.fillRect(-7, -30, 14, 15);
+            ectx.fillStyle = EGA.lightGray;
+            ectx.fillRect(-7, -30, 2, 15);
+
+            // Gold chain & chest accent
+            ectx.fillStyle = EGA.gold;
+            ectx.fillRect(-2, -28, 4, 5);
+
+            // Head & retro hair
+            ectx.fillStyle = EGA.tan;
+            ectx.fillRect(-5, -39, 10, 9);
+            ectx.fillStyle = EGA.brown;
+            ectx.fillRect(-6, -42, 12, 4);
+            ectx.fillRect(4, -40, 2, 4); // sideburn/retro flair
+
+            // Eye
+            ectx.fillStyle = EGA.black;
+            ectx.fillRect(2, -36, 2, 2);
+
+            ectx.restore();
+        }
+
+        function drawRoomArtwork() {
+            const id = state.roomId;
+
+            if (id === 'outside') {
+                // Night sky & city silhouettes
+                drawDitherRect(0, 0, EGA_W, 210, EGA.black, '#161032', 6);
+                ectx.fillStyle = '#1e1b4b';
+                ectx.fillRect(25, 95, 75, 115);
+                ectx.fillRect(525, 80, 90, 130);
+
+                // Brick lounge building facade
+                drawDitherRect(140, 80, 360, 208, '#4c1d24', '#311018', 4);
+
+                // Buzzing Neon Sign ("LEFTY'S")
+                const flicker = Math.sin(state.clock * 22) > -0.85 ? EGA.neonPink : '#831843';
+                ectx.fillStyle = EGA.black;
+                ectx.fillRect(215, 55, 210, 50);
+                ectx.strokeStyle = flicker;
+                ectx.lineWidth = 3;
+                ectx.strokeRect(216, 56, 208, 48);
+                ectx.fillStyle = EGA.lightCyan;
+                ectx.font = 'bold 18px "JetBrains Mono", monospace';
+                ectx.textAlign = 'center';
+                ectx.fillText("LEFTY'S LOUNGE", 320, 86);
+
+                // Lounge Door
+                ectx.fillStyle = EGA.brown;
+                ectx.fillRect(265, 155, 68, 125);
+                ectx.fillStyle = EGA.gold;
+                ectx.fillRect(322, 215, 4, 6);
+
+                // Bouncer Bruno
+                ectx.fillStyle = EGA.darkGray;
+                ectx.fillRect(346, 205, 34, 75);
+                ectx.fillStyle = EGA.tan;
+                ectx.fillRect(354, 188, 18, 17);
+                ectx.fillStyle = EGA.black;
+                ectx.fillRect(354, 185, 18, 4);
+
+                // Dumpster & Payphone
+                ectx.fillStyle = EGA.green;
+                ectx.fillRect(42, 222, 92, 62);
+                ectx.fillStyle = EGA.lightGreen;
+                ectx.fillRect(42, 216, 92, 6);
+
+                ectx.fillStyle = EGA.gold;
+                ectx.fillRect(458, 178, 38, 68);
+                ectx.fillStyle = EGA.black;
+                ectx.fillRect(464, 186, 26, 22);
+
+                // Street & Puddle
+                drawDitherRect(0, 280, EGA_W, 80, '#1e293b', '#0f172a', 4);
+                ectx.fillStyle = '#3b0764';
+                ectx.fillRect(150, 304, 120, 22);
+                ectx.fillStyle = EGA.neonPink;
+                ectx.fillRect(168, 312, 34, 3);
+                ectx.fillStyle = EGA.lightCyan;
+                ectx.fillRect(214, 315, 42, 3);
+            } else if (id === 'lounge') {
+                // Dimly lit lounge interior
+                drawDitherRect(0, 0, EGA_W, 280, '#1a1033', '#110a24', 6);
+                ectx.fillStyle = '#3b1645';
+                ectx.fillRect(0, 276, EGA_W, 84);
+
+                // Jukebox
+                ectx.fillStyle = '#312e81';
+                ectx.fillRect(72, 148, 58, 92);
+                ectx.fillStyle = EGA.neonPink;
+                ectx.fillRect(80, 158, 42, 26);
+                ectx.fillStyle = EGA.lightCyan;
+                ectx.fillRect(84, 192, 34, 10);
+
+                // Bar Counter & Left Bartender
+                ectx.fillStyle = EGA.tan;
+                ectx.fillRect(245, 148, 18, 18);
+                ectx.fillStyle = EGA.white;
+                ectx.fillRect(238, 166, 32, 38);
+                ectx.fillStyle = EGA.brown;
+                ectx.fillRect(150, 205, 215, 34);
+                ectx.fillStyle = EGA.gold;
+                ectx.fillRect(150, 205, 215, 4);
+
+                // Mints bowl & Velvet Fizz on bar
+                ectx.fillStyle = EGA.lightCyan;
+                ectx.fillRect(182, 197, 14, 8);
+                ectx.fillStyle = EGA.neonPink;
+                ectx.fillRect(285, 194, 10, 11);
+
+                // Lounge Patron
+                ectx.fillStyle = EGA.tan;
+                ectx.fillRect(428, 188, 16, 16);
+                ectx.fillStyle = EGA.magenta;
+                ectx.fillRect(422, 204, 28, 72);
+
+                // Doorways: Street (left), Hotel (center-right), Disco (right)
+                ectx.fillStyle = '#0f172a';
+                ectx.fillRect(28, 168, 38, 110);
+                ectx.fillStyle = EGA.gold;
+                ectx.fillRect(334, 152, 52, 92);
+                ectx.fillStyle = '#581c87';
+                ectx.fillRect(528, 152, 70, 126);
+            } else if (id === 'disco') {
+                // Retro Disco with pulsing floor tiles & DJ booth
+                drawDitherRect(0, 0, EGA_W, 245, '#120829', '#240b4c', 6);
+
+                // Disco ball
+                ectx.strokeStyle = EGA.lightGray;
+                ectx.beginPath();
+                ectx.moveTo(320, 0);
+                ectx.lineTo(320, 34);
+                ectx.stroke();
+                ectx.fillStyle = EGA.white;
+                ectx.beginPath();
+                ectx.arc(320, 54, 22, 0, Math.PI * 2);
+                ectx.fill();
+
+                // DJ Booth
+                ectx.fillStyle = '#1e1b4b';
+                ectx.fillRect(475, 130, 116, 95);
+                ectx.fillStyle = EGA.tan;
+                ectx.fillRect(522, 116, 18, 16);
+                ectx.fillStyle = EGA.lightCyan;
+                ectx.fillRect(490, 145, 22, 10);
+                ectx.fillStyle = EGA.neonPink;
+                ectx.fillRect(548, 145, 22, 10);
+
+                // Dancer NPC
+                ectx.fillStyle = EGA.tan;
+                ectx.fillRect(246, 188, 16, 16);
+                ectx.fillStyle = EGA.lightRed;
+                ectx.fillRect(240, 204, 28, 72);
+
+                // Pulsing Dance Floor Tiles
+                const tileW = 41.25;
+                const tileH = 22;
+                const palette = [EGA.neonPink, EGA.lightCyan, EGA.yellow, EGA.lightMagenta];
+                for (let r = 0; r < 3; r++) {
+                    for (let c = 0; c < 8; c++) {
+                        const cIdx = (r + c + Math.floor(state.clock * 4)) % palette.length;
+                        ectx.fillStyle = palette[cIdx];
+                        ectx.fillRect(155 + c * tileW, 246 + r * tileH, tileW - 2, tileH - 2);
+                    }
+                }
+                ectx.fillStyle = '#0f172a';
+                ectx.fillRect(0, 312, EGA_W, 48);
+                ectx.fillStyle = '#0f172a';
+                ectx.fillRect(28, 168, 42, 112);
+            } else if (id === 'hotel') {
+                // Hotel & Penthouse Lobby
+                drawDitherRect(0, 0, EGA_W, 280, '#2a1b3d', '#170f26', 6);
+                ectx.fillStyle = '#4c1d95';
+                ectx.fillRect(0, 276, EGA_W, 84);
+
+                // Concierge Desk & NPC
+                ectx.fillStyle = EGA.tan;
+                ectx.fillRect(168, 158, 16, 16);
+                ectx.fillStyle = EGA.blue;
+                ectx.fillRect(162, 174, 28, 42);
+                ectx.fillStyle = EGA.brown;
+                ectx.fillRect(128, 212, 96, 36);
+
+                // Fountain
+                ectx.fillStyle = EGA.lightGray;
+                ectx.fillRect(268, 242, 104, 42);
+                ectx.fillStyle = EGA.lightCyan;
+                ectx.fillRect(276, 246, 88, 12);
+
+                // Penthouse Elevator
+                ectx.fillStyle = EGA.gold;
+                ectx.fillRect(446, 138, 70, 122);
+                ectx.fillStyle = '#1e293b';
+                ectx.fillRect(452, 146, 27, 114);
+                ectx.fillRect(483, 146, 27, 114);
+
+                // Terrace door
+                ectx.fillStyle = EGA.lightBlue;
+                ectx.fillRect(548, 148, 56, 116);
+                ectx.fillStyle = '#0f172a';
+                ectx.fillRect(28, 168, 42, 112);
+            } else if (id === 'terrace') {
+                // Penthouse Sky Terrace overlooking neon skyline
+                drawDitherRect(0, 0, EGA_W, 230, '#090d24', '#1e1040', 6);
+
+                // Neon skyline buildings
+                const bldgs = [
+                    { x: 75,  y: 90, w: 65, h: 135, col: '#1e1b4b', lit: EGA.neonPink },
+                    { x: 155, y: 65, w: 75, h: 160, col: '#172554', lit: EGA.lightCyan },
+                    { x: 250, y: 105, w: 70, h: 120, col: '#2e1065', lit: EGA.yellow },
+                    { x: 340, y: 72, w: 80, h: 153, col: '#1e1b4b', lit: EGA.lightMagenta },
+                    { x: 440, y: 95, w: 72, h: 130, col: '#172554', lit: EGA.lightCyan }
+                ];
+                bldgs.forEach(b => {
+                    ectx.fillStyle = b.col;
+                    ectx.fillRect(b.x, b.y, b.w, b.h);
+                    ectx.fillStyle = b.lit;
+                    for (let wy = b.y + 10; wy < b.y + b.h - 14; wy += 16) {
+                        for (let wx = b.x + 10; wx < b.x + b.w - 12; wx += 16) {
+                            ectx.fillRect(wx, wy, 6, 8);
+                        }
+                    }
+                });
+
+                // Balcony Railing & Deck
+                ectx.fillStyle = EGA.gold;
+                ectx.fillRect(75, 224, 490, 4);
+                ectx.fillRect(75, 242, 490, 4);
+                for (let rx = 82; rx <= 558; rx += 22) {
+                    ectx.fillRect(rx, 226, 3, 18);
+                }
+
+                ectx.fillStyle = '#312e81';
+                ectx.fillRect(0, 276, EGA_W, 84);
+                ectx.fillStyle = '#0f172a';
+                ectx.fillRect(28, 168, 42, 112);
+            }
+        }
+
+        function drawHotspotHighlights() {
+            const room = ROOMS[state.roomId];
+            room.hotspots.forEach(spot => {
+                const isHover = state.hoveredHotspot && state.hoveredHotspot.id === spot.id;
+                if (isHover) {
+                    ectx.save();
+                    ectx.strokeStyle = EGA.yellow;
+                    ectx.lineWidth = 1.5;
+                    ectx.setLineDash([4, 3]);
+                    ectx.strokeRect(spot.x, spot.y, spot.w, spot.h);
+                    ectx.setLineDash([]);
+
+                    // Hotspot label pill
+                    ectx.font = 'bold 11px "JetBrains Mono", monospace';
+                    const tw = ectx.measureText(spot.label).width + 12;
+                    const lx = Math.max(6, Math.min(EGA_W - tw - 6, spot.x + spot.w * 0.5 - tw * 0.5));
+                    const ly = Math.max(6, spot.y - 20);
+                    ectx.fillStyle = 'rgba(15, 10, 34, 0.92)';
+                    ectx.fillRect(lx, ly, tw, 17);
+                    ectx.strokeStyle = EGA.neonPink;
+                    ectx.lineWidth = 1;
+                    ectx.strokeRect(lx, ly, tw, 17);
+                    ectx.fillStyle = EGA.yellow;
+                    ectx.textAlign = 'center';
+                    ectx.fillText(spot.label, lx + tw * 0.5, ly + 12);
+                    ectx.restore();
+                }
+            });
+        }
+
+        function renderEGAFrame() {
+            ectx.clearRect(0, 0, EGA_W, EGA_H);
+            drawRoomArtwork();
+            drawHotspotHighlights();
+
+            const l = state.larry;
+            const isMoving = l.targetX !== null || l.targetY !== null;
+            drawLarryCharacter(l.x, l.y, l.facing, isMoving ? l.walkPhase : 0, l.danceTimer);
+        }
+
+        // =====================================================================
+        // 6. HUD, INVENTORY, SAVE/LOAD, RESIZE & EVENT HANDLERS
+        // =====================================================================
+        function updateHUD() {
+            document.getElementById('hud-room').textContent = ROOMS[state.roomId].title;
+            document.getElementById('hud-score').textContent = `${state.score} / 250`;
+            document.getElementById('hud-cash').textContent = `$${state.cash}`;
+            document.getElementById('room-exits-hint').textContent = ROOMS[state.roomId].exitsText;
+        }
+
+        function renderInventory() {
+            const strip = document.getElementById('inventory-strip');
+            strip.innerHTML = '';
+            if (state.inventory.length === 0) {
+                const empty = document.createElement('span');
+                empty.className = 'ega-font text-[11px] text-slate-400';
+                empty.textContent = '(Empty — explore hotspots or talk to locals)';
+                strip.appendChild(empty);
+                return;
+            }
+            state.inventory.forEach(itemId => {
+                const item = ITEMS_DB[itemId];
+                if (!item) return;
+                const chip = document.createElement('button');
+                chip.className = 'ega-btn rounded-lg px-2 py-0.5 ega-font text-[11px] font-semibold text-amber-200 shrink-0 cursor-pointer';
+                chip.textContent = `${item.icon} ${item.name}`;
+                chip.title = item.examine;
+                chip.addEventListener('click', () => {
+                    lAudio.init();
+                    lAudio.playClick();
+                    logNarrator(item.examine, 'NARRATOR');
+                });
+                strip.appendChild(chip);
+            });
+        }
+
+        function saveGameToStorage() {
+            lAudio.init();
+            lAudio.playClick();
+            try {
+                const payload = {
+                    roomId: state.roomId,
+                    score: state.score,
+                    cash: state.cash,
+                    inventory: state.inventory,
+                    flags: state.flags,
+                    x: state.larry.x,
+                    y: state.larry.y
+                };
+                localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
+                showToast('ADVENTURE SAVED');
+                logNarrator('Saved Larry\'s progress to local storage.', 'NARRATOR');
+            } catch (err) {
+                showToast('SAVE FAILED');
+            }
+        }
+
+        function loadGameFromStorage() {
+            lAudio.init();
+            lAudio.playClick();
+            try {
+                const raw = localStorage.getItem(SAVE_KEY);
+                if (!raw) {
+                    showToast('NO SAVED GAME FOUND');
+                    return;
+                }
+                const data = JSON.parse(raw);
+                if (!data || !ROOMS[data.roomId]) return;
+                state.roomId = data.roomId;
+                state.score = data.score || 0;
+                state.cash = data.cash ?? 45;
+                state.inventory = Array.isArray(data.inventory) ? data.inventory : [];
+                state.flags = { ...state.flags, ...(data.flags || {}) };
+                state.larry.x = data.x || 120;
+                state.larry.y = data.y || ROOMS[state.roomId].walkFloor.y;
+                state.larry.targetX = null;
+                state.larry.targetY = null;
+                state.mode = 'playing';
+                document.getElementById('modal-overlay').classList.add('hidden');
+                closeDialogue();
+                updateHUD();
+                renderInventory();
+                showToast('ADVENTURE LOADED');
+                logNarrator(`Loaded saved game at ${ROOMS[state.roomId].title}.`, 'NARRATOR');
+            } catch (err) {
+                showToast('LOAD FAILED');
+            }
+        }
+
+        function resetGameState() {
+            lAudio.init();
+            lAudio.playClick();
+            state.roomId = 'outside';
+            state.score = 0;
+            state.cash = 45;
+            state.inventory = [];
+            Object.keys(state.flags).forEach(k => { state.flags[k] = false; });
+            state.larry.x = 115;
+            state.larry.y = 292;
+            state.larry.targetX = null;
+            state.larry.targetY = null;
+            state.larry.danceTimer = 0;
+            state.larry.pendingAction = null;
+            state.mode = 'playing';
+            closeDialogue();
+            document.getElementById('modal-overlay').classList.add('hidden');
+            document.getElementById('narrator-log').innerHTML = '';
+            updateHUD();
+            renderInventory();
+            logNarrator('OUTSIDE LEFTY\'S LOUNGE. Larry adjusts his white leisure suit and checks his gold chain.', 'NARRATOR');
+        }
+
+        function togglePauseAdventure() {
+            lAudio.init();
+            lAudio.playClick();
+            if (state.mode === 'playing') {
+                state.mode = 'paused';
+                document.getElementById('ov-badge').textContent = 'ADVENTURE PAUSED';
+                document.getElementById('ov-title').textContent = 'PAUSED';
+                document.getElementById('ov-desc').textContent =
+                    `Currently at ${ROOMS[state.roomId].title} • Score ${state.score} / 250 • Press Resume or P to continue.`;
+                document.getElementById('btn-ov-start').textContent = 'RESUME ADVENTURE';
+                document.getElementById('modal-overlay').classList.remove('hidden');
+            } else if (state.mode === 'paused') {
+                state.mode = 'playing';
+                document.getElementById('modal-overlay').classList.add('hidden');
+            }
+        }
+
+        function fitEGACanvas() {
+            const box = document.getElementById('canvas-container');
+            const availW = Math.max(240, box.clientWidth);
+            const availH = Math.max(150, box.clientHeight);
+            const aspect = EGA_W / EGA_H;
+
+            let rw = availW;
+            let rh = rw / aspect;
+            if (rh > availH) {
+                rh = availH;
+                rw = rh * aspect;
+            }
+            egaCanvas.style.width = `${Math.floor(rw)}px`;
+            egaCanvas.style.height = `${Math.floor(rh)}px`;
+        }
+
+        function screenToLogicalCoords(clientX, clientY) {
+            const rect = egaCanvas.getBoundingClientRect();
+            const scaleX = EGA_W / Math.max(1, rect.width);
+            const scaleY = EGA_H / Math.max(1, rect.height);
+            return {
+                x: (clientX - rect.left) * scaleX,
+                y: (clientY - rect.top) * scaleY
+            };
+        }
+
+        egaCanvas.addEventListener('pointermove', (e) => {
+            const pt = screenToLogicalCoords(e.clientX, e.clientY);
+            const room = ROOMS[state.roomId];
+            state.hoveredHotspot = room.hotspots.find(h =>
+                pt.x >= h.x && pt.x <= h.x + h.w && pt.y >= h.y && pt.y <= h.y + h.h
+            ) || null;
+        });
+
+        egaCanvas.addEventListener('pointerdown', (e) => {
+            lAudio.init();
+            if (state.mode !== 'playing') return;
+            const pt = screenToLogicalCoords(e.clientX, e.clientY);
+            const room = ROOMS[state.roomId];
+            const hit = room.hotspots.find(h =>
+                pt.x >= h.x && pt.x <= h.x + h.w && pt.y >= h.y && pt.y <= h.y + h.h
+            );
+
+            if (hit) {
+                walkLarryTo(hit.walkX, hit.walkY, () => executeHotspotInteraction(hit, 'auto'));
+            } else {
+                walkLarryTo(pt.x, pt.y, null);
+            }
+        });
+
+        // Parser form submission
+        document.getElementById('parser-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            lAudio.init();
+            const input = document.getElementById('parser-input');
+            const val = input.value;
+            input.value = '';
+            runParserCommand(val);
+        });
+
+        // Quick verb buttons
+        document.querySelectorAll('.verb-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                lAudio.init();
+                lAudio.playClick();
+                const verb = btn.dataset.verb;
+                if (verb === 'look' || verb === 'dance' || verb === 'inventory') {
+                    runParserCommand(verb);
+                } else {
+                    const input = document.getElementById('parser-input');
+                    input.value = verb;
+                    input.focus();
+                }
+            });
+        });
+
+        // Toolbar & Modal buttons
+        document.getElementById('btn-hint').addEventListener('click', provideSmartHint);
+        document.getElementById('btn-save').addEventListener('click', saveGameToStorage);
+        document.getElementById('btn-load').addEventListener('click', loadGameFromStorage);
+        document.getElementById('btn-reset').addEventListener('click', resetGameState);
+        document.getElementById('btn-pause').addEventListener('click', togglePauseAdventure);
+
+        document.getElementById('btn-mute').addEventListener('click', () => {
+            lAudio.init();
+            const muted = lAudio.toggleMute();
+            document.getElementById('btn-mute').textContent = muted ? '🔇 MUTED [M]' : '🔊 SFX [M]';
+        });
+
+        document.getElementById('btn-music').addEventListener('click', () => {
+            lAudio.init();
+            const on = lAudio.toggleMusic();
+            const b = document.getElementById('btn-music');
+            b.textContent = on ? '🎵 LOUNGE: ON' : '🎵 LOUNGE: OFF';
+            b.classList.toggle('active', on);
+        });
+
+        document.getElementById('btn-ov-start').addEventListener('click', () => {
+            lAudio.init();
+            lAudio.playClick();
+            if (state.mode === 'paused') {
+                togglePauseAdventure();
+            } else {
+                resetGameState();
+            }
+        });
+
+        window.addEventListener('keydown', (e) => {
+            const activeTag = document.activeElement && document.activeElement.tagName;
+            if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') {
+                if (e.code === 'Escape') document.activeElement.blur();
+                return;
+            }
+            if (e.repeat) return;
+            if (e.code === 'KeyM') {
+                lAudio.init();
+                const muted = lAudio.toggleMute();
+                document.getElementById('btn-mute').textContent = muted ? '🔇 MUTED [M]' : '🔊 SFX [M]';
+            } else if (e.code === 'KeyP') {
+                togglePauseAdventure();
+            } else if (e.code === 'KeyR') {
+                resetGameState();
+            }
+        });
+
+        window.addEventListener('resize', fitEGACanvas);
+
+        // =====================================================================
+        // 7. MAIN SIMULATION & RENDER LOOP
+        // =====================================================================
+        let lastTime = performance.now();
+
+        function loop(now) {
+            requestAnimationFrame(loop);
+            const dt = Math.min((now - lastTime) / 1000, 0.05);
+            lastTime = now;
+            state.clock += dt;
+
+            let walkingNow = false;
+            if (state.mode === 'playing') {
+                const l = state.larry;
+                if (l.danceTimer > 0) {
+                    l.danceTimer = Math.max(0, l.danceTimer - dt);
+                }
+                if (l.targetX !== null && l.targetY !== null) {
+                    const dx = l.targetX - l.x;
+                    const dy = l.targetY - l.y;
+                    const dist = Math.hypot(dx, dy);
+                    const speed = 135;
+                    if (dist <= speed * dt) {
+                        l.x = l.targetX;
+                        l.y = l.targetY;
+                        l.targetX = null;
+                        l.targetY = null;
+                        if (typeof l.pendingAction === 'function') {
+                            const act = l.pendingAction;
+                            l.pendingAction = null;
+                            act();
+                        }
+                    } else {
+                        walkingNow = true;
+                        l.x += (dx / dist) * speed * dt;
+                        l.y += (dy / dist) * speed * dt;
+                        l.walkPhase += dt * 15;
+                    }
+                }
+            }
+
+            lAudio.update(dt, walkingNow, state.roomId === 'disco');
+            renderEGAFrame();
+        }
+
+        window.onload = function () {
+            fitEGACanvas();
+            updateHUD();
+            renderInventory();
+            logNarrator('Welcome to 1987! Click hotspots to walk & interact, or type commands in the parser below.', 'NARRATOR');
+            requestAnimationFrame(loop);
+        };
+    </script>
+</body>
+</html>

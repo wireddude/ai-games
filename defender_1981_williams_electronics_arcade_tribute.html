@@ -1,0 +1,1752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>DEFENDER 1981 — Williams Electronics Arcade Tribute</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&family=JetBrains+Mono:wght@600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #040610;
+            font-family: 'Inter', sans-serif;
+            color: #f8fafc;
+        }
+        .d-font {
+            font-family: 'JetBrains Mono', monospace;
+            font-variant-numeric: tabular-nums;
+        }
+        #defender-canvas {
+            display: block;
+            box-shadow: 0 14px 42px rgba(0, 0, 0, 0.85), 0 0 0 1.5px rgba(56, 189, 248, 0.32);
+        }
+        .d-glass {
+            background: rgba(7, 12, 26, 0.86);
+            border: 1px solid rgba(56, 189, 248, 0.28);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+        }
+        .d-btn {
+            background: rgba(15, 27, 54, 0.92);
+            border: 1px solid rgba(56, 189, 248, 0.36);
+            transition: transform 0.07s ease, background-color 0.14s ease, border-color 0.14s ease;
+        }
+        .d-btn:hover {
+            background: rgba(25, 45, 88, 0.98);
+            border-color: #7dd3fc;
+        }
+        .d-btn:active {
+            transform: scale(0.95);
+        }
+        .d-btn.active {
+            background: rgba(14, 116, 144, 0.55);
+            border-color: #38bdf8;
+            color: #e0f2fe;
+        }
+        .d-touch {
+            background: rgba(11, 21, 44, 0.85);
+            border: 1.5px solid rgba(56, 189, 248, 0.44);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.55);
+        }
+        .d-touch:active, .d-touch.pressed {
+            background: rgba(56, 189, 248, 0.36);
+            border-color: #e0f2fe;
+            transform: scale(0.94);
+        }
+    </style>
+</head>
+<body class="w-full h-full overflow-hidden flex flex-col items-center justify-between p-1.5 sm:p-2.5 gap-1">
+
+    <!-- Top Arcade HUD: 1UP Score, High Score, Wave, Ships, Humanoids, Smart Bombs & Controls -->
+    <header class="w-full max-w-6xl d-glass rounded-xl px-2.5 sm:px-3.5 py-1.5 flex flex-wrap items-center justify-between gap-2 d-font shrink-0 z-20">
+        <div class="flex flex-wrap items-center gap-3 sm:gap-5">
+            <div>
+                <span class="text-[9px] text-cyan-300/80 block leading-none">1UP SCORE</span>
+                <span id="hud-score" class="text-xs sm:text-base font-extrabold text-white">000000</span>
+            </div>
+            <div>
+                <span class="text-[9px] text-amber-300/85 block leading-none">HIGH SCORE</span>
+                <span id="hud-high" class="text-xs sm:text-base font-extrabold text-amber-300">000000</span>
+            </div>
+            <div>
+                <span class="text-[9px] text-emerald-300/85 block leading-none">WAVE</span>
+                <span id="hud-wave" class="text-xs sm:text-base font-extrabold text-emerald-300">01</span>
+            </div>
+            <div class="flex flex-col">
+                <span class="text-[9px] text-sky-300/85 leading-none mb-1">SHIPS</span>
+                <canvas id="ships-canvas" width="84" height="14" class="block"></canvas>
+            </div>
+            <div>
+                <span class="text-[9px] text-fuchsia-300/85 block leading-none">HUMANOIDS</span>
+                <span id="hud-humans" class="text-xs sm:text-sm font-extrabold text-fuchsia-300">10/10</span>
+            </div>
+            <div>
+                <span class="text-[9px] text-rose-300/85 block leading-none">SMART BOMBS</span>
+                <span id="hud-bombs" class="text-xs sm:text-sm font-extrabold text-rose-300">💣 ×3</span>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-1 sm:gap-1.5">
+            <button id="btn-synth" class="d-btn active rounded-lg px-2 py-1 text-[11px] font-bold text-cyan-200 cursor-pointer" title="Toggle Retro Synth Groove">
+                🎵 SYNTH
+            </button>
+            <button id="btn-pause" class="d-btn rounded-lg px-2 py-1 text-[11px] font-bold text-amber-200 cursor-pointer" title="Pause / Resume [P]">
+                PAUSE [P]
+            </button>
+            <button id="btn-sound" class="d-btn active rounded-lg px-2 py-1 text-[11px] font-bold text-emerald-200 cursor-pointer" title="Mute / Unmute Sound [M]">
+                🔊 SOUND [M]
+            </button>
+            <button id="btn-restart" class="d-btn rounded-lg px-2 py-1 text-[11px] font-bold text-sky-200 cursor-pointer" title="Restart Game [R]">
+                ↻ RESTART [R]
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Playfield Container (Includes Scanner Minimap inside Canvas Top Bar) -->
+    <main id="playfield-wrap" class="relative flex-1 w-full max-w-6xl min-h-0 flex items-center justify-center">
+        <canvas id="defender-canvas"></canvas>
+
+        <!-- Dynamic Alert / Wave Tally / Planet Destroyed Banner -->
+        <div id="alert-banner" class="hidden absolute top-14 left-1/2 -translate-x-1/2 d-glass rounded-full px-4 py-1 d-font text-xs sm:text-sm font-extrabold tracking-wider text-amber-300 z-20 pointer-events-none whitespace-nowrap">
+            ABDUCTION ALERT!
+        </div>
+
+        <!-- Attract / Pause / Wave Tally / Game Over Overlay Card -->
+        <div id="overlay-card" class="absolute inset-0 flex items-center justify-center p-4 bg-slate-950/65 z-30">
+            <div class="d-glass rounded-2xl max-w-md w-full p-5 sm:p-6 text-center flex flex-col gap-3">
+                <div id="ov-kicker" class="d-font text-[11px] font-bold uppercase tracking-widest text-cyan-300">
+                    1981 WILLIAMS ELECTRONICS TRIBUTE
+                </div>
+                <h1 id="ov-title" class="text-2xl sm:text-3xl font-extrabold tracking-wider text-white">
+                    DEFENDER
+                </h1>
+                <p id="ov-desc" class="text-xs sm:text-sm text-slate-200/90 leading-relaxed">
+                    Patrol the wrap-around planetary horizon, intercept alien Landers before they abduct humanoids to the top of the sky, catch falling humanoids mid-air, and unleash Smart Bombs when swarmed.
+                </p>
+
+                <div class="bg-slate-950/80 border border-cyan-400/20 rounded-xl p-2.5 text-left text-[11px] text-slate-200 d-font space-y-1">
+                    <div class="flex justify-between"><span class="text-emerald-400 font-bold">LANDER / RESCUE</span><span>150 / 500 PTS</span></div>
+                    <div class="flex justify-between"><span class="text-fuchsia-300 font-bold">MUTANT / BOMBER</span><span>150 / 250 PTS</span></div>
+                    <div class="flex justify-between"><span class="text-cyan-300 font-bold">POD / SWARMER / BAITER</span><span>1000 / 150 / 200 PTS</span></div>
+                    <div class="flex justify-between"><span class="text-amber-300 font-bold">EXTRA SHIP + SMART BOMB</span><span>EVERY 10,000 PTS</span></div>
+                </div>
+
+                <div class="text-[11px] text-slate-300 d-font leading-snug">
+                    <span class="text-cyan-300 font-bold">FLY/THRUST:</span> ARROWS / WASD • <span class="text-amber-300 font-bold">FIRE:</span> SPACE / Z / J • <span class="text-rose-300 font-bold">BOMB:</span> B / X / SHIFT • <span class="text-emerald-300 font-bold">HYPERSPACE:</span> H
+                </div>
+
+                <button id="btn-start" class="d-btn active mt-1 py-2.5 px-6 rounded-xl text-sm font-extrabold tracking-wide text-white cursor-pointer">
+                    LAUNCH DEFENDER
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- Bottom Touch Controls (Mobile / Tablet) & Desktop Shortcut Bar -->
+    <footer class="w-full max-w-6xl shrink-0 z-20">
+        <div class="flex md:hidden items-end justify-between px-1 pb-0.5 gap-2">
+            <!-- Directional Cluster -->
+            <div class="grid grid-cols-3 gap-1 w-32 h-32">
+                <div></div>
+                <button id="tc-up" class="d-touch rounded-xl text-xs font-bold text-cyan-200 flex items-center justify-center">▲</button>
+                <div></div>
+                <button id="tc-left" class="d-touch rounded-xl text-xs font-bold text-white flex items-center justify-center">◀</button>
+                <div class="rounded-xl bg-slate-900/50 border border-cyan-500/15"></div>
+                <button id="tc-right" class="d-touch rounded-xl text-xs font-bold text-white flex items-center justify-center">▶</button>
+                <div></div>
+                <button id="tc-down" class="d-touch rounded-xl text-xs font-bold text-cyan-200 flex items-center justify-center">▼</button>
+                <div></div>
+            </div>
+
+            <!-- Action Cluster: Flip, Hyperspace, Smart Bomb, Fire -->
+            <div class="flex items-end gap-1.5 mb-1">
+                <button id="tc-flip" class="d-touch rounded-xl px-2.5 h-12 text-[11px] font-extrabold text-cyan-200 flex items-center justify-center">FLIP</button>
+                <button id="tc-hyper" class="d-touch rounded-xl px-2.5 h-12 text-[11px] font-extrabold text-emerald-200 flex items-center justify-center">JUMP</button>
+                <button id="tc-bomb" class="d-touch rounded-xl px-3 h-14 text-xs font-extrabold text-rose-300 flex items-center justify-center">💣</button>
+                <button id="tc-fire" class="d-touch rounded-2xl px-4 h-16 text-xs font-extrabold tracking-wider text-amber-300 flex items-center justify-center">FIRE</button>
+            </div>
+        </div>
+
+        <div class="hidden md:flex items-center justify-between text-[11px] text-slate-400 d-font px-1">
+            <span>WRAP-AROUND PLANETARY SCANNER AT TOP • CATCH FALLING HUMANOIDS &amp; RETURN TO SURFACE (+500)</span>
+            <span>SPACE/Z/J = LASER • B/X/SHIFT = BOMB • H = HYPERSPACE • P = PAUSE • M = SOUND • R = RESET</span>
+        </div>
+    </footer>
+
+    <script>
+        /**
+         * DEFENDER 1981 — WILLIAMS ELECTRONICS ARCADE TRIBUTE
+         * Self-contained Single-File HTML5 Canvas + Web Audio API Scrolling Shooter
+         * Logical canvas: 1000 x 600 (top 76px scanner radar + 524px planetary playfield).
+         * Seamless 4x wrap-around world width: WORLD_W = 4000.
+         * Zero CRT or scanline overlays.
+         */
+
+        const VIEW_W = 1000;
+        const VIEW_H = 600;
+        const SCANNER_H = 76;
+        const PLAY_TOP = SCANNER_H + 4;
+        const PLAY_BOTTOM = VIEW_H - 12;
+        const WORLD_W = VIEW_W * 4; // 4000px seamless wrap-around planet
+        const EXTRA_LIFE_STEP = 10000;
+        const HIGH_SCORE_KEY = 'defender_1981_high_score_v1';
+
+        // =====================================================================
+        // 1. WEB AUDIO API SYNTHESIZER (THRUST, LASER, SMART BOMB, SIRENS & ARP)
+        // =====================================================================
+        class DefenderAudio {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+                this.synthOn = true;
+                this.thrustTimer = 0;
+                this.alarmTimer = 0;
+                this.alarmStep = 0;
+                this.arpTimer = 0;
+                this.arpIdx = 0;
+                this.arpNotes = [110, 146.83, 164.81, 220, 196, 164.81, 146.83, 130.81];
+            }
+
+            init() {
+                if (this.ctx) {
+                    if (this.ctx.state === 'suspended') {
+                        this.ctx.resume().catch(() => {});
+                    }
+                    return;
+                }
+                try {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                } catch (err) {
+                    console.warn('Web Audio API unavailable:', err);
+                }
+            }
+
+            toggleMute() {
+                this.muted = !this.muted;
+                return this.muted;
+            }
+
+            toggleSynth() {
+                this.synthOn = !this.synthOn;
+                return this.synthOn;
+            }
+
+            tone(freq, type, startTime, duration, volume = 0.05, slideTo = null) {
+                if (this.muted || !this.ctx || !freq || freq <= 0) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, startTime);
+                if (slideTo) {
+                    osc.frequency.exponentialRampToValueAtTime(Math.max(26, slideTo), startTime + duration);
+                }
+
+                gain.gain.setValueAtTime(0.001, startTime);
+                gain.gain.linearRampToValueAtTime(volume, startTime + 0.006);
+                gain.gain.exponentialRampToValueAtTime(0.0008, startTime + duration);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(startTime);
+                osc.stop(startTime + duration + 0.02);
+            }
+
+            noise(duration, volume = 0.08, cutoff = 700) {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const len = Math.max(1, Math.floor(this.ctx.sampleRate * duration));
+                const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+                const data = buf.getChannelData(0);
+                for (let i = 0; i < len; i++) {
+                    data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+                }
+                const src = this.ctx.createBufferSource();
+                src.buffer = buf;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(cutoff, now);
+                filter.frequency.exponentialRampToValueAtTime(55, now + duration);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(volume, now);
+                gain.gain.exponentialRampToValueAtTime(0.0008, now + duration);
+
+                src.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                src.start(now);
+            }
+
+            playLaser() {
+                if (!this.ctx || this.muted) return;
+                this.tone(1320, 'sawtooth', this.ctx.currentTime, 0.085, 0.048, 210);
+            }
+
+            playSmartBomb() {
+                if (!this.ctx || this.muted) return;
+                const now = this.ctx.currentTime;
+                this.noise(0.58, 0.17, 1300);
+                this.tone(180, 'sawtooth', now, 0.5, 0.085, 32);
+            }
+
+            playHyperspace() {
+                if (!this.ctx || this.muted) return;
+                const now = this.ctx.currentTime;
+                this.tone(240, 'sine', now, 0.18, 0.06, 1480);
+                this.noise(0.14, 0.06, 1600);
+            }
+
+            playWarpIn() {
+                if (!this.ctx || this.muted) return;
+                this.tone(220, 'triangle', this.ctx.currentTime, 0.14, 0.035, 660);
+            }
+
+            playEnemyExplode() {
+                if (!this.ctx || this.muted) return;
+                const now = this.ctx.currentTime;
+                this.noise(0.18, 0.09, 880);
+                this.tone(360, 'square', now, 0.14, 0.045, 95);
+            }
+
+            playCatchHumanoid() {
+                if (!this.ctx || this.muted) return;
+                const now = this.ctx.currentTime;
+                this.tone(587.33, 'triangle', now, 0.09, 0.055);
+                this.tone(880.00, 'triangle', now + 0.075, 0.14, 0.06);
+            }
+
+            playRescueHumanoid() {
+                if (!this.ctx || this.muted) return;
+                const now = this.ctx.currentTime;
+                [523.25, 659.25, 783.99, 1046.5].forEach((f, idx) => {
+                    this.tone(f, 'square', now + idx * 0.07, 0.13, 0.052);
+                });
+            }
+
+            playHumanoidLost() {
+                if (!this.ctx || this.muted) return;
+                this.tone(310, 'sawtooth', this.ctx.currentTime, 0.24, 0.05, 85);
+            }
+
+            playPlayerExplosion() {
+                if (!this.ctx || this.muted) return;
+                const now = this.ctx.currentTime;
+                this.noise(0.55, 0.16, 520);
+                this.tone(150, 'sawtooth', now, 0.45, 0.08, 30);
+            }
+
+            playWaveFanfare() {
+                if (!this.ctx || this.muted) return;
+                const now = this.ctx.currentTime;
+                [440, 554.37, 659.25, 880, 1108.73].forEach((f, idx) => {
+                    this.tone(f, 'square', now + idx * 0.085, 0.15, 0.052);
+                });
+            }
+
+            playExtraLife() {
+                if (!this.ctx || this.muted) return;
+                const now = this.ctx.currentTime;
+                [523.25, 659.25, 783.99, 1046.5, 1318.5].forEach((f, idx) => {
+                    this.tone(f, 'square', now + idx * 0.075, 0.14, 0.055);
+                });
+            }
+
+            updateContinuous(dt, playing, thrusting, abductingActive) {
+                if (!this.ctx || this.muted || !playing) return;
+
+                if (thrusting) {
+                    this.thrustTimer -= dt;
+                    if (this.thrustTimer <= 0) {
+                        this.thrustTimer = 0.065;
+                        this.noise(0.06, 0.042, 260);
+                    }
+                } else {
+                    this.thrustTimer = 0;
+                }
+
+                if (abductingActive) {
+                    this.alarmTimer -= dt;
+                    if (this.alarmTimer <= 0) {
+                        this.alarmTimer = 0.14;
+                        this.alarmStep = (this.alarmStep + 1) % 2;
+                        this.tone(this.alarmStep === 0 ? 740 : 520, 'square', this.ctx.currentTime, 0.11, 0.036);
+                    }
+                } else {
+                    this.alarmTimer = 0;
+                }
+
+                if (this.synthOn) {
+                    this.arpTimer -= dt;
+                    if (this.arpTimer <= 0) {
+                        this.arpTimer = 0.135;
+                        const note = this.arpNotes[this.arpIdx % this.arpNotes.length];
+                        this.tone(note, 'triangle', this.ctx.currentTime, 0.11, 0.022);
+                        this.arpIdx++;
+                    }
+                }
+            }
+        }
+
+        const dAudio = new DefenderAudio();
+
+        // =====================================================================
+        // 2. WRAP-AROUND TERRAIN, STARS & SIMULATION STATE
+        // =====================================================================
+        const canvas = document.getElementById('defender-canvas');
+        const ctx = canvas.getContext('2d');
+        const shipsCanvas = document.getElementById('ships-canvas');
+        const sctx = shipsCanvas.getContext('2d');
+        canvas.width = VIEW_W;
+        canvas.height = VIEW_H;
+
+        // Seamless wrap-around mountain ridge sampled every 20px around WORLD_W (4000)
+        const TERRAIN_STEP = 20;
+        const TERRAIN_POINTS = WORLD_W / TERRAIN_STEP;
+        const terrainHeights = Array.from({ length: TERRAIN_POINTS }, (_, i) => {
+            const u = (i / TERRAIN_POINTS) * Math.PI * 2;
+            const h1 = Math.sin(u * 6) * 34;
+            const h2 = Math.cos(u * 15 + 0.7) * 20;
+            const jag = ((i * 37) % 19) - 9;
+            return Math.max(16, Math.min(82, 42 + h1 + h2 + jag));
+        });
+
+        function getTerrainSurfaceY(worldX) {
+            const wx = ((worldX % WORLD_W) + WORLD_W) % WORLD_W;
+            const exactIdx = wx / TERRAIN_STEP;
+            const i0 = Math.floor(exactIdx) % TERRAIN_POINTS;
+            const i1 = (i0 + 1) % TERRAIN_POINTS;
+            const frac = exactIdx - Math.floor(exactIdx);
+            const ridgeH = terrainHeights[i0] * (1 - frac) + terrainHeights[i1] * frac;
+            return PLAY_BOTTOM - ridgeH;
+        }
+
+        // Stars distributed across the full 4x wrap-around world
+        const worldStars = Array.from({ length: 180 }, (_, i) => ({
+            wx: (i * 193) % WORLD_W,
+            y: PLAY_TOP + 8 + ((i * 71) % (PLAY_BOTTOM - SCANNER_H - 95)),
+            size: (i % 6 === 0) ? 2.0 : 1.2,
+            phase: i * 0.47,
+            color: i % 4 === 0 ? '#7dd3fc' : (i % 5 === 0 ? '#f0abfc' : '#e2e8f0')
+        }));
+
+        function loadHighScore() {
+            try {
+                return parseInt(localStorage.getItem(HIGH_SCORE_KEY) || '0', 10) || 0;
+            } catch (_) {
+                return 0;
+            }
+        }
+
+        function saveHighScore(val) {
+            try {
+                localStorage.setItem(HIGH_SCORE_KEY, String(val));
+            } catch (_) {}
+        }
+
+        const game = {
+            mode: 'title', // 'title', 'playing', 'paused', 'gameOver'
+            score: 0,
+            highScore: loadHighScore(),
+            nextExtraLife: EXTRA_LIFE_STEP,
+            ships: 3,
+            smartBombs: 3,
+            wave: 1,
+            waveTimer: 0,
+            baiterTimer: 32,
+            planetDestroyed: false,
+            screenFlash: 0,
+            clock: 0,
+
+            cameraX: 0,
+            ship: {
+                wx: 500,
+                y: 310,
+                vx: 0,
+                vy: 0,
+                facing: 1, // 1 right, -1 left
+                thrusting: false,
+                alive: true,
+                respawnTimer: 0,
+                invuln: 1.5,
+                fireCooldown: 0,
+                bombCooldown: 0,
+                hyperCooldown: 0,
+                carryingHumanId: null
+            },
+
+            lasers: [],     // { wx, y, dir, life, maxLife }
+            enemyShots: [], // { wx, y, vx, vy, life }
+            mines: [],      // { wx, y, pulse, life }
+            humanoids: [],  // { id, wx, y, vy, state: 'walking'|'abducted'|'falling'|'carried'|'dead', abductorId, fallStartY }
+            enemies: [],    // { id, type: 'lander'|'mutant'|'bomber'|'pod'|'swarmer'|'baiter', wx, y, vx, vy, hp, warpTimer, targetHumanId, carryingHumanId, fireTimer }
+            particles: [],  // { wx, y, vx, vy, life, maxLife, color }
+            popups: [],     // { wx, y, text, life, color }
+
+            keys: {},
+            touch: { left: false, right: false, up: false, down: false, fire: false }
+        };
+
+        function wrapX(x) {
+            return ((x % WORLD_W) + WORLD_W) % WORLD_W;
+        }
+
+        function shortestDeltaX(fromX, toX) {
+            let dx = wrapX(toX) - wrapX(fromX);
+            if (dx > WORLD_W * 0.5) dx -= WORLD_W;
+            if (dx < -WORLD_W * 0.5) dx += WORLD_W;
+            return dx;
+        }
+
+        function worldToScreenX(wx) {
+            let sx = wrapX(wx) - game.cameraX;
+            if (sx > WORLD_W * 0.5) sx -= WORLD_W;
+            if (sx < -WORLD_W * 0.5) sx += WORLD_W;
+            return sx;
+        }
+
+        function addScore(pts, wx = null, y = null, label = null) {
+            game.score += pts;
+            if (game.score > game.highScore) {
+                game.highScore = game.score;
+                saveHighScore(game.highScore);
+            }
+            if (game.score >= game.nextExtraLife) {
+                game.ships = Math.min(7, game.ships + 1);
+                game.smartBombs = Math.min(9, game.smartBombs + 1);
+                game.nextExtraLife += EXTRA_LIFE_STEP;
+                dAudio.playExtraLife();
+                showAlert('10,000 PTS — +1 SHIP & +1 SMART BOMB!', 2.2);
+            }
+            if (wx !== null && y !== null) {
+                game.popups.push({
+                    wx: wrapX(wx),
+                    y,
+                    text: label || `+${pts}`,
+                    life: 0.8,
+                    color: pts >= 500 ? '#fde047' : '#38bdf8'
+                });
+            }
+            updateHUD();
+        }
+
+        function showAlert(text, duration = 1.8) {
+            const el = document.getElementById('alert-banner');
+            el.textContent = text;
+            el.classList.remove('hidden');
+            clearTimeout(showAlert._t);
+            showAlert._t = setTimeout(() => {
+                el.classList.add('hidden');
+            }, duration * 1000);
+        }
+
+        function spawnSparks(wx, y, color, count = 14) {
+            for (let i = 0; i < count; i++) {
+                const ang = Math.random() * Math.PI * 2;
+                const spd = 40 + Math.random() * 190;
+                game.particles.push({
+                    wx: wrapX(wx),
+                    y,
+                    vx: Math.cos(ang) * spd,
+                    vy: Math.sin(ang) * spd,
+                    life: 0.35 + Math.random() * 0.35,
+                    maxLife: 0.7,
+                    color
+                });
+            }
+        }
+
+        // =====================================================================
+        // 3. WAVE SETUP, HUMANOIDS & ENEMY ARCHETYPES
+        // =====================================================================
+        let nextEntityId = 1;
+
+        function createHumanoids(count = 10) {
+            game.humanoids = [];
+            for (let i = 0; i < count; i++) {
+                const wx = ((i + 0.5) / count) * WORLD_W + (Math.random() - 0.5) * 140;
+                const sy = getTerrainSurfaceY(wx);
+                game.humanoids.push({
+                    id: nextEntityId++,
+                    wx: wrapX(wx),
+                    y: sy - 5,
+                    vy: 0,
+                    state: 'walking', // 'walking', 'abducted', 'falling', 'carried', 'dead'
+                    abductorId: null,
+                    fallStartY: sy - 5,
+                    walkDir: Math.random() < 0.5 ? 1 : -1
+                });
+            }
+        }
+
+        function createEnemy(type, wx, y, vx = 0, vy = 0) {
+            return {
+                id: nextEntityId++,
+                type, // 'lander', 'mutant', 'bomber', 'pod', 'swarmer', 'baiter'
+                wx: wrapX(wx),
+                y,
+                vx,
+                vy,
+                hp: 1,
+                warpTimer: 0.65,
+                targetHumanId: null,
+                carryingHumanId: null,
+                fireTimer: 1.4 + Math.random() * 2.2
+            };
+        }
+
+        function setupDefenderWave(waveNum, resetHumans = false) {
+            game.wave = waveNum;
+            game.waveTimer = 0;
+            game.baiterTimer = Math.max(20, 34 - waveNum * 1.5);
+            game.lasers = [];
+            game.enemyShots = [];
+            game.mines = [];
+            game.enemies = [];
+            game.popups = [];
+
+            if (resetHumans || game.humanoids.length === 0) {
+                game.planetDestroyed = false;
+                createHumanoids(10);
+            } else {
+                // Ensure any carried/falling humanoids reset cleanly at wave start
+                game.humanoids.forEach(h => {
+                    if (h.state !== 'dead') {
+                        h.state = 'walking';
+                        h.abductorId = null;
+                        h.vy = 0;
+                        h.y = getTerrainSurfaceY(h.wx) - 5;
+                    }
+                });
+            }
+
+            const landerCount = 7 + waveNum * 2;
+            const bomberCount = Math.min(6, 1 + Math.floor(waveNum * 0.8));
+            const podCount = Math.min(4, Math.floor((waveNum + 1) / 2));
+
+            for (let i = 0; i < landerCount; i++) {
+                const wx = Math.random() * WORLD_W;
+                const y = PLAY_TOP + 36 + Math.random() * 150;
+                const dir = Math.random() < 0.5 ? 1 : -1;
+                const type = game.planetDestroyed ? 'mutant' : 'lander';
+                game.enemies.push(createEnemy(type, wx, y, dir * (75 + waveNum * 6), 0));
+            }
+
+            for (let i = 0; i < bomberCount; i++) {
+                const wx = Math.random() * WORLD_W;
+                const y = PLAY_TOP + 70 + Math.random() * 240;
+                game.enemies.push(createEnemy('bomber', wx, y, (Math.random() < 0.5 ? 1 : -1) * 95, (Math.random() - 0.5) * 55));
+            }
+
+            for (let i = 0; i < podCount; i++) {
+                const wx = Math.random() * WORLD_W;
+                const y = PLAY_TOP + 60 + Math.random() * 190;
+                game.enemies.push(createEnemy('pod', wx, y, (Math.random() < 0.5 ? 1 : -1) * 55, (Math.random() - 0.5) * 40));
+            }
+
+            updateHUD();
+        }
+
+        function startNewDefenderGame() {
+            dAudio.init();
+            game.score = 0;
+            game.ships = 3;
+            game.smartBombs = 3;
+            game.nextExtraLife = EXTRA_LIFE_STEP;
+            game.planetDestroyed = false;
+            game.particles = [];
+            game.screenFlash = 0;
+
+            game.ship.wx = 500;
+            game.ship.y = 310;
+            game.ship.vx = 0;
+            game.ship.vy = 0;
+            game.ship.facing = 1;
+            game.ship.alive = true;
+            game.ship.respawnTimer = 0;
+            game.ship.invuln = 1.5;
+            game.ship.carryingHumanId = null;
+            game.cameraX = wrapX(game.ship.wx - VIEW_W * 0.25);
+
+            game.mode = 'playing';
+            document.getElementById('overlay-card').classList.add('hidden');
+            setupDefenderWave(1, true);
+            showAlert('WAVE 01 — DEFEND THE HUMANOIDS!', 1.8);
+        }
+
+        // =====================================================================
+        // 4. WEAPONS, SMART BOMB, HYPERSPACE & WAVE TALLY
+        // =====================================================================
+        function fireHorizontalLaser() {
+            const s = game.ship;
+            if (!s.alive || s.fireCooldown > 0 || game.mode !== 'playing') return;
+            s.fireCooldown = 0.14;
+            dAudio.playLaser();
+
+            // Classic Defender long horizontal laser streak
+            game.lasers.push({
+                wx: wrapX(s.wx + s.facing * 24),
+                y: s.y,
+                dir: s.facing,
+                length: 230,
+                life: 0.16,
+                maxLife: 0.16
+            });
+        }
+
+        function detonateSmartBomb() {
+            const s = game.ship;
+            if (!s.alive || game.smartBombs <= 0 || s.bombCooldown > 0 || game.mode !== 'playing') return;
+
+            game.smartBombs -= 1;
+            s.bombCooldown = 0.35;
+            game.screenFlash = 0.42;
+            dAudio.playSmartBomb();
+
+            // Clear enemies & shots currently on screen
+            for (let i = game.enemies.length - 1; i >= 0; i--) {
+                const en = game.enemies[i];
+                const sx = worldToScreenX(en.wx);
+                if (sx >= -40 && sx <= VIEW_W + 40) {
+                    if (en.carryingHumanId) {
+                        const hum = game.humanoids.find(h => h.id === en.carryingHumanId);
+                        if (hum && hum.state === 'abducted') {
+                            hum.state = 'falling';
+                            hum.abductorId = null;
+                            hum.fallStartY = hum.y;
+                            hum.vy = 0;
+                        }
+                    }
+                    const pts = en.type === 'pod' ? 1000 : (en.type === 'bomber' ? 250 : 150);
+                    addScore(pts, en.wx, en.y, `+${pts}`);
+                    spawnSparks(en.wx, en.y, '#38bdf8', 14);
+                    game.enemies.splice(i, 1);
+                }
+            }
+
+            game.enemyShots = game.enemyShots.filter(sh => {
+                const sx = worldToScreenX(sh.wx);
+                return sx < -30 || sx > VIEW_W + 30;
+            });
+
+            updateHUD();
+        }
+
+        function triggerHyperspace() {
+            const s = game.ship;
+            if (!s.alive || s.hyperCooldown > 0 || game.mode !== 'playing') return;
+
+            s.hyperCooldown = 0.65;
+            dAudio.playHyperspace();
+            spawnSparks(s.wx, s.y, '#4ade80', 18);
+
+            s.wx = Math.random() * WORLD_W;
+            s.y = PLAY_TOP + 45 + Math.random() * (PLAY_BOTTOM - PLAY_TOP - 110);
+            s.vx = s.facing * 120;
+            s.vy = 0;
+            s.invuln = 0.55;
+            game.cameraX = wrapX(s.wx - VIEW_W * 0.25);
+
+            spawnSparks(s.wx, s.y, '#38bdf8', 18);
+        }
+
+        function handleShipHit() {
+            const s = game.ship;
+            if (!s.alive || s.invuln > 0 || game.mode !== 'playing') return;
+
+            s.alive = false;
+            dAudio.playPlayerExplosion();
+            spawnSparks(s.wx, s.y, '#38bdf8', 28);
+            spawnSparks(s.wx, s.y, '#fde047', 16);
+
+            // Release carried humanoid if carrying one
+            if (s.carryingHumanId !== null) {
+                const hum = game.humanoids.find(h => h.id === s.carryingHumanId);
+                if (hum && hum.state === 'carried') {
+                    hum.state = 'falling';
+                    hum.fallStartY = hum.y;
+                    hum.vy = 0;
+                }
+                s.carryingHumanId = null;
+            }
+
+            game.ships -= 1;
+            updateHUD();
+
+            if (game.ships <= 0) {
+                game.mode = 'gameOver';
+                document.getElementById('ov-kicker').textContent = 'DEFENDER DESTROYED';
+                document.getElementById('ov-title').textContent = 'GAME OVER';
+                document.getElementById('ov-desc').textContent =
+                    `Final Score: ${game.score.toLocaleString()} • High Score: ${game.highScore.toLocaleString()} • Reached Wave ${game.wave}`;
+                document.getElementById('btn-start').textContent = 'PLAY AGAIN';
+                document.getElementById('overlay-card').classList.remove('hidden');
+            } else {
+                s.respawnTimer = 1.45;
+            }
+        }
+
+        function checkPlanetDestruction() {
+            if (game.planetDestroyed) return;
+            const aliveHumans = game.humanoids.filter(h => h.state !== 'dead').length;
+            if (aliveHumans === 0) {
+                game.planetDestroyed = true;
+                showAlert('ALL HUMANOIDS LOST — PLANET DESTROYED! LANDERS MUTATE!', 2.8);
+                game.enemies.forEach(en => {
+                    if (en.type === 'lander') {
+                        en.type = 'mutant';
+                        en.carryingHumanId = null;
+                        en.targetHumanId = null;
+                    }
+                });
+            }
+        }
+
+        // =====================================================================
+        // 5. SIMULATION STEP (SHIP INERTIA, HUMANOIDS, ABDUCTION & ENEMIES)
+        // =====================================================================
+        function updateDefender(dt) {
+            game.clock += dt;
+            if (game.screenFlash > 0) game.screenFlash = Math.max(0, game.screenFlash - dt);
+
+            if (game.mode !== 'playing') {
+                dAudio.updateContinuous(dt, false, false, false);
+                return;
+            }
+
+            game.waveTimer += dt;
+            const s = game.ship;
+
+            if (s.fireCooldown > 0) s.fireCooldown = Math.max(0, s.fireCooldown - dt);
+            if (s.bombCooldown > 0) s.bombCooldown = Math.max(0, s.bombCooldown - dt);
+            if (s.hyperCooldown > 0) s.hyperCooldown = Math.max(0, s.hyperCooldown - dt);
+            if (s.invuln > 0) s.invuln = Math.max(0, s.invuln - dt);
+
+            if (!s.alive) {
+                s.thrusting = false;
+                s.respawnTimer -= dt;
+                if (s.respawnTimer <= 0) {
+                    s.alive = true;
+                    s.vx = 0;
+                    s.vy = 0;
+                    s.y = 310;
+                    s.invuln = 1.65;
+                }
+            } else {
+                const left = game.keys['ArrowLeft'] || game.keys['KeyA'] || game.touch.left;
+                const right = game.keys['ArrowRight'] || game.keys['KeyD'] || game.touch.right;
+                const up = game.keys['ArrowUp'] || game.keys['KeyW'] || game.touch.up;
+                const down = game.keys['ArrowDown'] || game.keys['KeyS'] || game.touch.down;
+                const fire = game.keys['Space'] || game.keys['KeyZ'] || game.keys['KeyJ'] || game.touch.fire;
+
+                if (left && !right) {
+                    s.facing = -1;
+                    s.vx -= 920 * dt;
+                    s.thrusting = true;
+                } else if (right && !left) {
+                    s.facing = 1;
+                    s.vx += 920 * dt;
+                    s.thrusting = true;
+                } else {
+                    s.thrusting = false;
+                    // Smooth space inertia damping
+                    s.vx *= Math.pow(0.22, dt);
+                }
+
+                s.vx = Math.max(-520, Math.min(520, s.vx));
+
+                const vSpeed = 290;
+                if (up && !down) s.vy = -vSpeed;
+                else if (down && !up) s.vy = vSpeed;
+                else s.vy *= Math.pow(0.01, dt);
+
+                s.wx = wrapX(s.wx + s.vx * dt);
+                s.y = Math.max(PLAY_TOP + 14, Math.min(PLAY_BOTTOM - 12, s.y + s.vy * dt));
+
+                if (fire) {
+                    fireHorizontalLaser();
+                }
+            }
+
+            // Keep ship comfortably inside screen camera window
+            const leadOffset = s.facing > 0 ? VIEW_W * 0.24 : VIEW_W * 0.76;
+            const targetCam = wrapX(s.wx - leadOffset);
+            const camDiff = shortestDeltaX(game.cameraX, targetCam);
+            game.cameraX = wrapX(game.cameraX + camDiff * Math.min(1, dt * 7.5));
+
+            // Baiter UFO spawns if a wave drags on
+            game.baiterTimer -= dt;
+            if (game.baiterTimer <= 0 && game.enemies.length > 0 && game.enemies.length < 18) {
+                game.baiterTimer = 16;
+                const spawnX = wrapX(s.wx + (Math.random() < 0.5 ? -560 : 560));
+                game.enemies.push(createEnemy('baiter', spawnX, PLAY_TOP + 40, 0, 0));
+                showAlert('BAITER UFO DETECTED!', 1.5);
+            }
+
+            // Update Humanoids (walking, abducted, falling, carried)
+            let anyAbducting = false;
+            game.humanoids.forEach(h => {
+                if (h.state === 'dead') return;
+                const groundY = getTerrainSurfaceY(h.wx) - 5;
+
+                if (h.state === 'walking') {
+                    h.wx = wrapX(h.wx + h.walkDir * 14 * dt);
+                    h.y = groundY;
+                } else if (h.state === 'abducted') {
+                    anyAbducting = true;
+                    const abductor = game.enemies.find(e => e.id === h.abductorId);
+                    if (!abductor) {
+                        h.state = 'falling';
+                        h.abductorId = null;
+                        h.fallStartY = h.y;
+                        h.vy = 0;
+                    } else {
+                        h.wx = abductor.wx;
+                        h.y = abductor.y + 14;
+                    }
+                } else if (h.state === 'falling') {
+                    h.vy = Math.min(230, h.vy + 145 * dt);
+                    h.y += h.vy * dt;
+
+                    // Player can catch falling humanoid mid-air
+                    if (s.alive && s.carryingHumanId === null && Math.abs(shortestDeltaX(s.wx, h.wx)) < 24 && Math.abs(s.y - h.y) < 22) {
+                        h.state = 'carried';
+                        h.vy = 0;
+                        s.carryingHumanId = h.id;
+                        addScore(250, h.wx, h.y - 12, 'CAUGHT +250');
+                        dAudio.playCatchHumanoid();
+                        showAlert('HUMANOID CAUGHT — CARRY TO SURFACE!', 1.5);
+                    } else if (h.y >= groundY) {
+                        h.y = groundY;
+                        const fallDist = groundY - h.fallStartY;
+                        if (fallDist > 155) {
+                            h.state = 'dead';
+                            dAudio.playHumanoidLost();
+                            spawnSparks(h.wx, h.y, '#f43f5e', 14);
+                            showAlert('HUMANOID LOST ON IMPACT!', 1.5);
+                            checkPlanetDestruction();
+                        } else {
+                            h.state = 'walking';
+                            h.vy = 0;
+                            addScore(100, h.wx, h.y - 10, 'SAFE +100');
+                            dAudio.playRescueHumanoid();
+                        }
+                    }
+                } else if (h.state === 'carried') {
+                    if (!s.alive) {
+                        h.state = 'falling';
+                        h.fallStartY = h.y;
+                        h.vy = 0;
+                    } else {
+                        h.wx = s.wx;
+                        h.y = s.y + 14;
+                        if (h.y >= groundY - 4) {
+                            h.y = groundY;
+                            h.state = 'walking';
+                            s.carryingHumanId = null;
+                            addScore(500, h.wx, h.y - 14, 'RESCUED +500');
+                            dAudio.playRescueHumanoid();
+                            showAlert('HUMANOID SAFELY RETURNED (+500)!', 1.8);
+                        }
+                    }
+                }
+            });
+
+            // Update Horizontal Laser Streaks & Enemy Hits
+            for (let i = game.lasers.length - 1; i >= 0; i--) {
+                const lz = game.lasers[i];
+                lz.wx = wrapX(lz.wx + lz.dir * 1350 * dt);
+                lz.life -= dt;
+                if (lz.life <= 0) {
+                    game.lasers.splice(i, 1);
+                    continue;
+                }
+
+                // Check collision against any enemy along horizontal laser streak
+                for (let eIdx = game.enemies.length - 1; eIdx >= 0; eIdx--) {
+                    const en = game.enemies[eIdx];
+                    if (en.warpTimer > 0) continue;
+                    if (Math.abs(en.y - lz.y) < 15) {
+                        const dx = shortestDeltaX(lz.wx, en.wx);
+                        const withinStreak = lz.dir > 0
+                            ? (dx >= -lz.length && dx <= 22)
+                            : (dx <= lz.length && dx >= -22);
+
+                        if (withinStreak) {
+                            // Release carried humanoid if Lander killed
+                            if (en.carryingHumanId !== null) {
+                                const hum = game.humanoids.find(h => h.id === en.carryingHumanId);
+                                if (hum && hum.state === 'abducted') {
+                                    hum.state = 'falling';
+                                    hum.abductorId = null;
+                                    hum.fallStartY = hum.y;
+                                    hum.vy = 0;
+                                    showAlert('LANDER DESTROYED — CATCH FALLING HUMANOID!', 1.5);
+                                }
+                            }
+
+                            if (en.type === 'pod') {
+                                // Pod splits into 3 fast Swarmers
+                                addScore(1000, en.wx, en.y, 'POD +1000');
+                                for (let sw = 0; sw < 3; sw++) {
+                                    game.enemies.push(createEnemy(
+                                        'swarmer',
+                                        en.wx + (sw - 1) * 14,
+                                        en.y + (sw - 1) * 10,
+                                        (Math.random() - 0.5) * 260,
+                                        (Math.random() - 0.5) * 210
+                                    ));
+                                }
+                            } else {
+                                const pts = en.type === 'bomber' ? 250 : (en.type === 'baiter' ? 200 : 150);
+                                addScore(pts, en.wx, en.y, `+${pts}`);
+                            }
+
+                            dAudio.playEnemyExplode();
+                            spawnSparks(en.wx, en.y, en.type === 'mutant' ? '#e879f9' : '#4ade80', 14);
+                            game.enemies.splice(eIdx, 1);
+                            game.lasers.splice(i, 1);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Update Enemies (Landers, Mutants, Bombers, Pods, Swarmers, Baiters)
+            for (let i = game.enemies.length - 1; i >= 0; i--) {
+                const en = game.enemies[i];
+                if (en.warpTimer > 0) {
+                    en.warpTimer = Math.max(0, en.warpTimer - dt);
+                    continue;
+                }
+
+                if (en.type === 'lander') {
+                    if (en.carryingHumanId !== null) {
+                        const hum = game.humanoids.find(h => h.id === en.carryingHumanId && h.state === 'abducted');
+                        if (!hum) {
+                            en.carryingHumanId = null;
+                        } else {
+                            en.vx = 0;
+                            en.vy = -(58 + game.wave * 4);
+                            en.y += en.vy * dt;
+                            hum.wx = en.wx;
+                            hum.y = en.y + 14;
+
+                            // Reached top of sky -> Lander mutates into fast aggressive Mutant!
+                            if (en.y <= PLAY_TOP + 12) {
+                                hum.state = 'dead';
+                                en.carryingHumanId = null;
+                                en.targetHumanId = null;
+                                en.type = 'mutant';
+                                dAudio.playHumanoidLost();
+                                spawnSparks(en.wx, en.y, '#e879f9', 16);
+                                showAlert('LANDER MUTATED INTO A MUTANT!', 1.8);
+                                checkPlanetDestruction();
+                            }
+                        }
+                    } else {
+                        // Look for an available walking humanoid to abduct
+                        let target = game.humanoids.find(h => h.id === en.targetHumanId && h.state === 'walking');
+                        if (!target && !game.planetDestroyed) {
+                            const candidates = game.humanoids.filter(h =>
+                                h.state === 'walking' && Math.abs(shortestDeltaX(en.wx, h.wx)) < 480
+                            );
+                            if (candidates.length > 0 && Math.random() < dt * 1.4) {
+                                target = candidates[Math.floor(Math.random() * candidates.length)];
+                                en.targetHumanId = target.id;
+                            }
+                        }
+
+                        if (target) {
+                            const dx = shortestDeltaX(en.wx, target.wx);
+                            en.vx = Math.sign(dx || 1) * Math.min(130, Math.abs(dx) * 2.2);
+                            en.wx = wrapX(en.wx + en.vx * dt);
+                            const desiredY = target.y - 16;
+                            en.vy = Math.sign(desiredY - en.y) * 78;
+                            en.y = Math.max(PLAY_TOP + 16, Math.min(PLAY_BOTTOM - 16, en.y + en.vy * dt));
+
+                            if (Math.abs(dx) < 12 && Math.abs(en.y - desiredY) < 12) {
+                                target.state = 'abducted';
+                                target.abductorId = en.id;
+                                en.carryingHumanId = target.id;
+                                showAlert('HUMANOID ABDUCTION IN PROGRESS!', 1.6);
+                            }
+                        } else {
+                            en.wx = wrapX(en.wx + en.vx * dt);
+                            en.y += Math.sin(game.clock * 2.5 + en.id) * 28 * dt;
+                            en.y = Math.max(PLAY_TOP + 18, Math.min(PLAY_BOTTOM - 45, en.y));
+                        }
+                    }
+                } else if (en.type === 'mutant') {
+                    const dx = shortestDeltaX(en.wx, s.wx);
+                    const dy = s.y - en.y;
+                    en.vx = Math.sign(dx || 1) * (175 + game.wave * 10);
+                    en.vy = Math.sign(dy || 1) * 115 + Math.sin(game.clock * 16 + en.id) * 65;
+                    en.wx = wrapX(en.wx + en.vx * dt);
+                    en.y = Math.max(PLAY_TOP + 14, Math.min(PLAY_BOTTOM - 16, en.y + en.vy * dt));
+                } else if (en.type === 'bomber') {
+                    en.wx = wrapX(en.wx + en.vx * dt);
+                    en.y += en.vy * dt + Math.cos(game.clock * 2 + en.id) * 24 * dt;
+                    if (en.y < PLAY_TOP + 24 || en.y > PLAY_BOTTOM - 45) en.vy *= -1;
+                    en.y = Math.max(PLAY_TOP + 20, Math.min(PLAY_BOTTOM - 40, en.y));
+
+                    en.fireTimer -= dt;
+                    if (en.fireTimer <= 0) {
+                        en.fireTimer = 1.6 + Math.random() * 1.4;
+                        game.mines.push({
+                            wx: en.wx,
+                            y: en.y,
+                            pulse: 0,
+                            life: 7.5
+                        });
+                    }
+                } else if (en.type === 'pod') {
+                    en.wx = wrapX(en.wx + en.vx * dt);
+                    en.y += en.vy * dt;
+                    if (en.y < PLAY_TOP + 24 || en.y > PLAY_BOTTOM - 60) en.vy *= -1;
+                } else if (en.type === 'swarmer') {
+                    const dx = shortestDeltaX(en.wx, s.wx);
+                    const dy = s.y - en.y;
+                    en.vx += Math.sign(dx || 1) * 280 * dt;
+                    en.vy += Math.sign(dy || 1) * 240 * dt + Math.sin(game.clock * 14 + en.id) * 90 * dt;
+                    en.vx = Math.max(-240, Math.min(240, en.vx));
+                    en.vy = Math.max(-190, Math.min(190, en.vy));
+                    en.wx = wrapX(en.wx + en.vx * dt);
+                    en.y = Math.max(PLAY_TOP + 14, Math.min(PLAY_BOTTOM - 16, en.y + en.vy * dt));
+                } else if (en.type === 'baiter') {
+                    const dx = shortestDeltaX(en.wx, s.wx);
+                    const dy = s.y - en.y;
+                    en.vx = Math.sign(dx || 1) * 290;
+                    en.vy = Math.sign(dy || 1) * 165;
+                    en.wx = wrapX(en.wx + en.vx * dt);
+                    en.y = Math.max(PLAY_TOP + 14, Math.min(PLAY_BOTTOM - 16, en.y + en.vy * dt));
+                }
+
+                // Aimed enemy shots
+                if ((en.type === 'lander' || en.type === 'mutant' || en.type === 'baiter') && s.alive) {
+                    en.fireTimer -= dt;
+                    const distX = shortestDeltaX(en.wx, s.wx);
+                    if (en.fireTimer <= 0 && Math.abs(distX) < 520) {
+                        en.fireTimer = en.type === 'baiter' ? 1.15 : (2.1 + Math.random() * 1.6);
+                        const distY = s.y - en.y;
+                        const len = Math.max(1, Math.hypot(distX, distY));
+                        const spd = en.type === 'baiter' ? 270 : 210;
+                        game.enemyShots.push({
+                            wx: en.wx,
+                            y: en.y,
+                            vx: (distX / len) * spd,
+                            vy: (distY / len) * spd,
+                            life: 2.6
+                        });
+                    }
+                }
+
+                // Ship-to-enemy collision
+                if (s.alive && s.invuln <= 0 && Math.abs(shortestDeltaX(s.wx, en.wx)) < 18 && Math.abs(s.y - en.y) < 15) {
+                    handleShipHit();
+                    break;
+                }
+            }
+
+            // Update Enemy Shots & Space Mines
+            for (let i = game.enemyShots.length - 1; i >= 0; i--) {
+                const sh = game.enemyShots[i];
+                sh.wx = wrapX(sh.wx + sh.vx * dt);
+                sh.y += sh.vy * dt;
+                sh.life -= dt;
+
+                if (sh.life <= 0 || sh.y < PLAY_TOP || sh.y > PLAY_BOTTOM) {
+                    game.enemyShots.splice(i, 1);
+                    continue;
+                }
+
+                if (s.alive && s.invuln <= 0 && Math.abs(shortestDeltaX(s.wx, sh.wx)) < 14 && Math.abs(s.y - sh.y) < 11) {
+                    game.enemyShots.splice(i, 1);
+                    handleShipHit();
+                    break;
+                }
+            }
+
+            for (let i = game.mines.length - 1; i >= 0; i--) {
+                const mn = game.mines[i];
+                mn.pulse += dt * 10;
+                mn.life -= dt;
+                if (mn.life <= 0) {
+                    game.mines.splice(i, 1);
+                    continue;
+                }
+                if (s.alive && s.invuln <= 0 && Math.abs(shortestDeltaX(s.wx, mn.wx)) < 16 && Math.abs(s.y - mn.y) < 13) {
+                    game.mines.splice(i, 1);
+                    handleShipHit();
+                    break;
+                }
+            }
+
+            // Update Particles & Popups
+            for (let i = game.particles.length - 1; i >= 0; i--) {
+                const pt = game.particles[i];
+                pt.wx = wrapX(pt.wx + pt.vx * dt);
+                pt.y += pt.vy * dt;
+                pt.life -= dt;
+                if (pt.life <= 0) game.particles.splice(i, 1);
+            }
+
+            for (let i = game.popups.length - 1; i >= 0; i--) {
+                const pop = game.popups[i];
+                pop.y -= 24 * dt;
+                pop.life -= dt;
+                if (pop.life <= 0) game.popups.splice(i, 1);
+            }
+
+            // End-of-wave surviving humanoid bonus tally (100 pts x surviving humanoids x wave bonus)
+            if (game.enemies.length === 0 && s.alive) {
+                const surviving = game.humanoids.filter(h => h.state !== 'dead').length;
+                const waveMult = Math.min(5, game.wave);
+                const bonus = surviving * 100 * waveMult;
+                if (bonus > 0) {
+                    addScore(bonus);
+                }
+                dAudio.playWaveFanfare();
+                showAlert(`WAVE ${String(game.wave).padStart(2, '0')} CLEAR — ${surviving} HUMANOIDS ×100 ×${waveMult} = +${bonus}`, 2.4);
+                setupDefenderWave(game.wave + 1, false);
+            }
+
+            dAudio.updateContinuous(dt, true, s.thrusting, anyAbducting);
+        }
+
+        // =====================================================================
+        // 6. SCANNER RADAR, PLANETARY TERRAIN & DEFENDER RENDERING
+        // =====================================================================
+        function drawScannerRadar() {
+            // Top scanner radar strip showing full 4000px planet & current camera viewport frame
+            ctx.fillStyle = '#050a18';
+            ctx.fillRect(0, 0, VIEW_W, SCANNER_H);
+
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(1, 1, VIEW_W - 2, SCANNER_H - 2);
+
+            const mapScaleX = (VIEW_W - 4) / WORLD_W;
+            const mapTop = 8;
+            const mapH = SCANNER_H - 14;
+
+            // Mini terrain silhouette on scanner
+            if (!game.planetDestroyed) {
+                ctx.strokeStyle = '#d97706';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                for (let i = 0; i < TERRAIN_POINTS; i++) {
+                    const wx = i * TERRAIN_STEP;
+                    const mx = 2 + wx * mapScaleX;
+                    const sy = getTerrainSurfaceY(wx);
+                    const my = mapTop + ((sy - PLAY_TOP) / (PLAY_BOTTOM - PLAY_TOP)) * mapH;
+                    if (i === 0) ctx.moveTo(mx, my);
+                    else ctx.lineTo(mx, my);
+                }
+                ctx.stroke();
+            }
+
+            // Humanoid blips on scanner
+            game.humanoids.forEach(h => {
+                if (h.state === 'dead') return;
+                const mx = 2 + h.wx * mapScaleX;
+                const my = mapTop + ((h.y - PLAY_TOP) / (PLAY_BOTTOM - PLAY_TOP)) * mapH;
+                ctx.fillStyle = h.state === 'abducted' ? '#fde047' : '#f472b6';
+                ctx.fillRect(mx - 1.5, my - 2, 3, 4);
+            });
+
+            // Enemy blips on scanner
+            game.enemies.forEach(en => {
+                const mx = 2 + en.wx * mapScaleX;
+                const my = mapTop + ((en.y - PLAY_TOP) / (PLAY_BOTTOM - PLAY_TOP)) * mapH;
+                ctx.fillStyle = en.type === 'mutant' ? '#e879f9' : (en.type === 'baiter' ? '#fb7185' : '#4ade80');
+                ctx.fillRect(mx - 2, my - 2, 4, 4);
+            });
+
+            // Player ship blip on scanner
+            if (game.ship.alive) {
+                const sx = 2 + game.ship.wx * mapScaleX;
+                const sy = mapTop + ((game.ship.y - PLAY_TOP) / (PLAY_BOTTOM - PLAY_TOP)) * mapH;
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(sx - 2.5, sy - 2, 5, 4);
+            }
+
+            // Current viewport bracket on scanner (wraps cleanly)
+            const vpX = 2 + game.cameraX * mapScaleX;
+            const vpW = VIEW_W * mapScaleX;
+            ctx.strokeStyle = '#7dd3fc';
+            ctx.lineWidth = 1.2;
+            ctx.strokeRect(vpX, 3, vpW, SCANNER_H - 6);
+            if (vpX + vpW > VIEW_W - 2) {
+                ctx.strokeRect(vpX - (VIEW_W - 4), 3, vpW, SCANNER_H - 6);
+            }
+        }
+
+        function drawPlanetaryBackdropAndTerrain() {
+            ctx.fillStyle = '#040610';
+            ctx.fillRect(0, SCANNER_H, VIEW_W, VIEW_H - SCANNER_H);
+
+            // Twinkling stars
+            worldStars.forEach(st => {
+                const sx = worldToScreenX(st.wx);
+                if (sx < -10 || sx > VIEW_W + 10) return;
+                const twinkle = 0.45 + 0.55 * Math.sin(game.clock * 3.2 + st.phase);
+                ctx.globalAlpha = twinkle;
+                ctx.fillStyle = st.color;
+                ctx.fillRect(sx, st.y, st.size, st.size);
+            });
+            ctx.globalAlpha = 1;
+
+            // Glowing horizon line
+            ctx.strokeStyle = game.planetDestroyed ? 'rgba(244, 63, 94, 0.25)' : 'rgba(245, 158, 11, 0.35)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, PLAY_BOTTOM);
+            ctx.lineTo(VIEW_W, PLAY_BOTTOM);
+            ctx.stroke();
+
+            if (!game.planetDestroyed) {
+                // Jagged wrap-around mountain ridge
+                ctx.save();
+                ctx.strokeStyle = '#f59e0b';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+
+                const startIdx = Math.floor(game.cameraX / TERRAIN_STEP) - 1;
+                const spanSteps = Math.ceil(VIEW_W / TERRAIN_STEP) + 3;
+                for (let step = 0; step <= spanSteps; step++) {
+                    const idx = startIdx + step;
+                    const wx = idx * TERRAIN_STEP;
+                    const sx = worldToScreenX(wx);
+                    const sy = getTerrainSurfaceY(wx);
+                    if (step === 0) ctx.moveTo(sx, sy);
+                    else ctx.lineTo(sx, sy);
+                }
+                ctx.stroke();
+
+                // Subtle under-ridge tint
+                ctx.lineTo(VIEW_W + 30, VIEW_H);
+                ctx.lineTo(-30, VIEW_H);
+                ctx.closePath();
+                ctx.fillStyle = 'rgba(180, 83, 9, 0.14)';
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        function drawDefenderShipSprite(c, x, y, facing, scale = 1, thrusting = false) {
+            c.save();
+            c.translate(x, y);
+            c.scale(scale * facing, scale);
+
+            // Thruster flame
+            if (thrusting) {
+                const fl = 8 + Math.random() * 8;
+                c.fillStyle = '#fb923c';
+                c.beginPath();
+                c.moveTo(-14, -3);
+                c.lineTo(-14 - fl, 0);
+                c.lineTo(-14, 3);
+                c.closePath();
+                c.fill();
+            }
+
+            // Sleek Defender wedge hull
+            c.fillStyle = '#e2e8f0';
+            c.beginPath();
+            c.moveTo(18, 1);
+            c.lineTo(-12, -7);
+            c.lineTo(-15, 0);
+            c.lineTo(-10, 6);
+            c.closePath();
+            c.fill();
+
+            // Cockpit canopy & red/cyan trim
+            c.fillStyle = '#38bdf8';
+            c.fillRect(-2, -4, 8, 3);
+            c.fillStyle = '#f43f5e';
+            c.fillRect(-12, 2, 16, 2.5);
+
+            c.restore();
+        }
+
+        function drawHumanoids() {
+            game.humanoids.forEach(h => {
+                if (h.state === 'dead') return;
+                const sx = worldToScreenX(h.wx);
+                if (sx < -20 || sx > VIEW_W + 20) return;
+
+                ctx.save();
+                ctx.translate(sx, h.y);
+                // Head
+                ctx.fillStyle = '#fde047';
+                ctx.fillRect(-2, -8, 4, 3);
+                // Torso
+                ctx.fillStyle = '#f472b6';
+                ctx.fillRect(-2.5, -5, 5, 5);
+                // Legs
+                const stride = h.state === 'walking' ? Math.sin(game.clock * 8 + h.id) * 1.5 : 0;
+                ctx.fillStyle = '#38bdf8';
+                ctx.fillRect(-2.5, 0, 2, 4 + stride);
+                ctx.fillRect(0.5, 0, 2, 4 - stride);
+                ctx.restore();
+            });
+        }
+
+        function drawEnemiesAndProjectiles() {
+            // Enemies
+            game.enemies.forEach(en => {
+                const sx = worldToScreenX(en.wx);
+                if (sx < -36 || sx > VIEW_W + 36) return;
+
+                ctx.save();
+                ctx.translate(sx, en.y);
+
+                if (en.warpTimer > 0) {
+                    ctx.strokeStyle = '#38bdf8';
+                    ctx.lineWidth = 1.6;
+                    const r = 6 + en.warpTimer * 24;
+                    ctx.strokeRect(-r * 0.5, -r * 0.5, r, r);
+                    ctx.restore();
+                    return;
+                }
+
+                if (en.type === 'lander') {
+                    ctx.fillStyle = '#4ade80';
+                    ctx.fillRect(-9, -8, 18, 9);
+                    ctx.fillStyle = '#fef08a';
+                    ctx.fillRect(-5, -4, 3, 2);
+                    ctx.fillRect(2, -4, 3, 2);
+                    ctx.strokeStyle = '#22c55e';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(-6, 1);
+                    ctx.lineTo(-10, 9);
+                    ctx.moveTo(0, 1);
+                    ctx.lineTo(0, 9);
+                    ctx.moveTo(6, 1);
+                    ctx.lineTo(10, 9);
+                    ctx.stroke();
+                } else if (en.type === 'mutant') {
+                    ctx.fillStyle = '#e879f9';
+                    ctx.fillRect(-10, -8, 20, 10);
+                    ctx.fillStyle = '#f43f5e';
+                    ctx.fillRect(-5, -3, 3, 3);
+                    ctx.fillRect(2, -3, 3, 3);
+                    ctx.strokeStyle = '#facc15';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(-8, 2);
+                    ctx.lineTo(-12, 9);
+                    ctx.moveTo(8, 2);
+                    ctx.lineTo(12, 9);
+                    ctx.stroke();
+                } else if (en.type === 'bomber') {
+                    ctx.strokeStyle = '#38bdf8';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(-8, -8, 16, 16);
+                    ctx.fillStyle = '#f472b6';
+                    ctx.fillRect(-3, -3, 6, 6);
+                } else if (en.type === 'pod') {
+                    ctx.strokeStyle = '#facc15';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(0, -10);
+                    ctx.lineTo(10, 0);
+                    ctx.lineTo(0, 10);
+                    ctx.lineTo(-10, 0);
+                    ctx.closePath();
+                    ctx.stroke();
+                    ctx.fillStyle = '#fb7185';
+                    ctx.fillRect(-3, -3, 6, 6);
+                } else if (en.type === 'swarmer') {
+                    ctx.fillStyle = '#fb7185';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 5.5, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (en.type === 'baiter') {
+                    ctx.fillStyle = '#38bdf8';
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, 14, 5, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#fde047';
+                    ctx.fillRect(-6, -6, 12, 3);
+                }
+
+                ctx.restore();
+            });
+
+            // Pulsing space mines
+            game.mines.forEach(mn => {
+                const sx = worldToScreenX(mn.wx);
+                if (sx < -20 || sx > VIEW_W + 20) return;
+                const rad = 3.5 + Math.sin(mn.pulse) * 1.5;
+                ctx.strokeStyle = '#fb7185';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(sx - rad, mn.y);
+                ctx.lineTo(sx + rad, mn.y);
+                ctx.moveTo(sx, mn.y - rad);
+                ctx.lineTo(sx, mn.y + rad);
+                ctx.stroke();
+            });
+
+            // Enemy shots
+            ctx.fillStyle = '#ffffff';
+            game.enemyShots.forEach(sh => {
+                const sx = worldToScreenX(sh.wx);
+                if (sx < -15 || sx > VIEW_W + 15) return;
+                ctx.fillRect(sx - 2, sh.y - 2, 4, 4);
+            });
+
+            // Classic Defender Long Pulsing Horizontal Laser Streaks
+            game.lasers.forEach(lz => {
+                const sx = worldToScreenX(lz.wx);
+                if (sx < -320 || sx > VIEW_W + 320) return;
+                const tailX = sx - lz.dir * lz.length;
+                const grad = ctx.createLinearGradient(tailX, lz.y, sx, lz.y);
+                grad.addColorStop(0, 'rgba(56, 189, 248, 0)');
+                grad.addColorStop(0.55, '#38bdf8');
+                grad.addColorStop(1, '#ffffff');
+                ctx.strokeStyle = grad;
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(tailX, lz.y);
+                ctx.lineTo(sx, lz.y);
+                ctx.stroke();
+            });
+        }
+
+        function renderDefenderFrame() {
+            drawPlanetaryBackdropAndTerrain();
+            drawHumanoids();
+            drawEnemiesAndProjectiles();
+
+            // Player Defender ship
+            const s = game.ship;
+            if (s.alive && (s.invuln <= 0 || Math.floor(s.invuln * 18) % 2 === 0)) {
+                const sx = worldToScreenX(s.wx);
+                drawDefenderShipSprite(ctx, sx, s.y, s.facing, 1.0, s.thrusting);
+            }
+
+            // Sparks & score popups
+            game.particles.forEach(pt => {
+                const sx = worldToScreenX(pt.wx);
+                if (sx < -15 || sx > VIEW_W + 15) return;
+                ctx.globalAlpha = Math.max(0, pt.life / pt.maxLife);
+                ctx.fillStyle = pt.color;
+                ctx.fillRect(sx, pt.y, 3, 3);
+            });
+            ctx.globalAlpha = 1;
+
+            ctx.font = '700 12px "JetBrains Mono", monospace';
+            ctx.textAlign = 'center';
+            game.popups.forEach(pop => {
+                const sx = worldToScreenX(pop.wx);
+                if (sx < -40 || sx > VIEW_W + 40) return;
+                ctx.globalAlpha = Math.max(0, pop.life / 0.8);
+                ctx.fillStyle = pop.color;
+                ctx.fillText(pop.text, sx, pop.y);
+            });
+            ctx.globalAlpha = 1;
+
+            // Smart Bomb screen flash
+            if (game.screenFlash > 0) {
+                ctx.fillStyle = `rgba(224, 242, 254, ${Math.min(0.65, game.screenFlash * 1.4)})`;
+                ctx.fillRect(0, SCANNER_H, VIEW_W, VIEW_H - SCANNER_H);
+            }
+
+            // Top scanner radar always drawn cleanly over top edge
+            drawScannerRadar();
+        }
+
+        // =====================================================================
+        // 7. HUD, RESPONSIVE RESIZE & INPUT HANDLERS
+        // =====================================================================
+        function drawShipIconsHUD() {
+            sctx.clearRect(0, 0, shipsCanvas.width, shipsCanvas.height);
+            const shown = Math.min(5, Math.max(0, game.ships));
+            for (let i = 0; i < shown; i++) {
+                drawDefenderShipSprite(sctx, 13 + i * 17, 8, 1, 0.45, false);
+            }
+        }
+
+        function updateHUD() {
+            document.getElementById('hud-score').textContent = String(game.score).padStart(6, '0');
+            document.getElementById('hud-high').textContent = String(game.highScore).padStart(6, '0');
+            document.getElementById('hud-wave').textContent = String(game.wave).padStart(2, '0');
+            const aliveHumans = game.humanoids.filter(h => h.state !== 'dead').length;
+            document.getElementById('hud-humans').textContent = `${aliveHumans}/10`;
+            document.getElementById('hud-bombs').textContent = `💣 ×${game.smartBombs}`;
+            drawShipIconsHUD();
+        }
+
+        function fitDefenderCanvas() {
+            const wrap = document.getElementById('playfield-wrap');
+            const availW = Math.max(240, wrap.clientWidth);
+            const availH = Math.max(160, wrap.clientHeight);
+            const aspect = VIEW_W / VIEW_H;
+
+            let rw = availW;
+            let rh = rw / aspect;
+            if (rh > availH) {
+                rh = availH;
+                rw = rh * aspect;
+            }
+            canvas.style.width = `${Math.floor(rw)}px`;
+            canvas.style.height = `${Math.floor(rh)}px`;
+        }
+
+        function togglePauseDefender() {
+            if (game.mode === 'playing') {
+                game.mode = 'paused';
+                document.getElementById('ov-kicker').textContent = 'GAME PAUSED';
+                document.getElementById('ov-title').textContent = 'PAUSED';
+                document.getElementById('ov-desc').textContent =
+                    `Wave ${game.wave} • Score ${game.score.toLocaleString()} • Press Resume or P to continue.`;
+                document.getElementById('btn-start').textContent = 'RESUME';
+                document.getElementById('overlay-card').classList.remove('hidden');
+                document.getElementById('btn-pause').textContent = 'RESUME [P]';
+            } else if (game.mode === 'paused') {
+                game.mode = 'playing';
+                document.getElementById('overlay-card').classList.add('hidden');
+                document.getElementById('btn-pause').textContent = 'PAUSE [P]';
+            }
+        }
+
+        function toggleSoundDefender() {
+            dAudio.init();
+            const muted = dAudio.toggleMute();
+            const btn = document.getElementById('btn-sound');
+            btn.textContent = muted ? '🔇 MUTED [M]' : '🔊 SOUND [M]';
+            btn.classList.toggle('active', !muted);
+        }
+
+        window.addEventListener('keydown', (e) => {
+            dAudio.init();
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+                e.preventDefault();
+            }
+            game.keys[e.code] = true;
+            if (e.repeat) return;
+
+            if (e.code === 'KeyB' || e.code === 'KeyX' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+                detonateSmartBomb();
+            } else if (e.code === 'KeyH') {
+                triggerHyperspace();
+            } else if (e.code === 'KeyP') {
+                togglePauseDefender();
+            } else if (e.code === 'KeyM') {
+                toggleSoundDefender();
+            } else if (e.code === 'KeyR') {
+                startNewDefenderGame();
+            } else if (e.code === 'Enter' && game.mode !== 'playing') {
+                if (game.mode === 'paused') togglePauseDefender();
+                else startNewDefenderGame();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            game.keys[e.code] = false;
+        });
+
+        function bindTouchButton(id, handlerOrFlag) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (typeof handlerOrFlag === 'function') {
+                el.addEventListener('pointerdown', (e) => {
+                    e.preventDefault();
+                    dAudio.init();
+                    el.classList.add('pressed');
+                    handlerOrFlag();
+                });
+                const up = (e) => {
+                    e.preventDefault();
+                    el.classList.remove('pressed');
+                };
+                el.addEventListener('pointerup', up);
+                el.addEventListener('pointerleave', up);
+                el.addEventListener('pointercancel', up);
+                return;
+            }
+            const down = (e) => {
+                e.preventDefault();
+                dAudio.init();
+                game.touch[handlerOrFlag] = true;
+                el.classList.add('pressed');
+            };
+            const up = (e) => {
+                e.preventDefault();
+                game.touch[handlerOrFlag] = false;
+                el.classList.remove('pressed');
+            };
+            el.addEventListener('pointerdown', down);
+            el.addEventListener('pointerup', up);
+            el.addEventListener('pointerleave', up);
+            el.addEventListener('pointercancel', up);
+        }
+
+        bindTouchButton('tc-left', 'left');
+        bindTouchButton('tc-right', 'right');
+        bindTouchButton('tc-up', 'up');
+        bindTouchButton('tc-down', 'down');
+        bindTouchButton('tc-fire', 'fire');
+        bindTouchButton('tc-flip', () => {
+            game.ship.facing *= -1;
+        });
+        bindTouchButton('tc-hyper', triggerHyperspace);
+        bindTouchButton('tc-bomb', detonateSmartBomb);
+
+        document.getElementById('btn-synth').addEventListener('click', () => {
+            dAudio.init();
+            const on = dAudio.toggleSynth();
+            const b = document.getElementById('btn-synth');
+            b.textContent = on ? '🎵 SYNTH' : '🎵 OFF';
+            b.classList.toggle('active', on);
+        });
+
+        document.getElementById('btn-pause').addEventListener('click', togglePauseDefender);
+        document.getElementById('btn-sound').addEventListener('click', toggleSoundDefender);
+        document.getElementById('btn-restart').addEventListener('click', startNewDefenderGame);
+        document.getElementById('btn-start').addEventListener('click', () => {
+            if (game.mode === 'paused') togglePauseDefender();
+            else startNewDefenderGame();
+        });
+
+        window.addEventListener('resize', fitDefenderCanvas);
+
+        // =====================================================================
+        // 8. INITIALIZATION & ANIMATION LOOP
+        // =====================================================================
+        let prevTime = performance.now();
+
+        function loop(now) {
+            requestAnimationFrame(loop);
+            const dt = Math.min((now - prevTime) / 1000, 0.05);
+            prevTime = now;
+
+            updateDefender(dt);
+            renderDefenderFrame();
+        }
+
+        window.onload = function () {
+            fitDefenderCanvas();
+            createHumanoids(10);
+            setupDefenderWave(1, true);
+            updateHUD();
+            requestAnimationFrame(loop);
+        };
+    </script>
+</body>
+</html>
